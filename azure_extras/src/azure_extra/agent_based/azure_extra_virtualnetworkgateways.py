@@ -13,129 +13,145 @@ from cmk.agent_based.v2 import (
     Service,
     State,
     Result,
+    Metric,
 )
+
+
+def short_id(resource_id):
+    """
+    Return the last path segment (the resource name) of an Azure resource ID.
+    """
+    if not resource_id or not isinstance(resource_id, str):
+        return None
+    return resource_id.rstrip('/').split('/')[-1]
+
+
+def render_details(pairs):
+    """
+    Render a list of (label, value) pairs as readable multi-line details.
+    Empty values are skipped so we never show noise or dump raw JSON.
+    """
+    lines = []
+    for label, value in pairs:
+        if value in (None, '', {}, [], 'None', 'Unknown'):
+            continue
+        lines.append(f"{label}: {value}")
+    return "\n".join(lines)
 
 
 def parse_properties(string_table):
     """
     Parse Azure Virtual Network Gateways Properties Data
     """
-    if not string_table or not string_table[0]:
+    if not string_table:
         return {'gateways': {}, 'ip_configs': {}, 'bgp_settings': {}, 'vpn_clients': {}, 'remote_peerings': {}, 'nat_rules': {}, 'policy_groups': {}}
-    
-    try:
-        raw_data = json.loads(string_table[0][0])
-        result = {'gateways': {}, 'ip_configs': {}, 'bgp_settings': {}, 'vpn_clients': {}, 'remote_peerings': {}, 'nat_rules': {}, 'policy_groups': {}}
-        
-        # Check if this is a single Gateway object
-        if isinstance(raw_data, dict):
-            # Extract gateway name from resource GUID or use a default
-            gateway_name = raw_data.get('resourceGuid', 'unknown-gateway')
-            
-            # Add Gateway main data
-            result['gateways'][gateway_name] = {
-                'name': gateway_name,
-                'provisioningState': raw_data.get('provisioningState'),
-                'resourceGuid': raw_data.get('resourceGuid'),
-                'packetCaptureDiagnosticState': raw_data.get('packetCaptureDiagnosticState'),
-                'enablePrivateIpAddress': raw_data.get('enablePrivateIpAddress'),
-                'isMigrateToCSES': raw_data.get('isMigrateToCSES'),
-                'gatewayType': raw_data.get('gatewayType'),
-                'vpnType': raw_data.get('vpnType'),
-                'enableBgp': raw_data.get('enableBgp'),
-                'activeActive': raw_data.get('activeActive'),
-                'sku': raw_data.get('sku', {}),
-                'vpnGatewayGeneration': raw_data.get('vpnGatewayGeneration'),
-                'allowRemoteVnetTraffic': raw_data.get('allowRemoteVnetTraffic'),
-                'allowVirtualWanTraffic': raw_data.get('allowVirtualWanTraffic'),
-                'virtualNetworkGatewayMigrationStatus': raw_data.get('virtualNetworkGatewayMigrationStatus', {}),
-                '_raw_data': raw_data
+    result = {'gateways': {}, 'ip_configs': {}, 'bgp_settings': {}, 'vpn_clients': {}, 'remote_peerings': {}, 'nat_rules': {}, 'policy_groups': {}}
+
+    for line in string_table:
+        if not line:
+            continue
+        try:
+            raw_data = json.loads(line[0])
+        except (json.JSONDecodeError, IndexError):
+            continue
+
+        if not isinstance(raw_data, dict):
+            continue
+
+        gateway_name = raw_data.get('_resource_name', raw_data.get('resourceGuid', 'unknown-gateway'))
+
+        result['gateways'][gateway_name] = {
+            'name': gateway_name,
+            'provisioningState': raw_data.get('provisioningState'),
+            'resourceGuid': raw_data.get('resourceGuid'),
+            'packetCaptureDiagnosticState': raw_data.get('packetCaptureDiagnosticState'),
+            'enablePrivateIpAddress': raw_data.get('enablePrivateIpAddress'),
+            'isMigrateToCSES': raw_data.get('isMigrateToCSES'),
+            'gatewayType': raw_data.get('gatewayType'),
+            'vpnType': raw_data.get('vpnType'),
+            'enableBgp': raw_data.get('enableBgp'),
+            'activeActive': raw_data.get('activeActive'),
+            'sku': raw_data.get('sku', {}),
+            'vpnGatewayGeneration': raw_data.get('vpnGatewayGeneration'),
+            'allowRemoteVnetTraffic': raw_data.get('allowRemoteVnetTraffic'),
+            'allowVirtualWanTraffic': raw_data.get('allowVirtualWanTraffic'),
+            'virtualNetworkGatewayMigrationStatus': raw_data.get('virtualNetworkGatewayMigrationStatus', {}),
+            '_raw_data': raw_data
+        }
+
+        for ip_config in raw_data.get('ipConfigurations', []):
+            ip_config_name = ip_config.get('name', 'unknown')
+            full_name = f"{gateway_name}_{ip_config_name}"
+            result['ip_configs'][full_name] = {
+                'name': ip_config_name,
+                'gateway_name': gateway_name,
+                'provisioningState': ip_config.get('properties', {}).get('provisioningState'),
+                'privateIPAllocationMethod': ip_config.get('properties', {}).get('privateIPAllocationMethod'),
+                'publicIPAddress': ip_config.get('properties', {}).get('publicIPAddress', {}),
+                'subnet': ip_config.get('properties', {}).get('subnet', {}),
+                '_raw_data': ip_config
             }
-            
-            # Add IP Configuration data
-            for ip_config in raw_data.get('ipConfigurations', []):
-                ip_config_name = ip_config.get('name', 'unknown')
-                full_name = f"{gateway_name}_{ip_config_name}"
-                result['ip_configs'][full_name] = {
-                    'name': ip_config_name,
+
+        bgp_settings = raw_data.get('bgpSettings', {})
+        if bgp_settings:
+            bgp_name = f"{gateway_name}_bgp"
+            result['bgp_settings'][bgp_name] = {
+                'name': bgp_name,
+                'gateway_name': gateway_name,
+                'asn': bgp_settings.get('asn'),
+                'bgpPeeringAddress': bgp_settings.get('bgpPeeringAddress'),
+                'peerWeight': bgp_settings.get('peerWeight'),
+                'bgpPeeringAddresses': bgp_settings.get('bgpPeeringAddresses', []),
+                '_raw_data': bgp_settings
+            }
+
+        vpn_client_config = raw_data.get('vpnClientConfiguration', {})
+        if vpn_client_config:
+            vpn_client_name = f"{gateway_name}_vpnclient"
+            result['vpn_clients'][vpn_client_name] = {
+                'name': vpn_client_name,
+                'gateway_name': gateway_name,
+                'vpnClientProtocols': vpn_client_config.get('vpnClientProtocols', []),
+                'vpnAuthenticationTypes': vpn_client_config.get('vpnAuthenticationTypes', []),
+                'vpnClientRootCertificates': vpn_client_config.get('vpnClientRootCertificates', []),
+                'vpnClientRevokedCertificates': vpn_client_config.get('vpnClientRevokedCertificates', []),
+                'vngClientConnectionConfigurations': vpn_client_config.get('vngClientConnectionConfigurations', []),
+                'radiusServers': vpn_client_config.get('radiusServers', []),
+                'vpnClientIpsecPolicies': vpn_client_config.get('vpnClientIpsecPolicies', []),
+                '_raw_data': vpn_client_config
+            }
+
+        for idx, peering in enumerate(raw_data.get('remoteVirtualNetworkPeerings', [])):
+            if isinstance(peering, dict) and peering.get('id'):
+                peering_id = peering['id']
+                peering_name = peering_id.split('/')[-1] if peering_id else f'unknown-peering-{idx}'
+                full_name = f"{gateway_name}_{peering_name}"
+                result['remote_peerings'][full_name] = {
+                    'name': peering_name,
                     'gateway_name': gateway_name,
-                    'provisioningState': ip_config.get('properties', {}).get('provisioningState'),
-                    'privateIPAllocationMethod': ip_config.get('properties', {}).get('privateIPAllocationMethod'),
-                    'publicIPAddress': ip_config.get('properties', {}).get('publicIPAddress', {}),
-                    'subnet': ip_config.get('properties', {}).get('subnet', {}),
-                    '_raw_data': ip_config
+                    'peering_id': peering_id,
+                    '_raw_data': peering
                 }
-            
-            # Add BGP Settings data
-            bgp_settings = raw_data.get('bgpSettings', {})
-            if bgp_settings:
-                bgp_name = f"{gateway_name}_bgp"
-                result['bgp_settings'][bgp_name] = {
-                    'name': bgp_name,
-                    'gateway_name': gateway_name,
-                    'asn': bgp_settings.get('asn'),
-                    'bgpPeeringAddress': bgp_settings.get('bgpPeeringAddress'),
-                    'peerWeight': bgp_settings.get('peerWeight'),
-                    'bgpPeeringAddresses': bgp_settings.get('bgpPeeringAddresses', []),
-                    '_raw_data': bgp_settings
-                }
-            
-            # Add VPN Client Configuration data
-            vpn_client_config = raw_data.get('vpnClientConfiguration', {})
-            if vpn_client_config:
-                vpn_client_name = f"{gateway_name}_vpnclient"
-                result['vpn_clients'][vpn_client_name] = {
-                    'name': vpn_client_name,
-                    'gateway_name': gateway_name,
-                    'vpnClientProtocols': vpn_client_config.get('vpnClientProtocols', []),
-                    'vpnAuthenticationTypes': vpn_client_config.get('vpnAuthenticationTypes', []),
-                    'vpnClientRootCertificates': vpn_client_config.get('vpnClientRootCertificates', []),
-                    'vpnClientRevokedCertificates': vpn_client_config.get('vpnClientRevokedCertificates', []),
-                    'vngClientConnectionConfigurations': vpn_client_config.get('vngClientConnectionConfigurations', []),
-                    'radiusServers': vpn_client_config.get('radiusServers', []),
-                    'vpnClientIpsecPolicies': vpn_client_config.get('vpnClientIpsecPolicies', []),
-                    '_raw_data': vpn_client_config
-                }
-            
-            # Add Remote Virtual Network Peerings data
-            for idx, peering in enumerate(raw_data.get('remoteVirtualNetworkPeerings', [])):
-                if isinstance(peering, dict) and peering.get('id'):
-                    peering_id = peering['id']
-                    # Extract peering name from ID
-                    peering_name = peering_id.split('/')[-1] if peering_id else f'unknown-peering-{idx}'
-                    full_name = f"{gateway_name}_{peering_name}"
-                    result['remote_peerings'][full_name] = {
-                        'name': peering_name,
-                        'gateway_name': gateway_name,
-                        'peering_id': peering_id,
-                        '_raw_data': peering
-                    }
-            
-            # Add NAT Rules data
-            for nat_rule in raw_data.get('natRules', []):
-                nat_rule_name = nat_rule.get('name', 'unknown')
-                full_name = f"{gateway_name}_{nat_rule_name}"
-                result['nat_rules'][full_name] = {
-                    'name': nat_rule_name,
-                    'gateway_name': gateway_name,
-                    '_raw_data': nat_rule
-                }
-            
-            # Add Virtual Network Gateway Policy Groups data
-            for policy_group in raw_data.get('virtualNetworkGatewayPolicyGroups', []):
-                policy_group_name = policy_group.get('name', 'unknown')
-                full_name = f"{gateway_name}_{policy_group_name}"
-                result['policy_groups'][full_name] = {
-                    'name': policy_group_name,
-                    'gateway_name': gateway_name,
-                    '_raw_data': policy_group
-                }
-            
-            return result
-        
-        return result
-    except (json.JSONDecodeError, IndexError):
-        return {'gateways': {}, 'ip_configs': {}, 'bgp_settings': {}, 'vpn_clients': {}, 'remote_peerings': {}, 'nat_rules': {}, 'policy_groups': {}}
+
+        for nat_rule in raw_data.get('natRules', []):
+            nat_rule_name = nat_rule.get('name', 'unknown')
+            full_name = f"{gateway_name}_{nat_rule_name}"
+            result['nat_rules'][full_name] = {
+                'name': nat_rule_name,
+                'gateway_name': gateway_name,
+                '_raw_data': nat_rule
+            }
+
+        for policy_group in raw_data.get('virtualNetworkGatewayPolicyGroups', []):
+            policy_group_name = policy_group.get('name', 'unknown')
+            full_name = f"{gateway_name}_{policy_group_name}"
+            result['policy_groups'][full_name] = {
+                'name': policy_group_name,
+                'gateway_name': gateway_name,
+                '_raw_data': policy_group
+            }
+
+    return result
 
 
 # Discovery functions for each resource type
@@ -243,12 +259,23 @@ def check_gateway(item, section):
         f"Generation: {generation}"
     ]
     
+    details = render_details([
+        ("Provisioning State", provisioning_state),
+        ("Gateway Type", gateway_type),
+        ("VPN Type", vpn_type),
+        ("SKU", f"{sku_name} ({sku_tier})"),
+        ("Capacity", sku_capacity),
+        ("Mode", 'Active-Active' if active_active else 'Active-Standby'),
+        ("BGP", 'Enabled' if enable_bgp else 'Disabled'),
+        ("Generation", generation),
+    ])
+
     yield Result(
         state=state,
         summary="; ".join(summary_parts),
-        details=f"VPN Gateway Details:\n{json.dumps(data, indent=2)}"
+        details=details,
     )
-    
+
     # Check migration status
     migration_status = data.get('virtualNetworkGatewayMigrationStatus', {})
     migration_state = migration_status.get('state', 'None')
@@ -299,11 +326,18 @@ def check_ip_config(item, section):
         f"Public IP: {public_ip_name}",
         f"Subnet: {subnet_name}"
     ]
-    
+
+    details = render_details([
+        ("Provisioning State", provisioning_state),
+        ("IP Allocation Method", allocation_method),
+        ("Public IP", public_ip_name),
+        ("Subnet", subnet_name),
+    ])
+
     yield Result(
         state=state,
         summary="; ".join(summary_parts),
-        details=f"IP Config Details:\n{json.dumps(data, indent=2)}"
+        details=details,
     )
 
 
@@ -328,11 +362,18 @@ def check_bgp_settings(item, section):
         f"Peer Weight: {peer_weight}",
         f"Peering IPs: {len(peering_addresses)}"
     ]
-    
+
+    details = render_details([
+        ("ASN", asn),
+        ("BGP Peering Address", bgp_peering_address),
+        ("Peer Weight", peer_weight),
+        ("Number of Peering IPs", len(peering_addresses)),
+    ])
+
     yield Result(
         state=State.OK,
         summary="; ".join(summary_parts),
-        details=f"BGP Settings Details:\n{json.dumps(data, indent=2)}"
+        details=details,
     )
     
     # Check individual peering addresses
@@ -372,11 +413,20 @@ def check_vpn_client(item, section):
         f"RADIUS: {len(radius_servers)}",
         f"IPSec Policies: {len(ipsec_policies)}"
     ]
-    
+
+    details = render_details([
+        ("VPN Client Protocols", ', '.join(protocols)),
+        ("Authentication Types", ', '.join(auth_types)),
+        ("Root Certificates", len(root_certs)),
+        ("Revoked Certificates", len(revoked_certs)),
+        ("RADIUS Servers", len(radius_servers)),
+        ("IPSec Policies", len(ipsec_policies)),
+    ])
+
     yield Result(
         state=State.OK,
         summary="; ".join(summary_parts),
-        details=f"VPN Client Config Details:\n{json.dumps(data, indent=2)}"
+        details=details,
     )
 
 
@@ -406,17 +456,24 @@ def check_remote_peering(item, section):
             f"Subscription: {subscription_id[:8]}...",
             f"Peering: {peering_name}"
         ]
-        
+
+        details = render_details([
+            ("Remote VNet", vnet_name),
+            ("Resource Group", resource_group),
+            ("Subscription", subscription_id),
+            ("Peering Name", peering_name),
+        ])
+
         yield Result(
             state=State.OK,
             summary="; ".join(summary_parts),
-            details=f"Remote Peering Details:\n{json.dumps(data, indent=2)}"
+            details=details,
         )
     else:
         yield Result(
             state=State.OK,
             summary=f"Peering ID: {peering_id}",
-            details=f"Remote Peering Details:\n{json.dumps(data, indent=2)}"
+            details=render_details([("Peering", short_id(peering_id) or peering_id)]),
         )
 
 
@@ -434,7 +491,7 @@ def check_nat_rule(item, section):
     yield Result(
         state=State.OK,
         summary=f"NAT Rule: {data.get('name', 'Unknown')}",
-        details=f"NAT Rule Details:\n{json.dumps(data, indent=2)}"
+        details=render_details([("NAT Rule", data.get('name'))]),
     )
 
 
@@ -452,13 +509,90 @@ def check_policy_group(item, section):
     yield Result(
         state=State.OK,
         summary=f"Policy Group: {data.get('name', 'Unknown')}",
-        details=f"Policy Group Details:\n{json.dumps(data, indent=2)}"
+        details=render_details([("Policy Group", data.get('name'))]),
     )
+
+
+def parse_metrics(string_table):
+    """
+    Parse Azure VPN Gateway Metrics Data.
+    Key includes dimension (e.g. BGP peer IP) so multiple entries per metric are preserved.
+    """
+    parsed_data = {}
+    for line in string_table:
+        if not line:
+            continue
+        try:
+            metric_data = json.loads(line[0])
+            resource_name = metric_data.get('resource_name', 'unknown')
+            if resource_name not in parsed_data:
+                parsed_data[resource_name] = {}
+            metric_name = metric_data.get('metric_name', '')
+            dimension = metric_data.get('dimension', '')
+            key = f"{metric_name}_{dimension}" if dimension else metric_name
+            parsed_data[resource_name][key] = metric_data
+        except (json.JSONDecodeError, IndexError):
+            continue
+    return parsed_data
+
+
+def discover_gateway_metrics(section):
+    """
+    Discover Azure VPN Gateway resources that have metrics
+    """
+    for resource_name in section:
+        yield Service(item=resource_name)
+
+
+def check_gateway_metrics(item, section):
+    """
+    Check Azure VPN Gateway Metrics (BgpPeerStatus, BgpRoutesAdvertised, packet drops, etc.)
+    """
+    metrics = section.get(item)
+    if not metrics:
+        yield Result(state=State.UNKNOWN, summary=f"No metrics for {item}")
+        return
+
+    # BgpPeerStatus may appear multiple times (once per BGP peer IP)
+    for entry_key, entry_data in metrics.items():
+        if not entry_key.startswith('BgpPeerStatus'):
+            continue
+        value = entry_data.get('value')
+        if value is None:
+            continue
+        ip = entry_data.get('dimension', '')
+        label = f"BGP Peer Status ({ip})" if ip else "BGP Peer Status"
+        # 0=Unknown…7=Various, 8=Established, 9-11=Pending changes
+        bgp_state = State.OK if value >= 8 else State.WARN
+        yield Result(state=bgp_state, summary=f"{label}: {value:.0f}")
+        metric_key = f"bgp_peer_status_{ip.replace('.', '_')}" if ip else "bgp_peer_status"
+        yield Metric(metric_key, value)
+
+    for prefix in ('BgpRoutesAdvertised', 'BgpRoutesLearned',
+                   'TunnelEgressPacketDropCount', 'TunnelIngressPacketDropCount'):
+        for entry_key, entry_data in metrics.items():
+            if not entry_key.startswith(prefix):
+                continue
+            value = entry_data.get('value')
+            if value is None:
+                continue
+            ip = entry_data.get('dimension', '')
+            unit = entry_data.get('unit', '')
+            label = f"{prefix} ({ip})" if ip else prefix
+            summary = f"{label}: {value:.2f} {unit}".strip()
+            yield Result(state=State.OK, summary=summary)
+            metric_key = f"{prefix.lower()}_{ip.replace('.', '_')}" if ip else prefix.lower()
+            yield Metric(metric_key, value)
 
 
 agent_section_azure_extra_virtualnetworkgateways = AgentSection(
     name="azure_extra_virtualnetworkgateways",
     parse_function=parse_properties,
+)
+
+agent_section_azure_extra_virtualnetworkgateways_metrics = AgentSection(
+    name="azure_extra_virtualnetworkgateways_metrics",
+    parse_function=parse_metrics,
 )
 
 # Check plugins for each resource type
@@ -516,4 +650,12 @@ check_plugin_azure_vpn_gateway_policygroup = CheckPlugin(
     service_name="Azure VPN Gateway Policy Group %s",
     discovery_function=discover_policy_groups,
     check_function=check_policy_group,
+)
+
+check_plugin_azure_vpn_gateway_metrics = CheckPlugin(
+    name="azure_vpn_gateway_metrics",
+    sections=["azure_extra_virtualnetworkgateways_metrics"],
+    service_name="Azure VPN Gateway Metrics %s",
+    discovery_function=discover_gateway_metrics,
+    check_function=check_gateway_metrics,
 )

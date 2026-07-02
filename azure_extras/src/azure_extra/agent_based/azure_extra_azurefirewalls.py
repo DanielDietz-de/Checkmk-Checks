@@ -13,87 +13,117 @@ from cmk.agent_based.v2 import (
     Service,
     State,
     Result,
+    Metric,
 )
+
+
+def short_id(resource_id):
+    """
+    Return the last path segment (the resource name) of an Azure resource ID.
+    """
+    if not resource_id or not isinstance(resource_id, str):
+        return None
+    return resource_id.rstrip('/').split('/')[-1]
+
+
+def render_details(pairs):
+    """
+    Render a list of (label, value) pairs as readable multi-line details.
+    Empty values are skipped so we never show noise or dump raw JSON.
+    """
+    lines = []
+    for label, value in pairs:
+        if value in (None, '', {}, [], 'None', 'Unknown'):
+            continue
+        lines.append(f"{label}: {value}")
+    return "\n".join(lines)
 
 
 def parse_properties(string_table):
     """
     Parse Azure Firewalls Properties Data
     """
-    if not string_table or not string_table[0]:
+    if not string_table:
         return {'firewalls': {}, 'ip_configs': {}, 'rule_collections': {}, 'policies': {}}
-    
-    try:
-        raw_data = json.loads(string_table[0][0])
-        result = {'firewalls': {}, 'ip_configs': {}, 'rule_collections': {}, 'policies': {}}
-        
-        # Check if this is a single Firewall object
-        if isinstance(raw_data, dict):
-            firewall_name = raw_data.get('name', 'unknown-firewall')
-            
-            # Add Firewall main data
-            result['firewalls'][firewall_name] = {
-                'name': firewall_name,
-                'provisioningState': raw_data.get('provisioningState'),
-                'sku': raw_data.get('sku', {}),
-                'threatIntelMode': raw_data.get('threatIntelMode'),
-                'additionalProperties': raw_data.get('additionalProperties', {}),
-                'firewallPolicy': raw_data.get('firewallPolicy', {}),
-                '_raw_data': raw_data
+    result = {'firewalls': {}, 'ip_configs': {}, 'rule_collections': {}, 'policies': {}}
+
+    for line in string_table:
+        if not line:
+            continue
+        try:
+            raw_data = json.loads(line[0])
+        except (json.JSONDecodeError, IndexError):
+            continue
+
+        if not isinstance(raw_data, dict):
+            continue
+
+        firewall_name = raw_data.get('_resource_name', 'unknown-firewall')
+
+        result['firewalls'][firewall_name] = {
+            'name': firewall_name,
+            'provisioningState': raw_data.get('provisioningState'),
+            'sku': raw_data.get('sku', {}),
+            'threatIntelMode': raw_data.get('threatIntelMode'),
+            'additionalProperties': raw_data.get('additionalProperties', {}),
+            'firewallPolicy': raw_data.get('firewallPolicy', {}),
+            'resource_group': raw_data.get('_resource_group'),
+            'resource_id': raw_data.get('_resource_id'),
+        }
+
+        # Data-plane IP configurations (list) plus the management IP
+        # configuration (single object, used for forced tunneling). The
+        # management config was previously not parsed, so its service showed
+        # "No data" even though Azure returns it.
+        ip_configs = [(ipc, 'data') for ipc in raw_data.get('ipConfigurations', [])]
+        mgmt_ip_config = raw_data.get('managementIpConfiguration')
+        if isinstance(mgmt_ip_config, dict) and mgmt_ip_config.get('name'):
+            ip_configs.append((mgmt_ip_config, 'management'))
+
+        for ip_config, ip_kind in ip_configs:
+            ip_config_name = ip_config.get('name', 'unknown')
+            ip_props = ip_config.get('properties', {})
+            full_name = f"{firewall_name}_{ip_config_name}"
+            result['ip_configs'][full_name] = {
+                'name': ip_config_name,
+                'firewall_name': firewall_name,
+                'kind': ip_kind,
+                'provisioningState': ip_props.get('provisioningState'),
+                'privateIPAddress': ip_props.get('privateIPAddress'),
+                'privateIPAllocationMethod': ip_props.get('privateIPAllocationMethod'),
+                'publicIPAddress': ip_props.get('publicIPAddress', {}),
+                'subnet': ip_props.get('subnet', {}),
             }
-            
-            # Add IP Configuration data
-            for ip_config in raw_data.get('ipConfigurations', []):
-                ip_config_name = ip_config.get('name', 'unknown')
-                full_name = f"{firewall_name}_{ip_config_name}"
-                result['ip_configs'][full_name] = {
-                    'name': ip_config_name,
-                    'firewall_name': firewall_name,
-                    'provisioningState': ip_config.get('properties', {}).get('provisioningState'),
-                    'privateIPAddress': ip_config.get('properties', {}).get('privateIPAddress'),
-                    'privateIPAllocationMethod': ip_config.get('properties', {}).get('privateIPAllocationMethod'),
-                    'publicIPAddress': ip_config.get('properties', {}).get('publicIPAddress', {}),
-                    'subnet': ip_config.get('properties', {}).get('subnet', {}),
-                    '_raw_data': ip_config
-                }
-            
-            # Add Rule Collections data
-            rule_collections = []
-            rule_collections.extend([(rc, 'network') for rc in raw_data.get('networkRuleCollections', [])])
-            rule_collections.extend([(rc, 'application') for rc in raw_data.get('applicationRuleCollections', [])])
-            rule_collections.extend([(rc, 'nat') for rc in raw_data.get('natRuleCollections', [])])
-            
-            for rule_collection, rule_type in rule_collections:
-                rc_name = rule_collection.get('name', 'unknown')
-                full_name = f"{firewall_name}_{rc_name}"
-                result['rule_collections'][full_name] = {
-                    'name': rc_name,
-                    'firewall_name': firewall_name,
-                    'type': rule_type,
-                    'priority': rule_collection.get('properties', {}).get('priority'),
-                    'action': rule_collection.get('properties', {}).get('action', {}),
-                    'provisioningState': rule_collection.get('properties', {}).get('provisioningState'),
-                    'rules': rule_collection.get('properties', {}).get('rules', []),
-                    '_raw_data': rule_collection
-                }
-            
-            # Add Policy data if available
-            policy = raw_data.get('firewallPolicy', {})
-            if policy.get('id'):
-                policy_name = policy.get('id', '').split('/')[-1] if policy.get('id') else 'unknown-policy'
-                full_name = f"{firewall_name}_{policy_name}"
-                result['policies'][full_name] = {
-                    'name': policy_name,
-                    'firewall_name': firewall_name,
-                    'policy_id': policy.get('id'),
-                    '_raw_data': policy
-                }
-            
-            return result
-        
-        return result
-    except (json.JSONDecodeError, IndexError):
-        return {'firewalls': {}, 'ip_configs': {}, 'rule_collections': {}, 'policies': {}}
+
+        rule_collections = []
+        rule_collections.extend([(rc, 'network') for rc in raw_data.get('networkRuleCollections', [])])
+        rule_collections.extend([(rc, 'application') for rc in raw_data.get('applicationRuleCollections', [])])
+        rule_collections.extend([(rc, 'nat') for rc in raw_data.get('natRuleCollections', [])])
+
+        for rule_collection, rule_type in rule_collections:
+            rc_name = rule_collection.get('name', 'unknown')
+            full_name = f"{firewall_name}_{rc_name}"
+            result['rule_collections'][full_name] = {
+                'name': rc_name,
+                'firewall_name': firewall_name,
+                'type': rule_type,
+                'priority': rule_collection.get('properties', {}).get('priority'),
+                'action': rule_collection.get('properties', {}).get('action', {}),
+                'provisioningState': rule_collection.get('properties', {}).get('provisioningState'),
+                'rules': rule_collection.get('properties', {}).get('rules', []),
+            }
+
+        policy = raw_data.get('firewallPolicy', {})
+        if policy.get('id'):
+            policy_name = policy.get('id', '').split('/')[-1] if policy.get('id') else 'unknown-policy'
+            full_name = f"{firewall_name}_{policy_name}"
+            result['policies'][full_name] = {
+                'name': policy_name,
+                'firewall_name': firewall_name,
+                'policy_id': policy.get('id'),
+            }
+
+    return result
 
 
 # Discovery functions for each resource type
@@ -158,19 +188,27 @@ def check_firewall(item, section):
     sku_name = sku.get('name', 'Unknown')
     sku_tier = sku.get('tier', 'Unknown')
     threat_intel_mode = data.get('threatIntelMode', 'Unknown')
-    policy_id = data.get('firewallPolicy', {}).get('id', 'None')
-    
+    policy_name = short_id(data.get('firewallPolicy', {}).get('id'))
+
     summary_parts = [
         f"State: {provisioning_state}",
         f"SKU: {sku_name} ({sku_tier})",
         f"Threat Intel: {threat_intel_mode}",
-        f"Policy: {'Configured' if policy_id != 'None' else 'Not configured'}"
+        f"Policy: {'Configured' if policy_name else 'Not configured'}",
     ]
-    
+
+    details = render_details([
+        ("Provisioning State", provisioning_state),
+        ("SKU", f"{sku_name} ({sku_tier})"),
+        ("Threat Intel Mode", threat_intel_mode),
+        ("Firewall Policy", policy_name or 'Not configured'),
+        ("Resource Group", data.get('resource_group')),
+    ])
+
     yield Result(
         state=state,
         summary="; ".join(summary_parts),
-        details=f"Firewall Details:\n{json.dumps(data, indent=2)}"
+        details=details,
     )
 
 
@@ -193,22 +231,34 @@ def check_ip_config(item, section):
     else:
         state = State.WARN
     
-    private_ip = data.get('privateIPAddress', 'Unknown')
-    allocation_method = data.get('privateIPAllocationMethod', 'Unknown')
-    public_ip_id = data.get('publicIPAddress', {}).get('id', 'None')
-    subnet_id = data.get('subnet', {}).get('id', 'None')
-    
-    summary_parts = [
-        f"State: {provisioning_state}",
-        f"Private IP: {private_ip} ({allocation_method})",
-        f"Public IP: {'Configured' if public_ip_id != 'None' else 'None'}",
-        f"Subnet: {'Configured' if subnet_id != 'None' else 'None'}"
-    ]
-    
+    kind = data.get('kind', 'data')
+    config_type = 'Management' if kind == 'management' else 'Data plane'
+    private_ip = data.get('privateIPAddress')
+    allocation_method = data.get('privateIPAllocationMethod')
+    public_ip = short_id(data.get('publicIPAddress', {}).get('id'))
+    subnet = short_id(data.get('subnet', {}).get('id'))
+
+    summary_parts = [f"State: {provisioning_state}", f"Type: {config_type}"]
+    if private_ip:
+        summary_parts.append(f"Private IP: {private_ip}")
+    summary_parts.append(f"Public IP: {public_ip if public_ip else 'None'}")
+
+    private_ip_text = None
+    if private_ip:
+        private_ip_text = f"{private_ip} ({allocation_method})" if allocation_method else private_ip
+
+    details = render_details([
+        ("Provisioning State", provisioning_state),
+        ("Configuration Type", config_type),
+        ("Private IP", private_ip_text),
+        ("Public IP", public_ip),
+        ("Subnet", subnet),
+    ])
+
     yield Result(
         state=state,
         summary="; ".join(summary_parts),
-        details=f"IP Config Details:\n{json.dumps(data, indent=2)}"
+        details=details,
     )
 
 
@@ -242,13 +292,21 @@ def check_rule_collection(item, section):
         f"Type: {rule_type}",
         f"Priority: {priority}",
         f"Action: {action_type}",
-        f"Rules: {rules_count}"
+        f"Rules: {rules_count}",
     ]
-    
+
+    details = render_details([
+        ("Provisioning State", provisioning_state),
+        ("Type", rule_type),
+        ("Priority", priority),
+        ("Action", action_type),
+        ("Number of Rules", rules_count),
+    ])
+
     yield Result(
         state=state,
         summary="; ".join(summary_parts),
-        details=f"Rule Collection Details:\n{json.dumps(data, indent=2)}"
+        details=details,
     )
 
 
@@ -262,19 +320,85 @@ def check_policy(item, section):
         yield Result(state=State.UNKNOWN, summary=f"No data for Policy {item}")
         return
 
-    policy_id = data.get('policy_id', 'Unknown')
+    policy_id = data.get('policy_id')
     policy_name = data.get('name', 'Unknown')
-    
+
+    details = render_details([
+        ("Policy Name", policy_name),
+        ("Policy", short_id(policy_id)),
+        ("Firewall", data.get('firewall_name')),
+    ])
+
     yield Result(
         state=State.OK,
-        summary=f"Policy: {policy_name}, ID: {policy_id.split('/')[-1] if policy_id != 'Unknown' else 'Unknown'}",
-        details=f"Policy Details:\n{json.dumps(data, indent=2)}"
+        summary=f"Policy: {policy_name}",
+        details=details,
     )
+
+
+def parse_metrics(string_table):
+    """
+    Parse Azure Firewall Metrics Data
+    """
+    parsed_data = {}
+    for line in string_table:
+        if not line:
+            continue
+        try:
+            metric_data = json.loads(line[0])
+            resource_name = metric_data.get('resource_name', 'unknown')
+            if resource_name not in parsed_data:
+                parsed_data[resource_name] = {}
+            metric_name = metric_data.get('metric_name', '')
+            parsed_data[resource_name][metric_name] = metric_data
+        except (json.JSONDecodeError, IndexError):
+            continue
+    return parsed_data
+
+
+def discover_firewall_metrics(section):
+    """
+    Discover Azure Firewall resources that have metrics
+    """
+    for resource_name in section:
+        yield Service(item=resource_name)
+
+
+def check_firewall_metrics(item, section):
+    """
+    Check Azure Firewall Metrics (FirewallHealth, NetworkRuleHit, Throughput)
+    """
+    metrics = section.get(item)
+    if not metrics:
+        yield Result(state=State.UNKNOWN, summary=f"No metrics for {item}")
+        return
+
+    firewall_health = metrics.get('FirewallHealth')
+    if firewall_health is not None:
+        value = firewall_health.get('value')
+        if value is not None:
+            health_state = State.OK if value >= 90 else (State.WARN if value >= 50 else State.CRIT)
+            yield Result(state=health_state, summary=f"Firewall Health: {value:.1f}%")
+            yield Metric("firewall_health", value)
+
+    for metric_name in ('NetworkRuleHit', 'Throughput'):
+        metric_data = metrics.get(metric_name)
+        if metric_data is not None:
+            value = metric_data.get('value')
+            if value is not None:
+                unit = metric_data.get('unit', '')
+                yield Result(state=State.OK, summary=f"{metric_name}: {value:.2f} {unit}".strip())
+                yield Metric(metric_name.lower(), value)
 
 
 agent_section_azure_extra_azurefirewalls = AgentSection(
     name="azure_extra_azurefirewalls",
     parse_function=parse_properties,
+)
+
+agent_section_azure_extra_azurefirewalls_metrics = AgentSection(
+    name="azure_extra_azurefirewalls_metrics",
+    parse_function=parse_metrics,
 )
 
 # Check plugins for each resource type
@@ -308,4 +432,12 @@ check_plugin_azure_firewall_policy = CheckPlugin(
     service_name="Azure Firewall Policy %s",
     discovery_function=discover_policies,
     check_function=check_policy,
+)
+
+check_plugin_azure_firewall_metrics = CheckPlugin(
+    name="azure_firewall_metrics",
+    sections=["azure_extra_azurefirewalls_metrics"],
+    service_name="Azure Firewall Metrics %s",
+    discovery_function=discover_firewall_metrics,
+    check_function=check_firewall_metrics,
 )

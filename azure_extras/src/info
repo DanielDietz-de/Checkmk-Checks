@@ -12,7 +12,10 @@
                 '- vpn gateway ipconfig\n'
                 '- vpn gateway general\n'
                 '- vpn gateway bgp\n'
+                '- firewall metrics\n'
+                '- vpn gateway metrics\n'
                 '- connections\n'
+                '- dnsresolvers\n'
                 '- virutalnetworks subnets\n'
                 '- virtualnetworks general\n'
                 '- virutalnetworks peerings\n',
@@ -23,9 +26,10 @@
                                   'azure_extra/server_side_calls/agent.py',
                                   'azure_extra/agent_based/azure_extra_azurefirewalls.py',
                                   'azure_extra/agent_based/azure_extra_connections.py',
+                                  'azure_extra/agent_based/azure_extra_dnsresolvers.py',
                                   'azure_extra/agent_based/azure_extra_virtualnetworkgateways.py']},
  'name': 'azure_extras',
  'title': 'Addional Azure Monitoring',
- 'version': '1.0.1',
+ 'version': '1.2.0',
  'version.min_required': '2.4.0p18',
  'version.packaged': '2.4.0p18'}

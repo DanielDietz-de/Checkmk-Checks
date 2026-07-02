@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import sys
 import requests
 
 
@@ -14,15 +15,11 @@ class AzureExtraAgent:
             "namespace": "microsoft.network/virtualnetworkgateways",
             "provider": "Microsoft.Network/virtualNetworkGateways",
             "metrics": [
-                ("TunnelEgressPacketDropCount", "PT5M", "count"),
-                ("TunnelIngressPacketDropCount", "PT5M", "count"),
-                ("TunnelNatPacketDrop", "PT5M", "count"),
-                ("MmsaCount", "PT5M", "count"),
-                ("QmsaCount", "PT5M", "count"),
+                ("TunnelEgressPacketDropCount", "PT5M", "total"),
+                ("TunnelIngressPacketDropCount", "PT5M", "total"),
                 ("BgpPeerStatus", "PT5M", "average"),
-                ("BgpRoutesLearned", "PT5M", "count"),
-                ("AverageBandwidth", "PT5M", "average"),
-                ("TunnelAverageBandwidth", "PT5M", "average"),
+                ("BgpRoutesAdvertised", "PT5M", "total"),
+                ("BgpRoutesLearned", "PT5M", "total"),
             ]
         },
         "connections": {
@@ -33,46 +30,41 @@ class AzureExtraAgent:
                 ("BitsOutPerSecond", "PT1M", "average"),
             ]
         },
-        # Not found
-        #"dnsresolvers": {
-        #    "namespace": "Microsoft.Network/dnsResolvers",
-        #    "provider": "Microsoft.Network/dnsResolvers",
-        #    "metrics": [
-        #        ("InboundEndpointCount", "PT1H", "average"),
-        #        ("OutboundEndpointCount", "PT1H", "average"),
-        #        ("QPS", "PT5M", "count"),
-        #    ]
-        #},
+        "dnsresolvers": {
+            "namespace": "Microsoft.Network/dnsResolvers",
+            "provider": "Microsoft.Network/dnsResolvers",
+            "metrics": []
+        },
         "azurefirewalls": {
             "namespace": "Microsoft.Network/azureFirewalls",
             "provider": "Microsoft.Network/azureFirewalls",
             "metrics": [
-                ("DataProcessed", "PT1M", "count"),
                 ("FirewallHealth", "PT1M", "average"),
-                ("FirewallLatencyPng", "PT1M", "average"),  # PREVIEW feature
-                ("ObservedCapacity", "PT1M", "maximum"),
+                ("NetworkRuleHit", "PT1M", "total"),
                 ("Throughput", "PT1M", "average"),
             ]
         },
         "virtualnetworks": {
             "namespace": "Microsoft.Network/virtualNetworks",
             "provider": "Microsoft.Network/virtualNetworks",
-            "metrics": [
-                ("IfUnderDDoSAttack", "PT1M", "maximum"),
-                ("PingMeshProbesFailedPercent", "PT1M", "average"),
-                ("PingMeshAverageRoundtripMs", "PT1M", "average"),
-            ]
+            "metrics": []
         },
     }
     
-    def __init__(self, tenant_id, client_id, client_secret, subscription_id, proxy_url=None):
+    def __init__(self, tenant_id, client_id, client_secret, subscription_id, proxy_url=None, debug=False):
         """Initialize Azure Extra Agent with authentication parameters."""
         self.tenant_id = tenant_id
         self.client_id = client_id
         self.client_secret = client_secret
         self.subscription_id = subscription_id
         self.proxy_url = proxy_url
+        self.debug = debug
         self.access_token = None
+
+    def _log(self, message):
+        """Write debug message to stderr (only when --debug is set)."""
+        if self.debug:
+            print(f"[DEBUG] {message}", file=sys.stderr)
     
     def get_token(self):
         """Authenticate and get access token for Azure API."""
@@ -135,8 +127,11 @@ class AzureExtraAgent:
         
         proxies = {"http": self.proxy_url, "https": self.proxy_url} if self.proxy_url else None
         resp = requests.get(url, headers=headers, params=params, proxies=proxies)
+        if resp.status_code == 404:
+            self._log(f"404 Not Found: {url} (resource type '{resource_type_key}' not available in resource group '{resource_group}')")
+            return []
         resp.raise_for_status()
-        
+
         return resp.json().get("value", [])
     
     def get_resource_details(self, resource, resource_type_key):
@@ -147,7 +142,10 @@ class AzureExtraAgent:
         print(f"<<<<{resource_name}>>>>")
         print(f"<<<azure_extra_{resource_type_display}:sep(0)>>>")
         
-        properties = resource.get("properties", {})
+        properties = resource.get("properties", {}).copy()
+        properties["_resource_name"] = resource_name
+        properties["_resource_id"] = resource.get("id", "")
+        properties["_resource_group"] = resource.get("id", "").split("/resourceGroups/")[1].split("/")[0] if "/resourceGroups/" in resource.get("id", "") else ""
         if properties:
             print(json.dumps(properties))
         
@@ -166,56 +164,75 @@ class AzureExtraAgent:
         print(f"<<<<{resource_name}>>>>")
         print(f"<<<azure_extra_{resource_type_key}_metrics:sep(0)>>>")
         
-        for metric_name, timespan, aggregation in metrics_config:
+        for metric_entry in metrics_config:
+            metric_name = metric_entry[0]
+            timespan = metric_entry[1]
+            aggregation = metric_entry[2]
+            dimension_filter = metric_entry[3] if len(metric_entry) > 3 else None
+
+
             try:
                 url = f"https://management.azure.com{resource_id}/providers/microsoft.insights/metrics"
-                
+
                 params = {
                     "api-version": "2018-01-01",
                     "metricnames": metric_name,
-                    "timespan": "PT1H",  # Last hour
+                    "timespan": "PT1H",
                     "interval": timespan,
-                    "aggregation": aggregation
+                    "aggregation": aggregation,
                 }
-                
+
+                if dimension_filter:
+                    params["$filter"] = dimension_filter
+
                 headers = {
                     "Authorization": f"Bearer {self.access_token}",
                     "Content-Type": "application/json",
                 }
-                
+
                 proxies = {"http": self.proxy_url, "https": self.proxy_url} if self.proxy_url else None
                 resp = requests.get(url, headers=headers, params=params, proxies=proxies)
+                if resp.status_code == 404:
+                    self._log(f"404 Not Found: metric '{metric_name}' for resource '{resource_name}'")
+                    continue
                 resp.raise_for_status()
-                
+
                 metrics_data = resp.json()
-                
-                # Extract and format metric values
+
                 for metric in metrics_data.get("value", []):
                     metric_display_name = metric.get("name", {}).get("value", metric_name)
                     timeseries = metric.get("timeseries", [])
-                    
-                    if timeseries:
-                        for ts in timeseries:
-                            data_points = ts.get("data", [])
-                            if data_points:
-                                # Get the latest data point
-                                latest_point = data_points[-1]
-                                timestamp = latest_point.get("timeStamp")
-                                value = latest_point.get(aggregation)
-                                
-                                if value is not None:
-                                    metric_info = {
-                                        "resource_name": resource_name,
-                                        "metric_name": metric_display_name,
-                                        "value": value,
-                                        "aggregation": aggregation,
-                                        "timestamp": timestamp,
-                                        "unit": metric.get("unit", "")
-                                    }
-                                    print(json.dumps(metric_info))
-            
+
+                    for ts in timeseries:
+                        # Extract dimension value (e.g. BGP peer IP) if present
+                        dimension_value = None
+                        for meta in ts.get("metadatavalues", []):
+                            dimension_value = meta.get("value")
+                            break
+
+                        data_points = ts.get("data", [])
+                        if not data_points:
+                            continue
+
+                        latest_point = data_points[-1]
+                        timestamp = latest_point.get("timeStamp")
+                        value = latest_point.get(aggregation)
+
+                        if value is not None:
+                            metric_info = {
+                                "resource_name": resource_name,
+                                "metric_name": metric_display_name,
+                                "value": value,
+                                "aggregation": aggregation,
+                                "timestamp": timestamp,
+                                "unit": metric.get("unit", ""),
+                            }
+                            if dimension_value:
+                                metric_info["dimension"] = dimension_value
+                            print(json.dumps(metric_info))
+
             except Exception as e:
-                print(f"Error getting metric {metric_name} for {resource_name}: {e}")
+                self._log(f"Error getting metric {metric_name} for {resource_name}: {e}")
     
     def run(self):
         """Main execution method to process all Azure resources."""
@@ -238,7 +255,7 @@ class AzureExtraAgent:
                     # Display detailed resource information and get metrics
                     for resource in resources:
                         self.get_resource_details(resource, resource_type_key)
-                        #self.get_resource_metrics(resource, resource_type_key)
+                        self.get_resource_metrics(resource, resource_type_key)
                 
                 except Exception as e:
                     print(f"Error processing {resource_type_key} in resource group '{rg_name}': {e}")
@@ -282,6 +299,13 @@ def parse_arguments():
         help="Proxy URL (e.g., http://proxy.example.com:8080)"
     )
 
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        default=False,
+        help="Enable debug logging to stderr (includes 404 errors and other warnings)"
+    )
+
     return parser.parse_args()
 
 
@@ -294,7 +318,8 @@ def main():
         client_id=args.client_id,
         client_secret=args.client_secret,
         subscription_id=args.subscription_id,
-        proxy_url=args.proxy_url
+        proxy_url=args.proxy_url,
+        debug=args.debug,
     )
     
     return agent.run()

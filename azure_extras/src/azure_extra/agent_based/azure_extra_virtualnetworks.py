@@ -17,27 +17,47 @@ from cmk.agent_based.v2 import (
 )
 
 
+def short_id(resource_id):
+    """
+    Return the last path segment (the resource name) of an Azure resource ID.
+    """
+    if not resource_id or not isinstance(resource_id, str):
+        return None
+    return resource_id.rstrip('/').split('/')[-1]
+
+
+def render_details(pairs):
+    """
+    Render a list of (label, value) pairs as readable multi-line details.
+    Empty values are skipped so we never show noise or dump raw JSON.
+    """
+    lines = []
+    for label, value in pairs:
+        if value in (None, '', {}, [], 'None', 'Unknown'):
+            continue
+        lines.append(f"{label}: {value}")
+    return "\n".join(lines)
+
+
 def parse_virtualnetworks(string_table):
     """
     Parse Azure Virtual Networks Properties Data
     """
-    if not string_table or not string_table[0]:
+    if not string_table:
         return {'vnets': {}, 'subnets': {}, 'peerings': {}}
-    
-    try:
-        raw_data = json.loads(string_table[0][0])
-        result = {'vnets': {}, 'subnets': {}, 'peerings': {}}
-        
-        # Check if this is a single VNet object
+    result = {'vnets': {}, 'subnets': {}, 'peerings': {}}
+
+    for line in string_table:
+        if not line:
+            continue
+        try:
+            raw_data = json.loads(line[0])
+        except (json.JSONDecodeError, IndexError):
+            continue
+
         if isinstance(raw_data, dict) and 'addressSpace' in raw_data:
-            # Extract VNet name from first subnet ID or use default
-            vnet_name = "main-vnet"
-            if raw_data.get('subnets') and raw_data['subnets']:
-                subnet_id = raw_data['subnets'][0].get('id', '')
-                if '/virtualNetworks/' in subnet_id:
-                    vnet_name = subnet_id.split('/virtualNetworks/')[1].split('/')[0]
-            
-            # Add VNet data
+            vnet_name = raw_data.get('_resource_name', 'unknown-vnet')
+
             result['vnets'][vnet_name] = {
                 'name': vnet_name,
                 'addressSpace': raw_data.get('addressSpace', {}),
@@ -48,12 +68,13 @@ def parse_virtualnetworks(string_table):
                 'flowLogs': raw_data.get('flowLogs', []),
                 '_raw_data': raw_data
             }
-            
-            # Add Subnet data
+
             for subnet in raw_data.get('subnets', []):
                 subnet_name = subnet.get('name', 'unknown')
-                result['subnets'][subnet_name] = {
+                full_name = f"{vnet_name}_{subnet_name}"
+                result['subnets'][full_name] = {
                     'name': subnet_name,
+                    'vnet_name': vnet_name,
                     'addressPrefix': subnet.get('properties', {}).get('addressPrefix'),
                     'provisioningState': subnet.get('properties', {}).get('provisioningState'),
                     'delegations': subnet.get('properties', {}).get('delegations', []),
@@ -65,12 +86,13 @@ def parse_virtualnetworks(string_table):
                     'privateLinkServiceNetworkPolicies': subnet.get('properties', {}).get('privateLinkServiceNetworkPolicies'),
                     '_raw_data': subnet
                 }
-            
-            # Add Peering data
+
             for peering in raw_data.get('virtualNetworkPeerings', []):
                 peering_name = peering.get('name', 'unknown')
-                result['peerings'][peering_name] = {
+                full_name = f"{vnet_name}_{peering_name}"
+                result['peerings'][full_name] = {
                     'name': peering_name,
+                    'vnet_name': vnet_name,
                     'peeringState': peering.get('properties', {}).get('peeringState'),
                     'peeringSyncLevel': peering.get('properties', {}).get('peeringSyncLevel'),
                     'provisioningState': peering.get('properties', {}).get('provisioningState'),
@@ -82,18 +104,13 @@ def parse_virtualnetworks(string_table):
                     'remoteVirtualNetwork': peering.get('properties', {}).get('remoteVirtualNetwork', {}),
                     '_raw_data': peering
                 }
-            
-            return result
-        
-        # Original logic for list of VNets
+
         elif isinstance(raw_data, list):
             for vnet in raw_data:
-                result['vnets'][vnet['name']] = vnet
-            return result
-        
-        return result
-    except (json.JSONDecodeError, IndexError) as e:
-        return {'vnets': {}, 'subnets': {}, 'peerings': {}}
+                vnet_name = vnet.get('name', 'unknown-vnet')
+                result['vnets'][vnet_name] = vnet
+
+    return result
 
 
 
@@ -155,11 +172,17 @@ def check_virtualnetwork(item, section):
         f"Address Space: {', '.join(address_prefixes) if address_prefixes else 'None'}",
         f"DDoS Protection: {'Enabled' if ddos_protection else 'Disabled'}"
     ]
-    
+
+    details = render_details([
+        ("Provisioning State", provisioning_state),
+        ("Address Space", ', '.join(address_prefixes)),
+        ("DDoS Protection", 'Enabled' if ddos_protection else 'Disabled'),
+    ])
+
     yield Result(
         state=state,
         summary="; ".join(summary_parts),
-        details=f"VNet Details:\n{json.dumps(data, indent=2)}"
+        details=details,
     )
     
     # Add flow log information if available
@@ -213,11 +236,23 @@ def check_subnet(item, section):
         
     if route_table:
         summary_parts.append("Route Table: Configured")
-    
+
+    delegation_names = [d.get('properties', {}).get('serviceName', 'Unknown') for d in delegations]
+    endpoint_services = sorted({e.get('service') for e in service_endpoints if e.get('service')})
+
+    details = render_details([
+        ("Provisioning State", provisioning_state),
+        ("Address Prefix", address_prefix),
+        ("Delegations", ', '.join(delegation_names)),
+        ("IP Configurations", len(ip_configs) if ip_configs else None),
+        ("Service Endpoints", ', '.join(endpoint_services)),
+        ("Route Table", short_id(route_table.get('id')) if isinstance(route_table, dict) else None),
+    ])
+
     yield Result(
         state=state,
         summary="; ".join(summary_parts),
-        details=f"Subnet Details:\n{json.dumps(data, indent=2)}"
+        details=details,
     )
 
 
@@ -278,11 +313,20 @@ def check_peering(item, section):
         
     if traffic_settings:
         summary_parts.append(f"Features: {', '.join(traffic_settings)}")
-    
+
+    details = render_details([
+        ("Peering State", peering_state),
+        ("Peering Sync Level", sync_level),
+        ("Provisioning State", provisioning_state),
+        ("Remote VNet", remote_name),
+        ("Remote Address Space", ', '.join(remote_address_space)),
+        ("Features", ', '.join(traffic_settings)),
+    ])
+
     yield Result(
         state=state,
         summary="; ".join(summary_parts),
-        details=f"Peering Details:\n{json.dumps(data, indent=2)}"
+        details=details,
     )
 
 agent_section_azure_extra_virtualnetworks = AgentSection(
