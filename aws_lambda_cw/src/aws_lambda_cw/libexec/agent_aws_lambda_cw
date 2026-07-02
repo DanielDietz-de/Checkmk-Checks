@@ -52,7 +52,35 @@ def parse_arguments(argv):
         default=600,
         help="Look-back window in seconds the metrics are aggregated over (default: 600).",
     )
+    proxy_group = parser.add_mutually_exclusive_group()
+    proxy_group.add_argument(
+        "--proxy",
+        help="Route all AWS API calls through this HTTP proxy "
+        "(e.g. http://proxy.example:3128).",
+    )
+    proxy_group.add_argument(
+        "--no-proxy",
+        action="store_true",
+        help="Connect directly, ignoring any proxy set in the environment.",
+    )
     return parser.parse_args(argv)
+
+
+def _proxy_config(proxy, no_proxy):
+    """Return a botocore Config honouring the requested proxy behaviour.
+
+    * ``--proxy URL`` routes every AWS API call through that proxy.
+    * ``--no-proxy`` disables proxies entirely (an empty proxies mapping).
+    * neither: return ``None`` so botocore falls back to the process
+      environment (http_proxy/https_proxy/no_proxy).
+    """
+    from botocore.config import Config
+
+    if proxy:
+        return Config(proxies={"http": proxy, "https": proxy})
+    if no_proxy:
+        return Config(proxies={})
+    return None
 
 
 # Metric name -> (statistic, result key)
@@ -114,11 +142,13 @@ def main(argv):
         sys.stderr.write("boto3 is not available in the site Python\n")
         return 1
 
+    cfg = _proxy_config(args.proxy, args.no_proxy)
     try:
         client_kwargs = {
             "aws_access_key_id": args.access_key_id,
             "aws_secret_access_key": args.secret_key,
             "region_name": args.region,
+            "config": cfg,
         }
         if args.role_arn:
             # The access key only serves to assume the (possibly cross-account)
@@ -137,6 +167,7 @@ def main(argv):
                 "aws_secret_access_key": creds["SecretAccessKey"],
                 "aws_session_token": creds["SessionToken"],
                 "region_name": args.region,
+                "config": cfg,
             }
         client = boto3.client("cloudwatch", **client_kwargs)
     except Exception as exc:  # noqa: BLE001 - report any setup failure to the check

@@ -5,9 +5,18 @@ https://kuhn-ruess.de
 
 Special agent invocation for the AWS Lambda CloudWatch plugin.
 """
+from typing import Any
+
 from pydantic import BaseModel
 
-from cmk.server_side_calls.v1 import HostConfig, Secret, SpecialAgentCommand, SpecialAgentConfig
+from cmk.server_side_calls.v1 import (
+    HostConfig,
+    NoProxy,
+    Secret,
+    SpecialAgentCommand,
+    SpecialAgentConfig,
+    URLProxy,
+)
 
 
 class ConfigParser(BaseModel):
@@ -18,6 +27,9 @@ class ConfigParser(BaseModel):
     region: str = "eu-central-1"
     functions: list[str] | None = None
     interval: int | None = None
+    # The backend replaces the Proxy form spec value with a URLProxy / EnvProxy
+    # / NoProxy surrogate before parsing; keep it opaque and dispatch on type.
+    proxy: Any = None
 
 
 def agent_arguments(params: ConfigParser, host_config: HostConfig):
@@ -32,6 +44,10 @@ def agent_arguments(params: ConfigParser, host_config: HostConfig):
         args.extend(["--external-id", params.external_id])
     if params.interval:
         args.extend(["--interval", str(params.interval)])
+    if isinstance(params.proxy, URLProxy):
+        args.extend(["--proxy", params.proxy.url])
+    elif isinstance(params.proxy, NoProxy):
+        args.append("--no-proxy")
     for function in params.functions or []:
         args.extend(["--function", function])
     yield SpecialAgentCommand(command_arguments=args)

@@ -14,6 +14,7 @@ from cmk.rulesets.v1.form_specs import (
     Integer,
     List,
     Password,
+    Proxy,
     String,
 )
 from cmk.rulesets.v1.form_specs.validators import LengthInRange
@@ -96,6 +97,17 @@ def _form_special_agent_aws_lambda_cw():
                     ),
                     unit_symbol="s",
                     prefill=DefaultValue(600),
+                ),
+                required=False,
+            ),
+            "proxy": DictElement(
+                parameter_form=Proxy(
+                    title=Title("HTTP proxy"),
+                    help_text=Help(
+                        "Proxy used to reach the AWS API endpoints. Leave unset "
+                        "to use the proxy configured in the process environment, "
+                        "or choose 'No proxy' to always connect directly."
+                    ),
                 ),
                 required=False,
             ),

@@ -14,6 +14,11 @@ description:
  and both duration values. By default the service goes {WARN}/{CRIT} on one
  or more errors or throttles in the window.
 
+ The AWS API can be reached through an HTTP proxy. Leave the proxy unset to
+ honour the http_proxy/https_proxy environment variables, select a URL to
+ route all API calls through that proxy, or choose "No proxy" to always
+ connect directly.
+
 item:
  The Lambda function name.
 
