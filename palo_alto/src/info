@@ -2,16 +2,32 @@
  'description': 'Enhanced SNMP checks for Palo Alto:\n'
                 '- Antivirus signature age\n'
                 '- GlobalProtect tunnel usage\n'
-                '- Threat and URL-Filtering database versions\n',
+                '- Threat and URL-Filtering database versions\n'
+                '- Panorama availability\n'
+                '- DoS Zone RED drops\n'
+                '- High availability state\n'
+                '- Session table utilization\n',
  'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
  'files': {'cmk_addons_plugins': ['palo_alto/agent_based/antivirus.py',
                                   'palo_alto/agent_based/gp_tunnels.py',
                                   'palo_alto/agent_based/threadid.py',
                                   'palo_alto/agent_based/urlfilter.py',
+                                  'palo_alto/agent_based/panorama.py',
+                                  'palo_alto/agent_based/dos_zone_red.py',
+                                  'palo_alto/agent_based/ha.py',
+                                  'palo_alto/agent_based/sessions.py',
                                   'palo_alto/rulesets/antivirus.py',
-                                  'palo_alto/rulesets/gp_tunnels.py']},
+                                  'palo_alto/rulesets/gp_tunnels.py',
+                                  'palo_alto/rulesets/dos_zone_red.py',
+                                  'palo_alto/rulesets/ha.py',
+                                  'palo_alto/rulesets/sessions.py',
+                                  'palo_alto/graphing/palo_alto.py',
+                                  'palo_alto/checkman/palo_alto_panorama',
+                                  'palo_alto/checkman/palo_alto_dos_zone_red',
+                                  'palo_alto/checkman/palo_alto_ha',
+                                  'palo_alto/checkman/palo_alto_sessions']},
  'name': 'palo_alto',
  'title': 'Palo Alto enhanced checks',
- 'version': '1.1.1',
+ 'version': '1.2.0',
  'version.min_required': '2.4.0',
  'version.packaged': '2.4.0p4'}

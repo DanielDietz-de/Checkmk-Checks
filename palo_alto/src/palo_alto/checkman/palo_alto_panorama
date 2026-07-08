@@ -1,0 +1,20 @@
+title: Palo Alto: Panorama Availability
+agents: snmp
+catalog: hw/network/palo_alto
+license: GPLv2
+distribution: check_mk
+description:
+ This check monitors whether a Palo Alto firewall is connected to its
+ configured Panorama management servers. It reads the connection state
+ from the PAN-COMMON-MIB (panMgmtPanoramaConnected .1.3.6.1.4.1.25461.2.1.2.4.1
+ and panMgmtPanorama2Connected .1.3.6.1.4.1.25461.2.1.2.4.2).
+
+ The service is {OK} when the reported state is "Connected" and {CRIT}
+ otherwise.
+
+item:
+ The Panorama slot number, "1" for the primary and "2" for the secondary
+ Panorama server.
+
+discovery:
+ One service is created for each Panorama slot that reports a state.

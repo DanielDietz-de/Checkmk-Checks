@@ -1,0 +1,18 @@
+title: Palo Alto: DoS Zone RED Drops
+agents: snmp
+catalog: hw/network/palo_alto
+license: GPLv2
+distribution: check_mk
+description:
+ This check monitors the packet drops of the DoS protection zone RED
+ action of a Palo Alto firewall. It reads the two counters
+ panFlowDosZoneRedAct (.1.3.6.1.4.1.25461.2.1.2.1.19.8.31, "Activate")
+ and panFlowDosZoneRedMax (.1.3.6.1.4.1.25461.2.1.2.1.19.8.32, "Maximum")
+ from the PAN-COMMON-MIB and reports both as packets per second.
+
+ Both drop rates are shown together in one combined graph. Optional upper
+ levels for each rate can be configured via the rule "Palo Alto DoS Zone
+ RED Drops"; by default no levels are applied.
+
+discovery:
+ One service is created if the firewall exposes the DoS zone RED counters.
