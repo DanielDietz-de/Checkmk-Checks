@@ -1,0 +1,19 @@
+title: Azure VPN Gateway: BGP Settings
+agents: azure
+catalog: cloud/azure
+license: GPLv2
+distribution: check_mk
+description:
+ This check reports the BGP settings of an Azure Virtual Network Gateway:
+ the ASN, the BGP peering address, the peer weight and the number of
+ configured tunnels (BGP peering addresses).
+
+ The details of the individual tunnels are reported by the dedicated
+ "Azure VPN Gateway BGP Tunnel" services, one per tunnel. The service is
+ always {OK}.
+
+item:
+ The gateway name followed by "_bgp", for example "mygateway_bgp".
+
+discovery:
+ One service is created for each gateway that has BGP settings.

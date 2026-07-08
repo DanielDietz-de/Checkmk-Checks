@@ -44,8 +44,8 @@ def parse_properties(string_table):
     Parse Azure Virtual Network Gateways Properties Data
     """
     if not string_table:
-        return {'gateways': {}, 'ip_configs': {}, 'bgp_settings': {}, 'vpn_clients': {}, 'remote_peerings': {}, 'nat_rules': {}, 'policy_groups': {}}
-    result = {'gateways': {}, 'ip_configs': {}, 'bgp_settings': {}, 'vpn_clients': {}, 'remote_peerings': {}, 'nat_rules': {}, 'policy_groups': {}}
+        return {'gateways': {}, 'ip_configs': {}, 'bgp_settings': {}, 'bgp_tunnels': {}, 'vpn_clients': {}, 'remote_peerings': {}, 'nat_rules': {}, 'policy_groups': {}}
+    result = {'gateways': {}, 'ip_configs': {}, 'bgp_settings': {}, 'bgp_tunnels': {}, 'vpn_clients': {}, 'remote_peerings': {}, 'nat_rules': {}, 'policy_groups': {}}
 
     for line in string_table:
         if not line:
@@ -104,6 +104,24 @@ def parse_properties(string_table):
                 'bgpPeeringAddresses': bgp_settings.get('bgpPeeringAddresses', []),
                 '_raw_data': bgp_settings
             }
+
+            # One tunnel/instance per BGP peering address entry. An
+            # active-active gateway exposes two of these, so splitting them
+            # into individual services keeps every tunnel transparent.
+            for idx, peering_addr in enumerate(bgp_settings.get('bgpPeeringAddresses', [])):
+                ipconfig_id = peering_addr.get('ipconfigurationId', '')
+                instance = short_id(ipconfig_id) or f"tunnel{idx}"
+                tunnel_name = f"{gateway_name}_{instance}"
+                result['bgp_tunnels'][tunnel_name] = {
+                    'name': instance,
+                    'gateway_name': gateway_name,
+                    'asn': bgp_settings.get('asn'),
+                    'ipconfigurationId': ipconfig_id,
+                    'tunnelIpAddresses': peering_addr.get('tunnelIpAddresses', []),
+                    'defaultBgpIpAddresses': peering_addr.get('defaultBgpIpAddresses', []),
+                    'customBgpIpAddresses': peering_addr.get('customBgpIpAddresses', []),
+                    '_raw_data': peering_addr,
+                }
 
         vpn_client_config = raw_data.get('vpnClientConfiguration', {})
         if vpn_client_config:
@@ -360,14 +378,14 @@ def check_bgp_settings(item, section):
         f"ASN: {asn}",
         f"Peering Address: {bgp_peering_address}",
         f"Peer Weight: {peer_weight}",
-        f"Peering IPs: {len(peering_addresses)}"
+        f"Tunnels: {len(peering_addresses)}"
     ]
 
     details = render_details([
         ("ASN", asn),
         ("BGP Peering Address", bgp_peering_address),
         ("Peer Weight", peer_weight),
-        ("Number of Peering IPs", len(peering_addresses)),
+        ("Number of Tunnels", len(peering_addresses)),
     ])
 
     yield Result(
@@ -375,17 +393,56 @@ def check_bgp_settings(item, section):
         summary="; ".join(summary_parts),
         details=details,
     )
-    
-    # Check individual peering addresses
-    for peering_addr in peering_addresses:
-        tunnel_ips = peering_addr.get('tunnelIpAddresses', [])
-        default_bgp_ips = peering_addr.get('defaultBgpIpAddresses', [])
-        
-        if tunnel_ips:
-            yield Result(
-                state=State.OK,
-                summary=f"Tunnel IPs: {', '.join(tunnel_ips)}, BGP IPs: {', '.join(default_bgp_ips)}"
-            )
+    # Per-tunnel details are reported by the dedicated
+    # "Azure VPN Gateway BGP Tunnel" services (one per tunnel).
+
+
+def discover_bgp_tunnels(section):
+    """
+    Discover Azure VPN Gateway BGP Tunnels (one per BGP peering address).
+    """
+    bgp_tunnels = section.get('bgp_tunnels', {})
+    for name in bgp_tunnels:
+        yield Service(item=name)
+
+
+def check_bgp_tunnel(item, section):
+    """
+    Check a single Azure VPN Gateway BGP tunnel / instance.
+    """
+    bgp_tunnels = section.get('bgp_tunnels', {})
+    data = bgp_tunnels.get(item)
+    if not data:
+        yield Result(state=State.UNKNOWN, summary=f"No data for BGP Tunnel {item}")
+        return
+
+    tunnel_ips = data.get('tunnelIpAddresses', [])
+    default_bgp_ips = data.get('defaultBgpIpAddresses', [])
+    custom_bgp_ips = data.get('customBgpIpAddresses', [])
+    asn = data.get('asn', 'Unknown')
+
+    # Without a public tunnel IP the instance has no tunnel endpoint.
+    state = State.OK if tunnel_ips else State.WARN
+
+    summary_parts = [
+        f"Tunnel IP: {', '.join(tunnel_ips) if tunnel_ips else 'None'}",
+        f"BGP Peer IP: {', '.join(default_bgp_ips) if default_bgp_ips else 'None'}",
+        f"ASN: {asn}",
+    ]
+
+    details = render_details([
+        ("Instance", data.get('name')),
+        ("Tunnel IP Addresses", ', '.join(tunnel_ips)),
+        ("Default BGP IP Addresses", ', '.join(default_bgp_ips)),
+        ("Custom BGP IP Addresses", ', '.join(custom_bgp_ips)),
+        ("ASN", asn),
+    ])
+
+    yield Result(
+        state=state,
+        summary="; ".join(summary_parts),
+        details=details,
+    )
 
 
 def check_vpn_client(item, section):
@@ -618,6 +675,14 @@ check_plugin_azure_vpn_gateway_bgp = CheckPlugin(
     service_name="Azure VPN Gateway BGP %s",
     discovery_function=discover_bgp_settings,
     check_function=check_bgp_settings,
+)
+
+check_plugin_azure_vpn_gateway_bgp_tunnel = CheckPlugin(
+    name="azure_vpn_gateway_bgp_tunnel",
+    sections=["azure_extra_virtualnetworkgateways"],
+    service_name="Azure VPN Gateway BGP Tunnel %s",
+    discovery_function=discover_bgp_tunnels,
+    check_function=check_bgp_tunnel,
 )
 
 check_plugin_azure_vpn_gateway_vpnclient = CheckPlugin(

@@ -1,0 +1,22 @@
+title: Azure VPN Gateway: BGP Tunnel
+agents: azure
+catalog: cloud/azure
+license: GPLv2
+distribution: check_mk
+description:
+ This check monitors a single BGP tunnel (instance) of an Azure Virtual
+ Network Gateway. For every entry in the gateway's bgpSettings
+ bgpPeeringAddresses one service is created, so an active-active gateway
+ with two tunnels results in two independent services instead of one
+ combined service.
+
+ Each service reports the tunnel's public tunnel IP address, the default
+ and custom BGP peering IP addresses and the ASN. The service is {WARN}
+ when the instance has no public tunnel IP address, otherwise {OK}.
+
+item:
+ The gateway name followed by the IP configuration / instance name of the
+ tunnel, for example "mygateway_default" or "mygateway_activeActive".
+
+discovery:
+ One service is created for each BGP peering address of the gateway.
