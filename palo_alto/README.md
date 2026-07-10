@@ -4,6 +4,10 @@
 ![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.4.0-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.4.0p4-blue)
 <!-- compatibility-badges:end -->
 
+<img width="1364" height="384" alt="grafik" src="https://github.com/user-attachments/assets/a2f186d4-c4ef-4751-9956-af87f72fc23f" />
+
+
+
 Consolidated SNMP checks for Palo Alto firewalls. This package replaces the
 earlier separate `palo_alto_gp_tunnels` and `palo_alto_versions` MKPs (see
 their READMEs), and adds the antivirus signature age check. All services
