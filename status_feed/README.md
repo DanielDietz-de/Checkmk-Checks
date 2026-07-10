@@ -1,7 +1,7 @@
 # Status RSS/Atom feed monitoring
 
 <!-- compatibility-badges:start -->
-![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.3.0-2f4f4f) ![Checkmk max](https://img.shields.io/badge/Checkmk%20max-2.5-informational) ![packaged](https://img.shields.io/badge/packaged-2.4.0-blue)
+![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.3.0-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.4.0-blue)
 <!-- compatibility-badges:end -->
 
 Special agent that probes status RSS/Atom feeds. It works with the per-service status feeds published by AWS at <https://status.aws.amazon.com/> **and** with Statuspage-style incident-history feeds such as <https://status.scrivito.com/incidents.atom>. For every configured feed the check verifies that the feed is reachable, contains valid XML, reports the age of the most recent published event and classifies its incident state.

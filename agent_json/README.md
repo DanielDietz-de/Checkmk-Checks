@@ -1,7 +1,7 @@
 # Agent JSON
 
 <!-- compatibility-badges:start -->
-![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.3.0b1-2f4f4f) ![Checkmk max](https://img.shields.io/badge/Checkmk%20max-2.5-informational) ![packaged](https://img.shields.io/badge/packaged-2.3.0p9-blue)
+![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.3.0b1-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.3.0p9-blue)
 <!-- compatibility-badges:end -->
 
 Special agent that queries one or more HTTP(S) endpoints and converts the returned JSON into Checkmk local checks. Useful for exposing arbitrary application health checks through REST endpoints without writing a dedicated plugin. Each endpoint has its own credentials and selectable HTTP method (POST by default, GET for endpoints that serve the JSON on GET).

@@ -1,5 +1,9 @@
 # hp_proliant_fix
 
+<!-- compatibility-badges:start -->
+![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.5.0b1-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-cmk-mkp-tool%203.0.0-blue)
+<!-- compatibility-badges:end -->
+
 Drop-in override for the built-in `hp_proliant_da_cntlr` check.
 
 ## Problem

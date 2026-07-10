@@ -1,7 +1,7 @@
 # Rittal Blue e+ Cooling Unit Monitoring
 
 <!-- compatibility-badges:start -->
-![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.3.0-2f4f4f) ![Checkmk max](https://img.shields.io/badge/Checkmk%20max-2.5-informational) ![packaged](https://img.shields.io/badge/packaged-2.3.0p25-blue)
+![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.3.0-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.3.0p25-blue)
 <!-- compatibility-badges:end -->
 
 Monitors **Rittal Blue e+** cooling units that are connected to a Rittal

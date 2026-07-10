@@ -19,5 +19,4 @@
  'title': 'Frafos Callcenter Metric',
  'version': '1.0.1',
  'version.min_required': '2.0.0',
- 'version.packaged': '2.0.0p20',
- 'version.usable_until': '2.4'}
+ 'version.packaged': '2.0.0p20'}
