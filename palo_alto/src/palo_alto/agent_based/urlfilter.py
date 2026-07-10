@@ -6,6 +6,8 @@ Consulting and Development
 https://kuhn-ruess.de
 """
 
+from time import time
+
 from cmk.agent_based.v2 import (
     CheckPlugin,
     Result,
@@ -14,9 +16,12 @@ from cmk.agent_based.v2 import (
     SNMPTree,
     State,
     all_of,
+    check_levels,
     exists,
+    get_value_store,
     startswith,
 )
+from cmk.agent_based.v2.render import timespan
 
 
 def parse_palo_alto_urlfilter(string_table):
@@ -43,8 +48,32 @@ def discover_palo_alto_urlfilter(section):
     yield Service()
 
 
-def check_palo_alto_urlfilter(section):
-    yield Result(state=State.OK, summary=f"Current Version: {section}")
+def check_palo_alto_urlfilter(params, section):
+    value_store = get_value_store()
+    now = time()
+
+    version = section
+    last_version = value_store.get('last_version', version)
+    if last_version != version:
+        value_store['last_update'] = now
+    value_store['last_version'] = version
+
+    yield Result(
+        state=State.OK,
+        summary=f"Current Version: {version}",
+    )
+
+    last_update = value_store.get('last_update', now)
+    if last_update == now:
+        value_store['last_update'] = now
+    timediff = now - last_update
+
+    yield from check_levels(
+        value=timediff,
+        levels_upper=params["age"],
+        render_func=timespan,
+        label="Age",
+    )
 
 
 check_plugin_palo_alto_urlfilter = CheckPlugin(
@@ -52,4 +81,6 @@ check_plugin_palo_alto_urlfilter = CheckPlugin(
     service_name="Palo Alto URL-Filtering Version",
     discovery_function=discover_palo_alto_urlfilter,
     check_function=check_palo_alto_urlfilter,
+    check_ruleset_name="palo_alto_urlfilter",
+    check_default_parameters={"age": ("fixed", (86400.0, 104400.0))},
 )

@@ -1,0 +1,19 @@
+title: Palo Alto: URL-Filtering Database Version
+agents: snmp
+catalog: hw/network/palo_alto
+license: GPLv2
+distribution: check_mk
+description:
+ This check reports the installed URL-Filtering database version of a Palo
+ Alto firewall, read from the PAN-COMMON-MIB
+ (panSysUrlFilteringVersion .1.3.6.1.4.1.25461.2.1.2.1.10).
+
+ The check remembers when the version last changed and applies upper levels
+ to the age since that last update. This detects firewalls whose URL-Filtering
+ database is no longer being updated. Levels can be configured via the rule
+ "Palo Alto URL-Filtering database age" and default to WARN at one day and
+ CRIT at 29 hours.
+
+discovery:
+ One service is created if the firewall exposes the URL-Filtering database
+ version.

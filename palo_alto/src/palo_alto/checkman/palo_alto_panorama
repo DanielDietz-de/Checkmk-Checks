@@ -9,8 +9,9 @@ description:
  from the PAN-COMMON-MIB (panMgmtPanoramaConnected .1.3.6.1.4.1.25461.2.1.2.4.1
  and panMgmtPanorama2Connected .1.3.6.1.4.1.25461.2.1.2.4.2).
 
- The service is {OK} when the reported state is "Connected" and {CRIT}
- otherwise.
+ The service is {OK} when the reported state is "Connected". For any other
+ state the monitoring state is configurable via the rule "Palo Alto Panorama
+ Availability" and defaults to {CRIT}.
 
 item:
  The Panorama slot number, "1" for the primary and "2" for the secondary

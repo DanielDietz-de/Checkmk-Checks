@@ -47,12 +47,15 @@ def discover_palo_alto_panorama(section):
             yield Service(item=item)
 
 
-def check_palo_alto_panorama(item, section):
+def check_palo_alto_panorama(item, params, section):
     connected = section.get(item)
     if connected is None:
         return
 
-    state = State.OK if connected.strip().lower() == "connected" else State.CRIT
+    if connected.strip().lower() == "connected":
+        state = State.OK
+    else:
+        state = State(params["state_not_connected"])
     yield Result(state=state, summary=f"Status: {connected}")
 
 
@@ -61,4 +64,6 @@ check_plugin_palo_alto_panorama = CheckPlugin(
     service_name="Palo Alto Panorama %s availability",
     discovery_function=discover_palo_alto_panorama,
     check_function=check_palo_alto_panorama,
+    check_ruleset_name="palo_alto_panorama",
+    check_default_parameters={"state_not_connected": 2},
 )
