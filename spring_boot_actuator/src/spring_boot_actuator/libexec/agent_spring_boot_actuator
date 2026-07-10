@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+
+"""
+Kuhn & Rueß GmbH
+Consulting and Development
+https://kuhn-ruess.de
+"""
+
+from sys import argv, stdout
+from json import dumps
+
+from requests import get
+from requests.auth import HTTPBasicAuth
+
+
+def fetch_health(url, user, password, verify):
+    """
+    Query one Spring Boot Actuator health endpoint and return its parsed
+    JSON body.
+
+    On any transport/parse error a synthetic health document with an
+    ``_error`` key is returned so the failing endpoint stays visible in the
+    monitoring instead of silently dropping out.
+    """
+    auth = HTTPBasicAuth(user, password) if user else None
+    try:
+        response = get(url, auth=auth, verify=verify, timeout=30)
+    except Exception as error:  # noqa: BLE001 - surface anything as _error
+        return {"status": "DOWN", "components": {}, "_error": str(error)}
+
+    try:
+        return response.json()
+    except ValueError as error:
+        snippet = response.text[:200].replace("\n", " ").strip()
+        return {
+            "status": "DOWN",
+            "components": {},
+            "_error": (f"Cannot parse response (HTTP {response.status_code}): "
+                       f"{error}; body: {snippet!r}"),
+        }
+
+
+def main():
+    """
+    Emit the actuator health document as one compact JSON line.
+    """
+    url = argv[1]
+    user = argv[2] if len(argv) > 2 else ""
+    password = argv[3] if len(argv) > 3 else ""
+    # verify defaults to enabled; "0" disables TLS certificate verification.
+    verify = not (len(argv) > 4 and argv[4] == "0")
+
+    health = fetch_health(url, user, password, verify)
+
+    stdout.write("<<<spring_boot_actuator:sep(0)>>>\n")
+    stdout.write(dumps(health, separators=(",", ":")) + "\n")
+
+
+if __name__ == "__main__":
+    main()

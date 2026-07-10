@@ -1,0 +1,35 @@
+title: Spring Boot Actuator: Health Components
+agents: spring_boot_actuator
+catalog: app
+license: GPLv2
+distribution: check_mk
+description:
+ This check monitors the health of a Spring Boot application through its
+ Actuator health endpoint (usually '/actuator/health'). The special agent
+ queries the endpoint and every health indicator reported under
+ "components" becomes its own service.
+
+ Each component service reports the actuator status of that component. By
+ default "UP" is {OK}, "OUT_OF_SERVICE" is {WARN}, "DOWN" is {CRIT} and any
+ other status is {UNKN}. The mapping can be adjusted per status via the rule
+ "Spring Boot Actuator health". All fields of the components "details" object
+ are shown as additional details; plain numeric fields (for example request
+ counts or runtimes of a performance indicator, or the free/total bytes of
+ the disk space indicator) are additionally emitted as metrics so they can
+ be graphed.
+
+ In addition to the per-component services an "Overall" service reports the
+ top level status of the application together with the number of components
+ and which of them are currently not "UP". If the agent cannot reach or
+ parse the endpoint the "Overall" service turns {CRIT} and shows the error.
+
+ The endpoint must be configured to expose per-component details
+ ('management.endpoint.health.show-details: always').
+
+item:
+ The name of the health component as reported by the actuator, or "Overall"
+ for the aggregated application status.
+
+discovery:
+ One service is created for every component in the actuator health document
+ and one additional "Overall" service for the top level status.
