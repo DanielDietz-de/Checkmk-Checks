@@ -52,7 +52,7 @@ def _formspec_palo_alto_sessions():
 
 
 rule_spec_palo_alto_sessions = CheckParameters(
-    name="palo_alto_sessions",
+    name="palo_alto_sessions_kr",
     topic=Topic.APPLICATIONS,
     condition=HostCondition(),
     parameter_form=_formspec_palo_alto_sessions,

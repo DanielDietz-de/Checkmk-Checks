@@ -89,7 +89,7 @@ check_plugin_palo_alto_sessions = CheckPlugin(
     service_name="Palo Alto Sessions",
     discovery_function=discover_palo_alto_sessions,
     check_function=check_palo_alto_sessions,
-    check_ruleset_name="palo_alto_sessions",
+    check_ruleset_name="palo_alto_sessions_kr",
     check_default_parameters={
         "levels_utilization": ("fixed", (80.0, 90.0)),
         "levels_active": ("no_levels", None),
