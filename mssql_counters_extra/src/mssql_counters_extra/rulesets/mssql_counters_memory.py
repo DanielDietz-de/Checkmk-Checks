@@ -41,7 +41,7 @@ def _parameter_valuespec_mssql_counters_memory():
                     form_spec_template = TimeSpan(
                         displayed_magnitudes = [TimeMagnitude.SECOND, TimeMagnitude.MINUTE, TimeMagnitude.HOUR],
                     ),
-                    prefill_fixed_levels = DefaultValue((300, 120)),
+                    prefill_fixed_levels = DefaultValue((300.0, 120.0)),
                 ),
             ),
             "MemoryGrantsPending": DictElement(
@@ -57,7 +57,7 @@ def _parameter_valuespec_mssql_counters_memory():
                     title = Title("Memory usage"),
                     level_direction = LevelDirection.UPPER,
                     form_spec_template = Percentage(),
-                    prefill_fixed_levels = DefaultValue((80, 90))
+                    prefill_fixed_levels = DefaultValue((80.0, 90.0))
                 ),
             ),
         },

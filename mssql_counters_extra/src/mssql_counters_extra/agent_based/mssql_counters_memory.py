@@ -165,7 +165,7 @@ check_plugin_mssql_counter_memory = CheckPlugin(
     check_ruleset_name = "mssql_counters_memory",
     check_default_parameters = {
         "LazyWrites" : ('fixed', (20.0, 50.0)),
-        "page_life_expectancy" : ('fixed', (300, 120)),
+        "page_life_expectancy" : ('fixed', (300.0, 120.0)),
         "MemoryGrantsPending" : ('fixed', (3, 10)),
         "MemoryUsage" : ('fixed', (80.0, 90.0)),
     },
