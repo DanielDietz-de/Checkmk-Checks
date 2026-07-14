@@ -4,18 +4,13 @@
 # conditions defined in the file COPYING, which is part of this source code package.
 
 from collections.abc import Mapping
-from enum import StrEnum
 
 from cmk.rulesets.v1 import Help, Title, Label
 from cmk.rulesets.v1.form_specs import (
-    CascadingSingleChoice,
-    CascadingSingleChoiceElement,
     BooleanChoice,
     DefaultValue,
     DictElement,
     Dictionary,
-    FixedValue,
-    Integer,
     List,
     ServiceState,
     String,
@@ -23,101 +18,13 @@ from cmk.rulesets.v1.form_specs import (
 )
 from cmk.rulesets.v1.rule_specs import (
     CheckParameters,
-    DiscoveryParameters,
     HostAndItemCondition,
     HostCondition,
     Topic,
 )
 
-
-class ServiceNumber(StrEnum):
-    MULTIPLE = "multiple_services"
-    ONE = "one_service"
-
-
-# introduced in version 2.3
-def migrate_dropdown_ident(raw_value: object) -> tuple[str, object]:
-    if not isinstance(raw_value, tuple):
-        raise TypeError("Invalid type. group_services should be a tuple.")
-
-    ident, dropdown_element = raw_value
-
-    if isinstance(ident, str):
-        return ident, dropdown_element
-
-    if ident:
-        return ("multiple_services", dropdown_element)
-
-    return ("one_service", None)
-
-
-def _discovery_parameters_form_alertmanager():
-    return Dictionary(
-        title=Title("Alertmanager discovery"),
-        elements={
-            "group_services": DictElement(
-                parameter_form=CascadingSingleChoice(
-                    title=Title("Service creation"),
-                    elements=[
-                        CascadingSingleChoiceElement(
-                            name=ServiceNumber.MULTIPLE,
-                            title=Title("Create services for alert rule groups"),
-                            parameter_form=Dictionary(
-                                elements={
-                                    "min_amount_rules": DictElement(
-                                        parameter_form=Integer(
-                                            title=Title(
-                                                "Minimum amount of alert rules in a group to create a group service"
-                                            ),
-                                            custom_validate=(
-                                                validators.NumberInRange(min_value=1),
-                                            ),
-                                            prefill=DefaultValue(3),
-                                            help_text=Help(
-                                                "Below the specified value alert rules will be monitored as a"
-                                                "single service."
-                                            ),
-                                        ),
-                                        required=True,
-                                    ),
-                                    "no_group_services": DictElement(
-                                        parameter_form=List(
-                                            element_template=String(),
-                                            title=Title(
-                                                "Don't create a group service for the following groups"
-                                            ),
-                                        ),
-                                        required=True,
-                                    ),
-                                },
-                            ),
-                        ),
-                        CascadingSingleChoiceElement(
-                            name=ServiceNumber.ONE,
-                            title=Title("Create one service per alert rule"),
-                            parameter_form=FixedValue(value=None),
-                        ),
-                    ],
-                    migrate=migrate_dropdown_ident,
-                ),
-                required=True,
-            ),
-            "summary_service": DictElement(
-                parameter_form=FixedValue(
-                    value=True,
-                    title=Title("Create a summary service for all alert rules"),
-                ),
-            ),
-        },
-    )
-
-
-rule_spec_discovery_alertmanager = DiscoveryParameters(
-    topic=Topic.GENERAL,
-    name="discovery_alertmanager_custom",
-    parameter_form=_discovery_parameters_form_alertmanager,
-    title=Title("Alertmanager discovery"),
-)
+# Discovery is handled by Checkmk's built-in ``discovery_alertmanager`` ruleset;
+# this package only overrides the check plugins to add severity remapping.
 
 
 # introduced in version 2.3
