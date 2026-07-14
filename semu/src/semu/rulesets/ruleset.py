@@ -79,7 +79,7 @@ def _valuespec_special_agent_semu():
 
 
 rule_spec_semu_agent = SpecialAgent(
-    name = "agent_semu",
+    name = "semu",
     topic = Topic.APPLICATIONS,
     parameter_form = _valuespec_special_agent_semu,
     title = Title("SEMU Framerate"),
