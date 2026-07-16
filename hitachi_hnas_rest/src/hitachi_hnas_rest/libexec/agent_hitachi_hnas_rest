@@ -27,22 +27,21 @@ class AgentHitachiHnasRest:
         if args.no_cert_check:
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+        # One session for all requests, so the TLS connection is reused
+        self.session = requests.Session()
         if args.api_key:
-            self.headers = {
-                "X-Api-Key": args.api_key,
-            }
+            self.session.headers["X-Api-Key"] = args.api_key
         else:
-            self.headers = {
-                "X-Subsystem-User": args.user,
-                "X-Subsystem-Password": args.password,
-                "X-Subsystem-Type": "FILE",
-            }
-        self.headers["Content-Type"] = "application/json; charset=UTF-8"
+            self.session.headers["X-Subsystem-User"] = args.user
+            self.session.headers["X-Subsystem-Password"] = args.password
+            self.session.headers["X-Subsystem-Type"] = "FILE"
+        self.session.headers["Content-Type"] = "application/json; charset=UTF-8"
 
     def _get(self, path):
-        response = requests.get(
+        # verify is passed per request: a session-level setting would be
+        # overridden by REQUESTS_CA_BUNDLE, which OMD sites always set
+        response = self.session.get(
             f"{self.base_url}/{path}",
-            headers=self.headers,
             timeout=self.timeout,
             verify=self.verify,
         )
