@@ -1,0 +1,19 @@
+title: Hitachi HNAS: Cluster Nodes
+agents: hitachi_hnas_rest
+catalog: hw/storagehw/hitachi
+license: GPLv2
+distribution: Kuhn & Rueß GmbH
+description:
+ This check monitors the cluster nodes of a Hitachi NAS (HNAS)
+ system via the File Storage REST API. It requires the special
+ agent "Hitachi HNAS via REST API" to be configured for the host.
+
+ The service is OK if the node is ONLINE, otherwise it goes CRIT.
+ In addition the model, firmware version and uptime of the node
+ are reported.
+
+item:
+ The name of the cluster node.
+
+discovery:
+ One service is created for each cluster node.

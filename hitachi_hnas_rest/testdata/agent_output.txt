@@ -1,0 +1,17 @@
+<<<hitachi_hnas_rest_filesystems:sep(0)>>>
+{"label": "fs1", "status": "MOUNTED", "capacity": 635973926912, "usedCapacity": 8608980992, "freeCapacity": 627364945920, "usedSnapshotCapacity": 0, "isThinProvisioningEnabled": true, "isThinProvisioningEnabledValid": true, "isReadOnly": false, "isDedupeEnabled": false}
+{"label": "fs2", "status": "NOT_MOUNTED", "capacity": 16903045120, "usedCapacity": 2508795904, "freeCapacity": 14394249216, "usedSnapshotCapacity": 0, "isThinProvisioningEnabled": false, "isThinProvisioningEnabledValid": true, "isReadOnly": false, "isDedupeEnabled": false}
+<<<hitachi_hnas_rest_snapshots:sep(0)>>>
+{"filesystem": "fs1", "count": 3, "oldest": 1426638564, "newest": 1477006200}
+<<<hitachi_hnas_rest_storage_pools:sep(0)>>>
+{"label": "Span0", "totalCapacity": 1430207332352, "usedCapacity": 77242302464, "freeCapacity": 1352965029888, "isHealthy": true}
+{"label": "span20", "totalCapacity": 4290621997056, "usedCapacity": 0, "freeCapacity": 4290621997056, "isHealthy": true}
+<<<hitachi_hnas_rest_virtual_servers:sep(0)>>>
+{"name": "G400-000000-a", "status": "ONLINE", "isEnabled": true, "type": "Administrative services", "ipAddresses": ["192.0.2.10"]}
+{"name": "evs1", "status": "ONLINE", "isEnabled": true, "type": "File services", "ipAddresses": ["192.0.2.11", "192.0.2.12"]}
+<<<hitachi_hnas_rest_nodes:sep(0)>>>
+{"name": "G400-000000-1", "status": "ONLINE", "model": "G400", "firmwareVersion": "14.4.7322.04", "uptimeInSeconds": 22358}
+{"name": "G400-000000-2", "status": "ONLINE", "model": "G400", "firmwareVersion": "14.4.7322.04", "uptimeInSeconds": 22409}
+<<<hitachi_hnas_rest_system_drives:sep(0)>>>
+{"systemDriveId": 2, "label": "0031", "status": "OK", "isDegraded": false, "isAccessAllowed": true, "capacity": 322122547200}
+{"systemDriveId": 6, "label": "0034", "status": "OK", "isDegraded": false, "isAccessAllowed": true, "capacity": 322122547200}

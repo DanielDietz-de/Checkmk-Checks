@@ -1,0 +1,201 @@
+#!/usr/bin/env python3
+"""
+Hitachi HNAS REST API Special Agent
+
+Kuhn & Rueß GmbH
+Consulting and Development
+https://kuhn-ruess.de
+"""
+import argparse
+import json
+import sys
+
+import requests
+import urllib3
+
+
+class AgentHitachiHnasRest:
+    """
+    Query the Hitachi NAS File Storage REST API (v8)
+    """
+
+    def __init__(self, args):
+        self.base_url = f"https://{args.host_address}:{args.port}/v8"
+        self.timeout = args.timeout
+        self.verify = not args.no_cert_check
+
+        if args.no_cert_check:
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+        if args.api_key:
+            self.headers = {
+                "X-Api-Key": args.api_key,
+            }
+        else:
+            self.headers = {
+                "X-Subsystem-User": args.user,
+                "X-Subsystem-Password": args.password,
+                "X-Subsystem-Type": "FILE",
+            }
+        self.headers["Content-Type"] = "application/json; charset=UTF-8"
+
+    def _get(self, path):
+        response = requests.get(
+            f"{self.base_url}/{path}",
+            headers=self.headers,
+            timeout=self.timeout,
+            verify=self.verify,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def section_filesystems(self):
+        """
+        <<<hitachi_hnas_rest_filesystems>>> and <<<hitachi_hnas_rest_snapshots>>>
+        """
+        filesystems = self._get("storage/filesystems")["filesystems"]
+
+        print("<<<hitachi_hnas_rest_filesystems:sep(0)>>>")
+        for filesystem in filesystems:
+            print(json.dumps({
+                "label": filesystem.get("label"),
+                "status": filesystem.get("status"),
+                "capacity": filesystem.get("capacity"),
+                "usedCapacity": filesystem.get("usedCapacity"),
+                "freeCapacity": filesystem.get("freeCapacity"),
+                "usedSnapshotCapacity": filesystem.get("usedSnapshotCapacity"),
+                "isThinProvisioningEnabled": filesystem.get("isThinProvisioningEnabled"),
+                "isThinProvisioningEnabledValid": filesystem.get("isThinProvisioningEnabledValid"),
+                "isReadOnly": filesystem.get("isReadOnly"),
+                "isDedupeEnabled": filesystem.get("isDedupeEnabled"),
+            }))
+
+        print("<<<hitachi_hnas_rest_snapshots:sep(0)>>>")
+        for filesystem in filesystems:
+            # Unmounted filesystems cannot list snapshots
+            if filesystem.get("status") != "MOUNTED":
+                continue
+            entry = {"filesystem": filesystem.get("label")}
+            try:
+                snapshots = self._get(
+                    f"storage/filesystems/{filesystem['filesystemId']}/snapshots"
+                )["snapshots"]
+                creation_times = [
+                    snapshot["creationTime"]
+                    for snapshot in snapshots
+                    if snapshot.get("creationTime") is not None
+                ]
+                entry["count"] = len(snapshots)
+                entry["oldest"] = min(creation_times) if creation_times else None
+                entry["newest"] = max(creation_times) if creation_times else None
+            except Exception as exc:  # pylint: disable=broad-except
+                entry["error"] = str(exc)
+            print(json.dumps(entry))
+
+    def section_storage_pools(self):
+        """
+        <<<hitachi_hnas_rest_storage_pools>>>
+        """
+        pools = self._get("storage/storage-pools")["storagePools"]
+        print("<<<hitachi_hnas_rest_storage_pools:sep(0)>>>")
+        for pool in pools:
+            print(json.dumps({
+                "label": pool.get("label"),
+                "totalCapacity": pool.get("totalCapacity"),
+                "usedCapacity": pool.get("usedCapacity"),
+                "freeCapacity": pool.get("freeCapacity"),
+                "isHealthy": pool.get("isHealthy"),
+            }))
+
+    def section_virtual_servers(self):
+        """
+        <<<hitachi_hnas_rest_virtual_servers>>>
+        """
+        servers = self._get("storage/virtual-servers")["virtualServers"]
+        print("<<<hitachi_hnas_rest_virtual_servers:sep(0)>>>")
+        for server in servers:
+            print(json.dumps({
+                "name": server.get("name"),
+                "status": server.get("status"),
+                "isEnabled": server.get("isEnabled"),
+                "type": server.get("type"),
+                "ipAddresses": server.get("ipAddresses", []),
+            }))
+
+    def section_nodes(self):
+        """
+        <<<hitachi_hnas_rest_nodes>>>
+        """
+        nodes = self._get("storage/nodes")["nodes"]
+        print("<<<hitachi_hnas_rest_nodes:sep(0)>>>")
+        for node in nodes:
+            print(json.dumps({
+                "name": node.get("name"),
+                "status": node.get("status"),
+                "model": node.get("model"),
+                "firmwareVersion": node.get("firmwareVersion"),
+                "uptimeInSeconds": node.get("uptimeInSeconds"),
+            }))
+
+    def section_system_drives(self):
+        """
+        <<<hitachi_hnas_rest_system_drives>>>
+        """
+        drives = self._get("storage/system-drives")["systemDrives"]
+        print("<<<hitachi_hnas_rest_system_drives:sep(0)>>>")
+        for drive in drives:
+            print(json.dumps({
+                "systemDriveId": drive.get("systemDriveId"),
+                "label": drive.get("label"),
+                "status": drive.get("status"),
+                "isDegraded": drive.get("isDegraded"),
+                "isAccessAllowed": drive.get("isAccessAllowed"),
+                "capacity": drive.get("capacity"),
+            }))
+
+    def run(self):
+        errors = []
+        for section in (
+            self.section_filesystems,
+            self.section_storage_pools,
+            self.section_virtual_servers,
+            self.section_nodes,
+            self.section_system_drives,
+        ):
+            try:
+                section()
+            except Exception as exc:  # pylint: disable=broad-except
+                errors.append(f"{section.__name__}: {exc}")
+
+        if errors:
+            sys.stderr.write("\n".join(errors) + "\n")
+            if len(errors) == 5:
+                # Nothing worked at all
+                sys.exit(1)
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Hitachi HNAS REST API Monitoring")
+    parser.add_argument("--host-address", required=True,
+                        help="IP address or hostname of the HNAS admin interface")
+    parser.add_argument("--port", type=int, default=8444,
+                        help="TCP port of the REST API (default: 8444)")
+    parser.add_argument("--api-key", default=None,
+                        help="API key (X-Api-Key header, recommended)")
+    parser.add_argument("--user", default=None,
+                        help="API username (X-Subsystem-User header)")
+    parser.add_argument("--password", default=None,
+                        help="API password (X-Subsystem-Password header)")
+    parser.add_argument("--timeout", type=int, default=30,
+                        help="HTTP timeout in seconds (default: 30)")
+    parser.add_argument("--no-cert-check", action="store_true",
+                        help="Disable TLS certificate verification")
+    args = parser.parse_args()
+
+    if not args.api_key and not (args.user and args.password):
+        parser.error("either --api-key or --user and --password are required")
+    return args
+
+
+if __name__ == "__main__":
+    AgentHitachiHnasRest(parse_arguments()).run()

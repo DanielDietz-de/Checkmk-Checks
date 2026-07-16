@@ -1,0 +1,20 @@
+title: Hitachi HNAS: System Drives
+agents: hitachi_hnas_rest
+catalog: hw/storagehw/hitachi
+license: GPLv2
+distribution: Kuhn & Rueß GmbH
+description:
+ This check monitors the system drives (LUNs) of a Hitachi NAS
+ (HNAS) system via the File Storage REST API. It requires the
+ special agent "Hitachi HNAS via REST API" to be configured for
+ the host.
+
+ The service is OK if the system drive status is OK, otherwise it
+ goes CRIT. A degraded drive is also reported as CRIT, and a drive
+ whose access is not allowed as WARN.
+
+item:
+ The ID of the system drive.
+
+discovery:
+ One service is created for each system drive.

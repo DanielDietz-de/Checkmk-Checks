@@ -1,0 +1,23 @@
+title: Hitachi HNAS: Filesystems
+agents: hitachi_hnas_rest
+catalog: hw/storagehw/hitachi
+license: GPLv2
+distribution: Kuhn & Rueß GmbH
+description:
+ This check monitors the filesystems of a Hitachi NAS (HNAS) system
+ via the File Storage REST API. It requires the special agent
+ "Hitachi HNAS via REST API" to be configured for the host.
+
+ The check reports the space usage of each filesystem and alerts
+ if the configurable levels (default: 80%/90%) are exceeded. It
+ also monitors the thin provisioning state and the mount status.
+ By default a filesystem which is not mounted is reported as WARN,
+ thin provisioning enabled but not valid as WARN, and thin
+ provisioning not enabled as OK. All states are configurable via
+ the rule "Hitachi HNAS Filesystems".
+
+item:
+ The label of the filesystem.
+
+discovery:
+ One service is created for each filesystem.

@@ -1,0 +1,20 @@
+title: Hitachi HNAS: Storage Pools
+agents: hitachi_hnas_rest
+catalog: hw/storagehw/hitachi
+license: GPLv2
+distribution: Kuhn & Rueß GmbH
+description:
+ This check monitors the storage pools (spans) of a Hitachi NAS
+ (HNAS) system via the File Storage REST API. It requires the
+ special agent "Hitachi HNAS via REST API" to be configured for
+ the host.
+
+ The check reports the space usage of each storage pool and alerts
+ if the configurable levels (default: 80%/90%) are exceeded. If the
+ storage pool reports itself as not healthy, the service goes CRIT.
+
+item:
+ The label of the storage pool.
+
+discovery:
+ One service is created for each storage pool.

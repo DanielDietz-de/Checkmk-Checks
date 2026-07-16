@@ -1,0 +1,23 @@
+title: Hitachi HNAS: Snapshots
+agents: hitachi_hnas_rest
+catalog: hw/storagehw/hitachi
+license: GPLv2
+distribution: Kuhn & Rueß GmbH
+description:
+ This check monitors the snapshots of each mounted filesystem of a
+ Hitachi NAS (HNAS) system via the File Storage REST API. It requires
+ the special agent "Hitachi HNAS via REST API" to be configured for
+ the host.
+
+ The check reports the number of snapshots, the age of the oldest
+ snapshot (to detect forgotten snapshots which consume space) and
+ the time since the last snapshot (to detect that snapshot creation
+ has stopped working). Upper levels for all three values can be
+ configured via the rule "Hitachi HNAS Snapshots". By default no
+ levels are applied.
+
+item:
+ The label of the filesystem.
+
+discovery:
+ One service is created for each mounted filesystem.
