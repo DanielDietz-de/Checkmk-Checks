@@ -14,6 +14,7 @@ from cmk.rulesets.v1.form_specs import (
     DefaultValue,
     DictElement,
     Dictionary,
+    FixedValue,
     Integer,
     Password,
     String,
@@ -35,16 +36,37 @@ def _valuespec_special_agent_hitachi_hnas_rest():
             "cluster nodes and system drives."
         ),
         elements={
-            "hostaddress": DictElement(
-                parameter_form=String(
-                    title=Title("Host address"),
+            "address": DictElement(
+                parameter_form=CascadingSingleChoice(
+                    title=Title("Address to connect to"),
                     help_text=Help(
-                        "IP address or hostname of the HNAS admin interface. "
-                        "If not set, the primary IP address of the host is used."
+                        "By default the host name is used, so that TLS "
+                        "certificate verification works. Select the primary "
+                        "IP address if the HNAS is not resolvable via DNS, "
+                        "or enter a custom FQDN."
                     ),
-                    custom_validate=(LengthInRange(min_value=1),),
+                    prefill=DefaultValue("host_name"),
+                    elements=[
+                        CascadingSingleChoiceElement(
+                            name="host_name",
+                            title=Title("Host name"),
+                            parameter_form=FixedValue(value=None),
+                        ),
+                        CascadingSingleChoiceElement(
+                            name="ip",
+                            title=Title("Primary IP address of the host"),
+                            parameter_form=FixedValue(value=None),
+                        ),
+                        CascadingSingleChoiceElement(
+                            name="custom",
+                            title=Title("Custom address"),
+                            parameter_form=String(
+                                custom_validate=(LengthInRange(min_value=1),),
+                            ),
+                        ),
+                    ],
                 ),
-                required=False,
+                required=True,
             ),
             "port": DictElement(
                 parameter_form=Integer(

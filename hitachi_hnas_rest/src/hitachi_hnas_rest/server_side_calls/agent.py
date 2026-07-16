@@ -18,9 +18,16 @@ def _agent_arguments(params, host_config: HostConfig):
     """
     Build Special Agent Command Line
     """
+    address_mode, address_value = params["address"]
+    if address_mode == "ip":
+        address = host_config.primary_ip_config.address
+    elif address_mode == "custom":
+        address = address_value
+    else:
+        address = host_config.name
+
     args: list[str | Secret] = [
-        "--host-address",
-        params.get("hostaddress") or host_config.primary_ip_config.address,
+        "--host-address", address,
         "--port", str(params.get("port", 8444)),
         "--timeout", str(params.get("timeout", 30)),
     ]
