@@ -1,6 +1,6 @@
 title: AudioCodes SBC call capacity
 agents: snmp
-catalog: applications/voip
+catalog: hw/network/audiocodes
 license: GPL
 distribution: kuhn-ruess
 description:
