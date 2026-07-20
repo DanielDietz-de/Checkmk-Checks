@@ -8,6 +8,11 @@ description:
  hosts. Interface services are sourced from Livestatus, so the check reuses the
  existing Checkmk interface discovery and does not perform another SNMP poll.
 
+ The special-agent rule has no prefilled values. Pair name, both exact Checkmk
+ host names, interface-service regular expression, and host conditions must be
+ configured explicitly. Incomplete or blank rule parameters are rejected rather
+ than replaced with implicit defaults.
+
  A port service is discovered when at least one corresponding member is up at
  discovery. This catches an asymmetric pair immediately while excluding ports
  that are down on both switches and normally unused. An accepted port service
@@ -15,6 +20,6 @@ description:
  in CRIT. Missing, stale, or unparseable source data results in UNKNOWN.
 
 inventory:
- One pair-status service is always discovered. One additional service is
- discovered for every one-to-one interface item for which at least one member
- is confirmed up during service discovery.
+ One pair-status service is discovered for an explicitly configured switch pair.
+ One additional service is discovered for every one-to-one interface item for
+ which at least one member is confirmed up during service discovery.

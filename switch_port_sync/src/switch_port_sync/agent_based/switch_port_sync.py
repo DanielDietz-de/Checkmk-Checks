@@ -20,6 +20,7 @@ from cmk.agent_based.v2 import (
 
 Section = Mapping[str, Any]
 _UNRESOLVED_STATES = frozenset({"missing", "stale", "unknown"})
+_REQUIRED_METADATA = ("pair_name", "host_a", "host_b", "service_regex")
 
 
 def parse_switch_port_sync(string_table: StringTable) -> Section:
@@ -49,6 +50,19 @@ def _records(section: Section) -> Sequence[Mapping[str, Any]]:
     return [record for record in records if isinstance(record, Mapping)]
 
 
+def _configuration_error(section: Section) -> str | None:
+    invalid = [
+        key
+        for key in _REQUIRED_METADATA
+        if not isinstance(section.get(key), str) or not str(section[key]).strip()
+    ]
+    if invalid:
+        return "Special agent payload is missing required configuration metadata: " + ", ".join(
+            invalid
+        )
+    return None
+
+
 def _record_state(record: Mapping[str, Any], member: str) -> str:
     member_data = record.get(member, {})
     if not isinstance(member_data, Mapping):
@@ -71,6 +85,9 @@ def discover_switch_port_sync(section: Section) -> DiscoveryResult:
     # even when no port-level service can be discovered.
     yield Service(item="Pair status")
 
+    if section.get("error") or _configuration_error(section):
+        return
+
     seen: set[str] = set()
     for record in _records(section):
         item = record.get("item")
@@ -90,12 +107,16 @@ def _find_record(item: str, section: Section) -> Mapping[str, Any] | None:
 
 def _pair_status(section: Section) -> CheckResult:
     error = section.get("error")
-    pair_name = str(section.get("pair_name", "switch pair"))
-
     if error:
         yield Result(state=State.UNKNOWN, summary=str(error))
         return
 
+    configuration_error = _configuration_error(section)
+    if configuration_error:
+        yield Result(state=State.UNKNOWN, summary=configuration_error)
+        return
+
+    pair_name = str(section["pair_name"])
     records = _records(section)
     if not records:
         yield Result(
@@ -140,28 +161,41 @@ def check_switch_port_sync(item: str, section: Section) -> CheckResult:
         yield Result(state=State.UNKNOWN, summary=str(error))
         return
 
+    configuration_error = _configuration_error(section)
+    if configuration_error:
+        yield Result(state=State.UNKNOWN, summary=configuration_error)
+        return
+
     record = _find_record(item, section)
     if record is None:
         yield Result(state=State.UNKNOWN, summary="Interface pair data is missing")
         return
 
-    pair_name = str(section.get("pair_name", "switch pair"))
+    pair_name = str(section["pair_name"])
+    expected_name_a = str(section["host_a"])
+    expected_name_b = str(section["host_b"])
     host_a = record.get("host_a", {})
     host_b = record.get("host_b", {})
     if not isinstance(host_a, Mapping) or not isinstance(host_b, Mapping):
         yield Result(state=State.UNKNOWN, summary="Malformed interface pair data")
         return
 
+    name_a = host_a.get("name")
+    name_b = host_b.get("name")
+    if name_a != expected_name_a or name_b != expected_name_b:
+        yield Result(
+            state=State.UNKNOWN,
+            summary="Interface pair data does not match the configured switch names",
+        )
+        return
+
     state_a = str(host_a.get("state", "unknown"))
     state_b = str(host_b.get("state", "unknown"))
-    name_a = str(host_a.get("name", section.get("host_a", "Switch A")))
-    name_b = str(host_b.get("name", section.get("host_b", "Switch B")))
-
-    summary = f"{name_a}: {state_a}, {name_b}: {state_b}"
+    summary = f"{expected_name_a}: {state_a}, {expected_name_b}: {state_b}"
     details = (
         f"Pair: {pair_name}\n"
-        f"{name_a}: {host_a.get('reason', 'no reason available')}\n"
-        f"{name_b}: {host_b.get('reason', 'no reason available')}"
+        f"{expected_name_a}: {host_a.get('reason', 'no reason available')}\n"
+        f"{expected_name_b}: {host_b.get('reason', 'no reason available')}"
     )
 
     # Missing, stale, or unparseable source data is UNKNOWN. CRIT is reserved

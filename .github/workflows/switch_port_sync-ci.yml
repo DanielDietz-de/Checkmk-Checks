@@ -17,7 +17,7 @@ env:
   PACKAGE_DIR: switch_port_sync
   PACKAGE_NAME: switch_port_sync
   PACKAGE_SOURCE: switch_port_sync/src/switch_port_sync
-  PACKAGE_VERSION: "1.0.0"
+  PACKAGE_VERSION: "1.0.1"
   PLUGIN_BASE: /omd/sites/cmk/local/lib/python3/cmk_addons/plugins
 
 permissions:

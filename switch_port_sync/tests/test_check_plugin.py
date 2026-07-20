@@ -67,12 +67,12 @@ def record(item: str, state_a: str, state_b: str) -> dict[str, Any]:
     return {
         "item": item,
         "host_a": {
-            "name": "041-Transit-001",
+            "name": "switch-1",
             "state": state_a,
             "reason": "test",
         },
         "host_b": {
-            "name": "041-Transit-002",
+            "name": "switch-2",
             "state": state_b,
             "reason": "test",
         },
@@ -81,9 +81,10 @@ def record(item: str, state_a: str, state_b: str) -> dict[str, Any]:
 
 def section(*records: dict[str, Any]) -> dict[str, Any]:
     return {
-        "pair_name": "Transit pair",
-        "host_a": "041-Transit-001",
-        "host_b": "041-Transit-002",
+        "pair_name": "Switch pair 1",
+        "host_a": "switch-1",
+        "host_b": "switch-2",
+        "service_regex": r"^Interface (?P<item>.+)$",
         "records": list(records),
     }
 
@@ -113,6 +114,14 @@ def test_discovery_baseline() -> None:
         "up-down",
         "down-up",
         "up-missing",
+    ]
+
+
+def test_discovery_with_missing_configuration_only_keeps_pair_status() -> None:
+    data = section(record("01", "up", "up"))
+    del data["service_regex"]
+    assert [service.item for service in module.discover_switch_port_sync(data)] == [
+        "Pair status"
     ]
 
 
@@ -146,11 +155,27 @@ def test_pair_status_without_records_is_unknown() -> None:
     assert result.state == State.UNKNOWN
 
 
+def test_pair_status_missing_configuration_is_unknown() -> None:
+    data = section(record("01", "up", "up"))
+    del data["host_b"]
+    result = list(module.check_switch_port_sync("Pair status", data))[0]
+    assert result.state == State.UNKNOWN
+    assert "host_b" in (result.summary or "")
+
+
+def test_port_record_switch_names_must_match_configuration() -> None:
+    mismatched = record("01", "up", "up")
+    mismatched["host_b"]["name"] = "different-switch"
+    result = list(module.check_switch_port_sync("01", section(mismatched)))[0]
+    assert result.state == State.UNKNOWN
+    assert "configured switch names" in (result.summary or "")
+
+
 def test_pair_status_error_is_unknown() -> None:
     result = list(
         module.check_switch_port_sync(
             "Pair status",
-            {"pair_name": "Transit pair", "records": [], "error": "socket unavailable"},
+            {"pair_name": "Switch pair 1", "records": [], "error": "socket unavailable"},
         )
     )[0]
     assert result.state == State.UNKNOWN

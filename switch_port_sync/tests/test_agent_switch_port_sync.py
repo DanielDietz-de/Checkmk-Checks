@@ -61,9 +61,9 @@ def test_stale_and_host_down_are_unresolved() -> None:
 
 def test_union_produces_missing_peer_record() -> None:
     payload = module.build_payload(
-        pair_name="pair",
-        host_a="a",
-        host_b="b",
+        pair_name="Switch pair 1",
+        host_a="switch-1",
+        host_b="switch-2",
         service_regex_text=r"^Interface (?P<item>.+)$",
         services_a=[service(output="Operational state: up")],
         services_b=[],
@@ -75,9 +75,9 @@ def test_union_produces_missing_peer_record() -> None:
 def test_duplicate_mapping_is_rejected() -> None:
     with pytest.raises(ValueError, match="Multiple interface services"):
         module.build_payload(
-            pair_name="pair",
-            host_a="a",
-            host_b="b",
+            pair_name="Switch pair 1",
+            host_a="switch-1",
+            host_b="switch-2",
             service_regex_text=r"^Interface (?P<item>.+)$",
             services_a=[
                 service(description="Interface 01", output="Operational state: up"),
@@ -90,9 +90,9 @@ def test_duplicate_mapping_is_rejected() -> None:
 def test_same_host_pair_is_rejected() -> None:
     with pytest.raises(ValueError, match="must be different"):
         module.build_payload(
-            pair_name="pair",
-            host_a="a",
-            host_b="a",
+            pair_name="Switch pair 1",
+            host_a="switch-1",
+            host_b="switch-1",
             service_regex_text=r"^Interface (?P<item>.+)$",
             services_a=[],
             services_b=[],
@@ -102,10 +102,43 @@ def test_same_host_pair_is_rejected() -> None:
 def test_regex_requires_capture_group() -> None:
     with pytest.raises(ValueError, match="capture group"):
         module.build_payload(
-            pair_name="pair",
-            host_a="a",
-            host_b="b",
+            pair_name="Switch pair 1",
+            host_a="switch-1",
+            host_b="switch-2",
             service_regex_text=r"^Interface .+$",
             services_a=[],
             services_b=[],
         )
+
+
+def test_cli_requires_explicit_service_regex() -> None:
+    with pytest.raises(SystemExit):
+        module.parse_args(
+            [
+                "--pair-name",
+                "Switch pair 1",
+                "--host-a",
+                "switch-1",
+                "--host-b",
+                "switch-2",
+            ]
+        )
+
+
+def test_cli_accepts_complete_explicit_configuration() -> None:
+    args = module.parse_args(
+        [
+            "--pair-name",
+            "Switch pair 1",
+            "--host-a",
+            "switch-1",
+            "--host-b",
+            "switch-2",
+            "--service-regex",
+            r"^Interface (?P<item>.+)$",
+        ]
+    )
+    assert args.pair_name == "Switch pair 1"
+    assert args.host_a == "switch-1"
+    assert args.host_b == "switch-2"
+    assert args.service_regex == r"^Interface (?P<item>.+)$"
