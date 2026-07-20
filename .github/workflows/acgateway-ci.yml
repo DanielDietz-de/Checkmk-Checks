@@ -17,7 +17,6 @@ env:
   PACKAGE_DIR: acgateway
   PACKAGE_NAME: acgateway
   PACKAGE_SOURCE: acgateway/src/acgateway
-  PACKAGE_VERSION: "2.0.4"
   PLUGIN_BASE: /omd/sites/cmk/local/lib/python3/cmk_addons/plugins
 
 permissions:
@@ -187,12 +186,55 @@ jobs:
       - checkmk-api-load
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      artifact-name: ${{ steps.package-metadata.outputs.artifact-name }}
+      package-filename: ${{ steps.package-metadata.outputs.filename }}
+      package-version: ${{ steps.package-metadata.outputs.version }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
           persist-credentials: false
+
+      - name: Resolve package metadata
+        id: package-metadata
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ast
+          import os
+          import re
+          from pathlib import Path
+
+          package_dir = Path(os.environ["PACKAGE_DIR"])
+          package_name = os.environ["PACKAGE_NAME"]
+          info_path = package_dir / "src" / "info"
+          info = ast.literal_eval(info_path.read_text(encoding="utf-8"))
+
+          metadata_name = str(info.get("name", ""))
+          version = str(info.get("version", ""))
+          if metadata_name != package_name:
+              raise SystemExit(
+                  f"Package name mismatch: workflow={package_name!r}, src/info={metadata_name!r}"
+              )
+          if not re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z._+-]*", version):
+              raise SystemExit(f"Invalid package version in {info_path}: {version!r}")
+
+          filename = f"{package_name}-{version}.mkp"
+          artifact_name = f"{package_name}-mkp-{os.environ['GITHUB_RUN_NUMBER']}"
+
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"PACKAGE_VERSION={version}\n")
+              handle.write(f"PACKAGE_FILENAME={filename}\n")
+
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"version={version}\n")
+              handle.write(f"filename={filename}\n")
+              handle.write(f"artifact-name={artifact_name}\n")
+
+          print(f"Resolved {package_name} package version {version} from {info_path}")
+          PY
 
       - name: Start Checkmk Raw packaging container
         run: |
@@ -254,29 +296,32 @@ jobs:
           plugin_base = Path(os.environ["PLUGIN_BASE"])
           package_name = os.environ["PACKAGE_NAME"]
           package_dir = os.environ["PACKAGE_DIR"]
+          package_version = os.environ["PACKAGE_VERSION"]
           repository = os.environ["GITHUB_REPOSITORY"]
           plugin_root = plugin_base / package_name
+          source_info_path = Path("/work") / package_dir / "src" / "info"
+          source_info = ast.literal_eval(source_info_path.read_text(encoding="utf-8"))
+
+          if source_info.get("name") != package_name:
+              raise SystemExit("Package name changed after metadata resolution")
+          if str(source_info.get("version")) != package_version:
+              raise SystemExit("Package version changed after metadata resolution")
+
           files = sorted(
               str(path.relative_to(plugin_base))
               for path in plugin_root.rglob("*")
               if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"
           )
 
-          manifest = {
-              "name": package_name,
-              "title": "AudioCode Gateway",
-              "author": "Kuhn & Ruess GmbH",
-              "description": (
-                  "SNMP monitoring for AudioCodes gateways and SBCs, including calls, "
-                  "license capacity, HA health, TLS connections, alarms and SIP statistics."
-              ),
-              "version": os.environ["PACKAGE_VERSION"],
-              "version.min_required": "2.4.0b1",
-              "version.packaged": "2.4.0p34",
-              "version.usable_until": "2.4.99",
-              "download_url": f"https://github.com/{repository}/tree/master/{package_dir}",
-              "files": {"cmk_addons_plugins": files},
-          }
+          manifest = dict(source_info)
+          manifest.update(
+              {
+                  "download_url": f"https://github.com/{repository}/tree/master/{package_dir}",
+                  "files": {"cmk_addons_plugins": files},
+                  "version.packaged": "2.4.0p34",
+                  "version.usable_until": "2.4.99",
+              }
+          )
 
           content = repr(manifest) + "\n"
           path = Path(os.environ["MANIFEST"])
@@ -295,7 +340,7 @@ jobs:
             set -euxo pipefail
             manifest="$HOME/tmp/check_mk/${PACKAGE_NAME}-ci.manifest.temp"
             mkp --debug package "$manifest"
-            find "$HOME/var/check_mk/packages_local" -maxdepth 1 -type f -name "${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp" -ls
+            test -f "$HOME/var/check_mk/packages_local/${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp"
           '
 
       - name: Inspect and verify MKP with Checkmk
@@ -357,24 +402,23 @@ jobs:
       - name: Export MKP to package folder
         run: |
           set -euo pipefail
-          package_name="${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp"
-          output="${PACKAGE_DIR}/${package_name}"
+          output="${PACKAGE_DIR}/${PACKAGE_FILENAME}"
           docker cp \
-            "checkmk-mkp:/omd/sites/cmk/var/check_mk/packages_local/${package_name}" \
+            "checkmk-mkp:/omd/sites/cmk/var/check_mk/packages_local/${PACKAGE_FILENAME}" \
             "$output"
           chmod 0644 "$output"
           (
             cd "$PACKAGE_DIR"
-            sha256sum "$package_name" >"${package_name}.sha256"
+            sha256sum "$PACKAGE_FILENAME" >"${PACKAGE_FILENAME}.sha256"
           )
 
       - name: Upload MKP artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
-          name: ${{ env.PACKAGE_NAME }}-mkp-${{ github.run_number }}
+          name: ${{ steps.package-metadata.outputs.artifact-name }}
           path: |
-            ${{ env.PACKAGE_DIR }}/${{ env.PACKAGE_NAME }}-${{ env.PACKAGE_VERSION }}.mkp
-            ${{ env.PACKAGE_DIR }}/${{ env.PACKAGE_NAME }}-${{ env.PACKAGE_VERSION }}.mkp.sha256
+            ${{ env.PACKAGE_DIR }}/${{ steps.package-metadata.outputs.filename }}
+            ${{ env.PACKAGE_DIR }}/${{ steps.package-metadata.outputs.filename }}.sha256
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
@@ -386,3 +430,63 @@ jobs:
       - name: Remove packaging container
         if: always()
         run: docker rm --force checkmk-mkp || true
+
+  persist-mkp:
+    name: Commit MKP to package folder
+    needs:
+      - mkp-package
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Download generated MKP
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ needs.mkp-package.outputs.artifact-name }}
+          path: ${{ env.PACKAGE_DIR }}
+
+      - name: Verify downloaded package
+        env:
+          PACKAGE_FILENAME: ${{ needs.mkp-package.outputs.package-filename }}
+        run: |
+          set -euo pipefail
+          test -f "${PACKAGE_DIR}/${PACKAGE_FILENAME}"
+          test -f "${PACKAGE_DIR}/${PACKAGE_FILENAME}.sha256"
+          (
+            cd "$PACKAGE_DIR"
+            sha256sum --check "${PACKAGE_FILENAME}.sha256"
+          )
+
+      - name: Commit generated package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_FILENAME: ${{ needs.mkp-package.outputs.package-filename }}
+          PACKAGE_VERSION: ${{ needs.mkp-package.outputs.package-version }}
+        run: |
+          set -euo pipefail
+          package_path="${PACKAGE_DIR}/${PACKAGE_FILENAME}"
+          checksum_path="${package_path}.sha256"
+          remote_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "$package_path" "$checksum_path"
+
+          if git diff --cached --quiet; then
+            echo "Generated MKP is unchanged; nothing to commit."
+            exit 0
+          fi
+
+          git commit -m "build(${PACKAGE_NAME}): update MKP ${PACKAGE_VERSION} [skip ci]"
+          git fetch "$remote_url" "$GITHUB_REF_NAME"
+          git rebase FETCH_HEAD
+          git push "$remote_url" "HEAD:${GITHUB_REF_NAME}"
