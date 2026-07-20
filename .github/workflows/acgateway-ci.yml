@@ -181,8 +181,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Prepare artifact directory
-        run: install -d -m 0777 "$GITHUB_WORKSPACE/artifacts"
+      - name: Prepare package output directory
+        run: install -d -m 0777 "$GITHUB_WORKSPACE/acgateway/dist"
 
       - name: Start Checkmk Raw packaging container
         run: |
@@ -195,7 +195,7 @@ jobs:
             --env CI_SHORT_SHA="${GITHUB_SHA::12}" \
             --env CI_RUN_NUMBER="${GITHUB_RUN_NUMBER}" \
             --volume "$GITHUB_WORKSPACE:/work:ro" \
-            --volume "$GITHUB_WORKSPACE/artifacts:/artifacts" \
+            --volume "$GITHUB_WORKSPACE/acgateway/dist:/artifacts" \
             checkmk/check-mk-raw:2.4.0p34
 
           for _ in $(seq 1 120); do
@@ -357,8 +357,8 @@ jobs:
         with:
           name: acgateway-mkp-${{ github.run_number }}
           path: |
-            artifacts/*.mkp
-            artifacts/*.sha256
+            acgateway/dist/*.mkp
+            acgateway/dist/*.sha256
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
