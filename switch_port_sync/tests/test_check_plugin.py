@@ -67,12 +67,12 @@ def record(item: str, state_a: str, state_b: str) -> dict[str, Any]:
     return {
         "item": item,
         "host_a": {
-            "name": "041-Transit-001",
+            "name": "switch-1",
             "state": state_a,
             "reason": "test",
         },
         "host_b": {
-            "name": "041-Transit-002",
+            "name": "switch-2",
             "state": state_b,
             "reason": "test",
         },
@@ -81,9 +81,9 @@ def record(item: str, state_a: str, state_b: str) -> dict[str, Any]:
 
 def section(*records: dict[str, Any]) -> dict[str, Any]:
     return {
-        "pair_name": "Transit pair",
-        "host_a": "041-Transit-001",
-        "host_b": "041-Transit-002",
+        "pair_name": "Switch pair 1",
+        "host_a": "switch-1",
+        "host_b": "switch-2",
         "records": list(records),
     }
 
@@ -150,7 +150,7 @@ def test_pair_status_error_is_unknown() -> None:
     result = list(
         module.check_switch_port_sync(
             "Pair status",
-            {"pair_name": "Transit pair", "records": [], "error": "socket unavailable"},
+            {"pair_name": "Switch pair 1", "records": [], "error": "socket unavailable"},
         )
     )[0]
     assert result.state == State.UNKNOWN
