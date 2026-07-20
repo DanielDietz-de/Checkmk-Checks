@@ -1,0 +1,12 @@
+title: AudioCodes SBC HA health
+agents: snmp
+catalog: hw/network/audiocodes
+license: GPL
+distribution: kuhn-ruess
+description:
+ Monitors HA keepalive packet loss for active and redundant units. Active HA
+ fault, configuration mismatch, switchover and synchronization alarms are
+ evaluated from the AudioCodes active alarm table.
+
+inventory:
+ One service named {SBC HA Health} is created when HA KPI objects exist.
