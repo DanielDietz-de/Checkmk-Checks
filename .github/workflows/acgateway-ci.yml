@@ -253,6 +253,8 @@ jobs:
 
           plugin_base = Path(os.environ["PLUGIN_BASE"])
           package_name = os.environ["PACKAGE_NAME"]
+          package_dir = os.environ["PACKAGE_DIR"]
+          repository = os.environ["GITHUB_REPOSITORY"]
           plugin_root = plugin_base / package_name
           files = sorted(
               str(path.relative_to(plugin_base))
@@ -272,10 +274,7 @@ jobs:
               "version.min_required": "2.4.0b1",
               "version.packaged": "2.4.0p34",
               "version.usable_until": "2.4.99",
-              "download_url": (
-                  f"https://github.com/{os.environ['GITHUB_REPOSITORY']}"
-                  f"/tree/master/{os.environ['PACKAGE_DIR']}"
-              ),
+              "download_url": f"https://github.com/{repository}/tree/master/{package_dir}",
               "files": {"cmk_addons_plugins": files},
           }
 
