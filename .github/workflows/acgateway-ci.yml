@@ -213,7 +213,7 @@ jobs:
           echo 'Checkmk packaging container did not become ready' >&2
           exit 1
 
-      - name: Build, inspect and verify MKP
+      - name: Install package source into Checkmk
         run: |
           docker exec --user root checkmk-mkp bash -lc '
             set -euo pipefail
@@ -225,15 +225,16 @@ jobs:
             chown -R cmk:cmk "$target"
           '
 
+      - name: Generate and validate MKP manifest
+        run: |
           docker exec --user cmk checkmk-mkp bash -lc '
             set -euo pipefail
-            export PAGER=cat
             plugin_base="$HOME/local/lib/python3/cmk_addons/plugins"
-            plugin_root="$plugin_base/acgateway"
             manifest="$HOME/tmp/check_mk/acgateway-ci.manifest.temp"
-
             mkdir -p "$(dirname "$manifest")"
+
             MANIFEST="$manifest" PLUGIN_BASE="$plugin_base" python3 - <<"PY"
+          import ast
           import os
           from pathlib import Path
 
@@ -248,7 +249,7 @@ jobs:
           manifest = {
               "name": "acgateway",
               "title": "AudioCode Gateway",
-              "author": "Kuhn & Rueß GmbH",
+              "author": "Kuhn & Ruess GmbH",
               "description": (
                   "SNMP monitoring for AudioCodes gateways and SBCs, including calls, "
                   "license capacity, HA health, TLS connections, alarms and SIP statistics."
@@ -261,16 +262,41 @@ jobs:
               "files": {"cmk_addons_plugins": files},
           }
 
-          Path(os.environ["MANIFEST"]).write_text(repr(manifest) + "\n", encoding="utf-8")
-          print(f"Packaging {len(files)} files")
+          content = repr(manifest) + "\n"
+          path = Path(os.environ["MANIFEST"])
+          path.write_text(content, encoding="utf-8")
+          parsed = ast.literal_eval(path.read_text(encoding="utf-8"))
+          assert parsed == manifest
+          assert files
+          print(f"Manifest contains {len(files)} files")
+          print(content)
           PY
+          '
 
-            mkp package "$manifest"
+      - name: Build MKP with Checkmk
+        run: |
+          docker exec --user cmk checkmk-mkp bash -lc '
+            set -euxo pipefail
+            mkp --debug package "$HOME/tmp/check_mk/acgateway-ci.manifest.temp"
+            find "$HOME/var/check_mk/packages_local" -maxdepth 1 -type f -name "*.mkp" -ls
+          '
+
+      - name: Inspect MKP with Checkmk
+        run: |
+          docker exec --user cmk checkmk-mkp bash -lc '
+            set -euo pipefail
+            export PAGER=cat
             package=$(find "$HOME/var/check_mk/packages_local" -maxdepth 1 -type f -name "acgateway-${CI_PACKAGE_VERSION}.mkp" -print -quit)
             test -n "$package"
-
-            echo "Inspecting $package"
             mkp inspect "$package"
+          '
+
+      - name: Verify MKP archive contents and checksum
+        run: |
+          docker exec --user cmk checkmk-mkp bash -lc '
+            set -euo pipefail
+            package=$(find "$HOME/var/check_mk/packages_local" -maxdepth 1 -type f -name "acgateway-${CI_PACKAGE_VERSION}.mkp" -print -quit)
+            test -n "$package"
 
             top_level=$(tar tf "$package")
             grep -qx "info" <<<"$top_level"
