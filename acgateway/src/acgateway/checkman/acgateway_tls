@@ -1,6 +1,6 @@
 title: AudioCodes SBC TLS health
 agents: snmp
-catalog: applications/voip
+catalog: hw/network/audiocodes
 license: GPL
 distribution: kuhn-ruess
 description:
