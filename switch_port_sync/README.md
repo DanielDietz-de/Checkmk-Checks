@@ -1,10 +1,10 @@
-# Switchboard Syncs
+# switch_port_sync
 
 <!-- compatibility-badges:start -->
 ![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.4.0b1-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.4.0p34-blue)
 <!-- compatibility-badges:end -->
 
-Checkmk 2.4 extension for monitoring one-to-one interface synchronization across a pair of switches. The technical package and plug-in name is `switch_port_sync`.
+Checkmk 2.4 extension for monitoring one-to-one interface synchronization across a pair of switches. The repository folder, technical package, and plug-in name are all `switch_port_sync`.
 
 The default rule values are prefilled for the transit-switch pair:
 
@@ -81,7 +81,7 @@ cmk -R
 
 ### Source installation
 
-As the Checkmk site user:
+As the Checkmk site user, from the repository's `switch_port_sync` directory:
 
 ```bash
 install -d "$OMD_ROOT/local/lib/python3/cmk_addons/plugins/switch_port_sync"
