@@ -344,12 +344,16 @@ jobs:
 
             output="/artifacts/acgateway-${CI_PACKAGE_VERSION}-run${CI_RUN_NUMBER}-${CI_SHORT_SHA}.mkp"
             cp "$package" "$output"
-            sha256sum "$output" >"${output}.sha256"
+            artifact_name=$(basename "$output")
+            (
+              cd /artifacts
+              sha256sum "$artifact_name" >"${artifact_name}.sha256"
+            )
             chmod 0644 "$output" "${output}.sha256"
           '
 
       - name: Upload MKP artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: acgateway-mkp-${{ github.run_number }}
           path: |
