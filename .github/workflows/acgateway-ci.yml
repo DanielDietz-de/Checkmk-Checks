@@ -166,3 +166,144 @@ jobs:
       - name: Remove temporary Checkmk container
         if: always()
         run: docker rm --force checkmk-ci || true
+
+  mkp-package:
+    name: Build and inspect MKP
+    needs:
+      - python-tests
+      - checkmk-api-load
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Prepare artifact directory
+        run: mkdir -p "$GITHUB_WORKSPACE/artifacts"
+
+      - name: Start Checkmk Raw packaging container
+        run: |
+          set -euo pipefail
+          docker run --detach \
+            --name checkmk-mkp \
+            --env CMK_PASSWORD='acgateway-ci-password' \
+            --env CMK_SITE_ID='cmk' \
+            --env CI_PACKAGE_VERSION="2.0.4-ci.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" \
+            --env CI_SHORT_SHA="${GITHUB_SHA::12}" \
+            --volume "$GITHUB_WORKSPACE:/work:ro" \
+            --volume "$GITHUB_WORKSPACE/artifacts:/artifacts" \
+            checkmk/check-mk-raw:2.4.0p34
+
+          for _ in $(seq 1 120); do
+            if docker logs checkmk-mkp 2>&1 | grep -q '### CONTAINER STARTED'; then
+              exit 0
+            fi
+            if ! docker inspect --format '{{.State.Running}}' checkmk-mkp | grep -q true; then
+              docker logs checkmk-mkp
+              exit 1
+            fi
+            sleep 2
+          done
+
+          docker logs checkmk-mkp
+          echo 'Checkmk packaging container did not become ready' >&2
+          exit 1
+
+      - name: Build, inspect and verify MKP
+        run: |
+          docker exec --user root checkmk-mkp bash -lc '
+            set -euo pipefail
+            target=/omd/sites/cmk/local/lib/python3/cmk_addons/plugins/acgateway
+            install -d -o cmk -g cmk "$target"
+            cp -a /work/acgateway/src/acgateway/. "$target/"
+            find "$target" -type d -name __pycache__ -prune -exec rm -rf {} +
+            find "$target" -type f -name "*.pyc" -delete
+            chown -R cmk:cmk "$target"
+          '
+
+          docker exec --user cmk checkmk-mkp bash -lc '
+            set -euo pipefail
+            export PAGER=cat
+            plugin_base="$HOME/local/lib/python3/cmk_addons/plugins"
+            plugin_root="$plugin_base/acgateway"
+            manifest="$HOME/tmp/check_mk/acgateway-ci.manifest.temp"
+
+            mkdir -p "$(dirname "$manifest")"
+            MANIFEST="$manifest" PLUGIN_BASE="$plugin_base" python3 - <<"PY"
+          import os
+          from pathlib import Path
+
+          plugin_base = Path(os.environ["PLUGIN_BASE"])
+          plugin_root = plugin_base / "acgateway"
+          files = sorted(
+              str(path.relative_to(plugin_base))
+              for path in plugin_root.rglob("*")
+              if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"
+          )
+
+          manifest = {
+              "name": "acgateway",
+              "title": "AudioCode Gateway",
+              "author": "Kuhn & Rueß GmbH",
+              "description": (
+                  "SNMP monitoring for AudioCodes gateways and SBCs, including calls, "
+                  "license capacity, HA health, TLS connections, alarms and SIP statistics."
+              ),
+              "version": os.environ["CI_PACKAGE_VERSION"],
+              "version.min_required": "2.4.0b1",
+              "version.packaged": "2.4.0p34",
+              "version.usable_until": "2.4.99",
+              "download_url": "https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/acgateway",
+              "files": {"cmk_addons_plugins": files},
+          }
+
+          Path(os.environ["MANIFEST"]).write_text(repr(manifest) + "\n", encoding="utf-8")
+          print(f"Packaging {len(files)} files")
+          PY
+
+            mkp package "$manifest"
+            package=$(find "$HOME/var/check_mk/packages_local" -maxdepth 1 -type f -name "acgateway-${CI_PACKAGE_VERSION}.mkp" -print -quit)
+            test -n "$package"
+
+            echo "Inspecting $package"
+            mkp inspect "$package"
+
+            top_level=$(tar tf "$package")
+            grep -qx "info" <<<"$top_level"
+            grep -qx "info.json" <<<"$top_level"
+            grep -qx "cmk_addons_plugins.tar" <<<"$top_level"
+
+            temp_dir=$(mktemp -d)
+            tar xf "$package" -C "$temp_dir" cmk_addons_plugins.tar info info.json
+            tar tf "$temp_dir/cmk_addons_plugins.tar" | grep -q "^acgateway/agent_based/call_capacity.py$"
+            tar tf "$temp_dir/cmk_addons_plugins.tar" | grep -q "^acgateway/agent_based/ha.py$"
+            tar tf "$temp_dir/cmk_addons_plugins.tar" | grep -q "^acgateway/agent_based/license.py$"
+            tar tf "$temp_dir/cmk_addons_plugins.tar" | grep -q "^acgateway/agent_based/tls.py$"
+            tar tf "$temp_dir/cmk_addons_plugins.tar" | grep -q "^acgateway/graphing/acgateway_extended.py$"
+
+            output="/artifacts/acgateway-${CI_PACKAGE_VERSION}-${CI_SHORT_SHA}.mkp"
+            cp "$package" "$output"
+            sha256sum "$output" >"${output}.sha256"
+          '
+
+      - name: Upload MKP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: acgateway-mkp-${{ github.run_number }}
+          path: |
+            artifacts/*.mkp
+            artifacts/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Show Checkmk logs on failure
+        if: failure()
+        run: docker logs checkmk-mkp || true
+
+      - name: Remove packaging container
+        if: always()
+        run: docker rm --force checkmk-mkp || true
