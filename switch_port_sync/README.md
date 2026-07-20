@@ -73,8 +73,8 @@ No environment-specific sample configuration file is shipped. The values below a
 Command-line equivalent as the site user:
 
 ```bash
-mkp add /path/to/switch_port_sync-1.0.0.mkp
-mkp enable switch_port_sync 1.0.0
+mkp add /path/to/switch_port_sync-1.0.1.mkp
+mkp enable switch_port_sync 1.0.1
 cmk -R
 ```
 
@@ -165,8 +165,8 @@ The extension contains no device credentials and does not contact the switches d
 ## Removal
 
 ```bash
-mkp disable switch_port_sync 1.0.0
-mkp remove switch_port_sync 1.0.0
+mkp disable switch_port_sync 1.0.1
+mkp remove switch_port_sync 1.0.1
 cmk -R
 ```
 
