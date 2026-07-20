@@ -298,18 +298,21 @@ jobs:
             package=$(find "$HOME/var/check_mk/packages_local" -maxdepth 1 -type f -name "acgateway-${CI_PACKAGE_VERSION}.mkp" -print -quit)
             test -n "$package"
 
-            top_level=$(tar tf "$package")
+            top_level=$(tar tf "$package" | sed "s#^\./##")
             grep -qx "info" <<<"$top_level"
             grep -qx "info.json" <<<"$top_level"
             grep -qx "cmk_addons_plugins.tar" <<<"$top_level"
 
             temp_dir=$(mktemp -d)
-            tar xf "$package" -C "$temp_dir" cmk_addons_plugins.tar info info.json
-            tar tf "$temp_dir/cmk_addons_plugins.tar" | grep -q "^acgateway/agent_based/call_capacity.py$"
-            tar tf "$temp_dir/cmk_addons_plugins.tar" | grep -q "^acgateway/agent_based/ha.py$"
-            tar tf "$temp_dir/cmk_addons_plugins.tar" | grep -q "^acgateway/agent_based/license.py$"
-            tar tf "$temp_dir/cmk_addons_plugins.tar" | grep -q "^acgateway/agent_based/tls.py$"
-            tar tf "$temp_dir/cmk_addons_plugins.tar" | grep -q "^acgateway/graphing/acgateway_extended.py$"
+            tar xf "$package" -C "$temp_dir"
+            component=$(find "$temp_dir" -maxdepth 2 -type f -name "cmk_addons_plugins.tar" -print -quit)
+            test -n "$component"
+            inner=$(tar tf "$component" | sed "s#^\./##")
+            grep -qx "acgateway/agent_based/call_capacity.py" <<<"$inner"
+            grep -qx "acgateway/agent_based/ha.py" <<<"$inner"
+            grep -qx "acgateway/agent_based/license.py" <<<"$inner"
+            grep -qx "acgateway/agent_based/tls.py" <<<"$inner"
+            grep -qx "acgateway/graphing/acgateway_extended.py" <<<"$inner"
 
             output="/artifacts/acgateway-${CI_PACKAGE_VERSION}-run${CI_RUN_NUMBER}-${CI_SHORT_SHA}.mkp"
             cp "$package" "$output"
