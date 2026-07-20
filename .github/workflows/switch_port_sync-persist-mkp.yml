@@ -107,6 +107,7 @@ jobs:
         if: steps.freshness.outputs.persist == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           package_path="${PACKAGE_DIR}/${PACKAGE_FILENAME}"
@@ -124,5 +125,13 @@ jobs:
 
           git commit -m "build(${PACKAGE_NAME}): update MKP ${PACKAGE_VERSION} [skip ci]"
           git fetch "$remote_url" master
+
+          if ! git diff --quiet "${SOURCE_SHA}..FETCH_HEAD" -- \
+            "$PACKAGE_DIR" \
+            .github/workflows/switch_port_sync-ci.yml; then
+            echo "Package inputs changed on master while the MKP was being persisted; refusing to push a stale package."
+            exit 0
+          fi
+
           git rebase FETCH_HEAD
           git push "$remote_url" HEAD:master
