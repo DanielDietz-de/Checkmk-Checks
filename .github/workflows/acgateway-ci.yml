@@ -191,8 +191,9 @@ jobs:
             --name checkmk-mkp \
             --env CMK_PASSWORD='acgateway-ci-password' \
             --env CMK_SITE_ID='cmk' \
-            --env CI_PACKAGE_VERSION="2.0.4-ci.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" \
+            --env CI_PACKAGE_VERSION='2.0.4' \
             --env CI_SHORT_SHA="${GITHUB_SHA::12}" \
+            --env CI_RUN_NUMBER="${GITHUB_RUN_NUMBER}" \
             --volume "$GITHUB_WORKSPACE:/work:ro" \
             --volume "$GITHUB_WORKSPACE/artifacts:/artifacts" \
             checkmk/check-mk-raw:2.4.0p34
@@ -284,7 +285,7 @@ jobs:
             tar tf "$temp_dir/cmk_addons_plugins.tar" | grep -q "^acgateway/agent_based/tls.py$"
             tar tf "$temp_dir/cmk_addons_plugins.tar" | grep -q "^acgateway/graphing/acgateway_extended.py$"
 
-            output="/artifacts/acgateway-${CI_PACKAGE_VERSION}-${CI_SHORT_SHA}.mkp"
+            output="/artifacts/acgateway-${CI_PACKAGE_VERSION}-run${CI_RUN_NUMBER}-${CI_SHORT_SHA}.mkp"
             cp "$package" "$output"
             sha256sum "$output" >"${output}.sha256"
           '
