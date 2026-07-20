@@ -1,0 +1,103 @@
+name: Persist switch_port_sync MKP
+
+on:
+  workflow_run:
+    workflows:
+      - switch_port_sync checks
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: persist-switch-port-sync-mkp
+  cancel-in-progress: false
+
+env:
+  PACKAGE_DIR: switch_port_sync
+  PACKAGE_NAME: switch_port_sync
+  PACKAGE_VERSION: "1.0.1"
+
+jobs:
+  persist-mkp:
+    name: Commit MKP to package folder
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'master' &&
+      github.event.workflow_run.actor.login != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out master
+        uses: actions/checkout@v6
+        with:
+          ref: master
+          persist-credentials: false
+
+      - name: Reject stale package builds
+        id: freshness
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          git fetch origin master
+
+          if git diff --quiet "${SOURCE_SHA}..origin/master" -- \
+            "$PACKAGE_DIR" \
+            .github/workflows/switch_port_sync-ci.yml; then
+            echo "persist=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "A newer switch_port_sync source or packaging change exists; skipping stale artifact."
+            echo "persist=false" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Download generated MKP
+        if: steps.freshness.outputs.persist == 'true'
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ env.PACKAGE_NAME }}-mkp-${{ github.event.workflow_run.run_number }}
+          path: ${{ env.PACKAGE_DIR }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Verify downloaded package
+        if: steps.freshness.outputs.persist == 'true'
+        run: |
+          set -euo pipefail
+          package_filename="${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp"
+          test -f "${PACKAGE_DIR}/${package_filename}"
+          test -f "${PACKAGE_DIR}/${package_filename}.sha256"
+          (
+            cd "$PACKAGE_DIR"
+            sha256sum --check "${package_filename}.sha256"
+          )
+
+      - name: Commit generated package
+        if: steps.freshness.outputs.persist == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          package_filename="${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp"
+          package_path="${PACKAGE_DIR}/${package_filename}"
+          checksum_path="${package_path}.sha256"
+          remote_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "$package_path" "$checksum_path"
+
+          if git diff --cached --quiet; then
+            echo "Generated MKP is already current in ${PACKAGE_DIR}; nothing to commit."
+            exit 0
+          fi
+
+          git commit -m "build(${PACKAGE_NAME}): update MKP ${PACKAGE_VERSION} [skip ci]"
+          git fetch "$remote_url" master
+          git rebase FETCH_HEAD
+          git push "$remote_url" HEAD:master
