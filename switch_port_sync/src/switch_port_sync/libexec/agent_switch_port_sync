@@ -18,8 +18,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-DEFAULT_SERVICE_REGEX = r"^Interface (?P<item>.+)$"
-
 # The stock Checkmk interface check emits either a summary such as "(up)" or
 # details such as "Operational state: up". Match both forms, case-insensitively.
 _UP_PATTERNS = (
@@ -319,7 +317,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--pair-name", required=True)
     parser.add_argument("--host-a", required=True)
     parser.add_argument("--host-b", required=True)
-    parser.add_argument("--service-regex", default=DEFAULT_SERVICE_REGEX)
+    parser.add_argument("--service-regex", required=True)
     parser.add_argument(
         "--livestatus-socket",
         default=str(Path(os.environ.get("OMD_ROOT", str(Path.home()))) / "tmp/run/live"),
