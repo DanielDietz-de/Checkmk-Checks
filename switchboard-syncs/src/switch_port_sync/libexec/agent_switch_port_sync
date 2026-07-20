@@ -1,0 +1,361 @@
+#!/usr/bin/env python3
+"""Checkmk special agent for comparing interface services on a switch pair.
+
+The agent reads existing Checkmk interface service states from the local
+Livestatus socket. It intentionally does not poll the switches again.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import socket
+import sys
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+DEFAULT_SERVICE_REGEX = r"^Interface (?P<item>.+)$"
+
+# The stock Checkmk interface check emits either a summary such as "(up)" or
+# details such as "Operational state: up". Match both forms, case-insensitively.
+_UP_PATTERNS = (
+    re.compile(r"\bOperational state:\s*up\b", re.IGNORECASE),
+    re.compile(r"(?:^|[\s,;])\(up\)(?:$|[\s,;])", re.IGNORECASE),
+)
+_DOWN_PATTERNS = (
+    re.compile(
+        r"\bOperational state:\s*(?:down|testing|unknown|dormant|not present|"
+        r"lower layer down|degraded)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:^|[\s,;])\((?:down|testing|unknown|dormant|not present|"
+        r"lower layer down|degraded)\)(?:$|[\s,;])",
+        re.IGNORECASE,
+    ),
+)
+
+
+class LiveStatusError(RuntimeError):
+    """Raised when Livestatus rejects or cannot answer a query."""
+
+
+@dataclass(frozen=True)
+class InterfaceService:
+    description: str
+    core_state: int
+    plugin_output: str
+    long_plugin_output: str
+    has_been_checked: bool
+    stale: bool
+    last_check: int
+    host_state: int
+
+
+def _safe_lql_value(value: str) -> str:
+    if "\n" in value or "\r" in value:
+        raise ValueError("Host names must not contain line breaks")
+    return value
+
+
+def _recv_all(sock: socket.socket) -> bytes:
+    chunks: list[bytes] = []
+    while True:
+        chunk = sock.recv(65536)
+        if not chunk:
+            return b"".join(chunks)
+        chunks.append(chunk)
+
+
+def livestatus_query(socket_path: Path, query: str) -> Any:
+    request = f"{query.rstrip()}\nResponseHeader: fixed16\nOutputFormat: json\n"
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+        sock.settimeout(10.0)
+        sock.connect(str(socket_path))
+        sock.sendall(request.encode("utf-8"))
+        sock.shutdown(socket.SHUT_WR)
+        response = _recv_all(sock)
+
+    if len(response) < 16:
+        raise LiveStatusError("Livestatus returned an incomplete response")
+
+    header = response[:16].decode("ascii", errors="replace")
+    body = response[16:]
+    try:
+        status = int(header[:3])
+    except ValueError as exc:
+        raise LiveStatusError(f"Invalid Livestatus response header: {header!r}") from exc
+
+    if status != 200:
+        message = body.decode("utf-8", errors="replace").strip()
+        raise LiveStatusError(f"Livestatus returned {status}: {message}")
+
+    try:
+        return json.loads(body.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        raise LiveStatusError("Livestatus returned invalid JSON") from exc
+
+
+def _parse_preferred_rows(rows: Any) -> list[InterfaceService]:
+    if not isinstance(rows, list):
+        raise LiveStatusError("Livestatus service result is not a list")
+
+    services: list[InterfaceService] = []
+    for row in rows:
+        if not isinstance(row, Sequence) or isinstance(row, (str, bytes)) or len(row) != 8:
+            raise LiveStatusError("Livestatus returned an unexpected service row")
+        try:
+            services.append(
+                InterfaceService(
+                    description=str(row[0]),
+                    core_state=int(row[1]),
+                    plugin_output=str(row[2] or ""),
+                    long_plugin_output=str(row[3] or ""),
+                    has_been_checked=bool(row[4]),
+                    stale=bool(row[5]),
+                    last_check=int(row[6] or 0),
+                    host_state=int(row[7] or 0),
+                )
+            )
+        except (TypeError, ValueError) as exc:
+            raise LiveStatusError("Livestatus returned invalid service values") from exc
+    return services
+
+
+def _parse_fallback_rows(rows: Any) -> list[InterfaceService]:
+    if not isinstance(rows, list):
+        raise LiveStatusError("Livestatus service result is not a list")
+
+    services: list[InterfaceService] = []
+    for row in rows:
+        if not isinstance(row, Sequence) or isinstance(row, (str, bytes)) or len(row) != 7:
+            raise LiveStatusError("Livestatus returned an unexpected fallback service row")
+        try:
+            services.append(
+                InterfaceService(
+                    description=str(row[0]),
+                    core_state=int(row[1]),
+                    plugin_output=str(row[2] or ""),
+                    long_plugin_output="",
+                    has_been_checked=bool(row[3]),
+                    stale=float(row[4] or 0.0) > 1.0,
+                    last_check=int(row[5] or 0),
+                    host_state=int(row[6] or 0),
+                )
+            )
+        except (TypeError, ValueError) as exc:
+            raise LiveStatusError("Livestatus returned invalid fallback service values") from exc
+    return services
+
+
+def _query_host_services(socket_path: Path, host_name: str) -> list[InterfaceService]:
+    host_name = _safe_lql_value(host_name)
+
+    preferred_columns = (
+        "description state plugin_output long_plugin_output "
+        "has_been_checked is_stale last_check host_state"
+    )
+    fallback_columns = (
+        "description state plugin_output has_been_checked staleness last_check host_state"
+    )
+
+    try:
+        rows = livestatus_query(
+            socket_path,
+            "\n".join(
+                [
+                    "GET services",
+                    f"Columns: {preferred_columns}",
+                    f"Filter: host_name = {host_name}",
+                    "Timelimit: 5",
+                ]
+            ),
+        )
+        return _parse_preferred_rows(rows)
+    except LiveStatusError:
+        # Compatibility fallback for cores exposing the staleness ratio rather
+        # than the is_stale boolean and without long_plugin_output.
+        rows = livestatus_query(
+            socket_path,
+            "\n".join(
+                [
+                    "GET services",
+                    f"Columns: {fallback_columns}",
+                    f"Filter: host_name = {host_name}",
+                    "Timelimit: 5",
+                ]
+            ),
+        )
+        return _parse_fallback_rows(rows)
+
+
+def interface_state(service: InterfaceService | None) -> tuple[str, str]:
+    """Return the normalized operational state and a diagnostic reason."""
+
+    if service is None:
+        return "missing", "interface service missing"
+    if not service.has_been_checked:
+        return "unknown", "interface service has not been checked"
+    if service.stale:
+        return "stale", "interface service is stale"
+    if service.host_state != 0:
+        return "unknown", f"host state is {service.host_state}"
+
+    output = f"{service.plugin_output}\n{service.long_plugin_output}"
+    reports_up = any(pattern.search(output) for pattern in _UP_PATTERNS)
+    reports_down = any(pattern.search(output) for pattern in _DOWN_PATTERNS)
+
+    if reports_up and reports_down:
+        return "unknown", "interface output contains conflicting operational states"
+    if reports_up:
+        return "up", "operational state is up"
+    if reports_down:
+        return "down", "operational state is not up"
+
+    # An OK interface service without explicit state text is a safe up fallback.
+    # A non-OK service is not treated as down because it may only have crossed a
+    # traffic, discard, or error threshold.
+    if service.core_state == 0:
+        return "up", "interface service is OK; operational text unavailable"
+    return "unknown", "operational state could not be extracted"
+
+
+def _extract_interfaces(
+    services: Iterable[InterfaceService],
+    service_regex: re.Pattern[str],
+    host_name: str,
+) -> dict[str, InterfaceService]:
+    result: dict[str, InterfaceService] = {}
+    for service in services:
+        match = service_regex.match(service.description)
+        if not match:
+            continue
+        if "item" in match.groupdict():
+            item = match.group("item")
+        elif match.groups():
+            item = match.group(1)
+        else:
+            item = match.group(0)
+        item = item.strip()
+        if not item:
+            continue
+        if item in result:
+            raise ValueError(
+                f"Multiple interface services on {host_name!r} map to item {item!r}"
+            )
+        result[item] = service
+    return result
+
+
+def _compile_service_regex(service_regex_text: str) -> re.Pattern[str]:
+    service_regex = re.compile(service_regex_text)
+    if "item" not in service_regex.groupindex and service_regex.groups < 1:
+        raise ValueError(
+            "Service regex must contain a named group 'item' or at least one capture group"
+        )
+    return service_regex
+
+
+def build_payload(
+    *,
+    pair_name: str,
+    host_a: str,
+    host_b: str,
+    service_regex_text: str,
+    services_a: Iterable[InterfaceService],
+    services_b: Iterable[InterfaceService],
+) -> dict[str, Any]:
+    if host_a == host_b:
+        raise ValueError("Switch A and Switch B must be different Checkmk hosts")
+
+    service_regex = _compile_service_regex(service_regex_text)
+    interfaces_a = _extract_interfaces(services_a, service_regex, host_a)
+    interfaces_b = _extract_interfaces(services_b, service_regex, host_b)
+
+    records: list[dict[str, Any]] = []
+    for item in sorted(set(interfaces_a) | set(interfaces_b), key=str.casefold):
+        service_a = interfaces_a.get(item)
+        service_b = interfaces_b.get(item)
+        state_a, reason_a = interface_state(service_a)
+        state_b, reason_b = interface_state(service_b)
+        records.append(
+            {
+                "item": item,
+                "host_a": {
+                    "name": host_a,
+                    "state": state_a,
+                    "reason": reason_a,
+                    "service_description": service_a.description if service_a else None,
+                    "last_check": service_a.last_check if service_a else None,
+                },
+                "host_b": {
+                    "name": host_b,
+                    "state": state_b,
+                    "reason": reason_b,
+                    "service_description": service_b.description if service_b else None,
+                    "last_check": service_b.last_check if service_b else None,
+                },
+            }
+        )
+
+    return {
+        "schema_version": 1,
+        "pair_name": pair_name,
+        "host_a": host_a,
+        "host_b": host_b,
+        "service_regex": service_regex_text,
+        "records": records,
+    }
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Compare existing Checkmk interface services on two switch hosts."
+    )
+    parser.add_argument("--pair-name", required=True)
+    parser.add_argument("--host-a", required=True)
+    parser.add_argument("--host-b", required=True)
+    parser.add_argument("--service-regex", default=DEFAULT_SERVICE_REGEX)
+    parser.add_argument(
+        "--livestatus-socket",
+        default=str(Path(os.environ.get("OMD_ROOT", str(Path.home()))) / "tmp/run/live"),
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv or sys.argv[1:])
+    try:
+        socket_path = Path(args.livestatus_socket)
+        services_a = _query_host_services(socket_path, args.host_a)
+        services_b = _query_host_services(socket_path, args.host_b)
+        payload = build_payload(
+            pair_name=args.pair_name,
+            host_a=args.host_a,
+            host_b=args.host_b,
+            service_regex_text=args.service_regex,
+            services_a=services_a,
+            services_b=services_b,
+        )
+    except (OSError, TypeError, ValueError, re.error, LiveStatusError) as exc:
+        payload = {
+            "schema_version": 1,
+            "pair_name": args.pair_name,
+            "host_a": args.host_a,
+            "host_b": args.host_b,
+            "service_regex": args.service_regex,
+            "records": [],
+            "error": str(exc),
+        }
+
+    print("<<<switch_port_sync:sep(0)>>>")
+    print(json.dumps(payload, separators=(",", ":"), sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,20 @@
+title: Switch port synchronization
+agents: special
+catalog: hw/network
+license: MIT
+distribution: DanielDietz-de
+description:
+ Compares the operational state of one-to-one interface services on two Checkmk
+ hosts. Interface services are sourced from Livestatus, so the check reuses the
+ existing Checkmk interface discovery and does not perform another SNMP poll.
+
+ A port service is discovered when at least one corresponding member is up at
+ discovery. This catches an asymmetric pair immediately while excluding ports
+ that are down on both switches and normally unused. An accepted port service
+ is OK only when both interfaces are confirmed up. One down or both down results
+ in CRIT. Missing, stale, or unparseable source data results in UNKNOWN.
+
+inventory:
+ One pair-status service is always discovered. One additional service is
+ discovered for every one-to-one interface item for which at least one member
+ is confirmed up during service discovery.
