@@ -18,7 +18,6 @@ concurrency:
 env:
   PACKAGE_DIR: switch_port_sync
   PACKAGE_NAME: switch_port_sync
-  PACKAGE_VERSION: "1.0.1"
 
 jobs:
   persist-mkp:
@@ -60,22 +59,48 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: ${{ env.PACKAGE_NAME }}-mkp-${{ github.event.workflow_run.run_number }}
-          path: ${{ env.PACKAGE_DIR }}
+          path: ${{ runner.temp }}/switch_port_sync-mkp
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ github.event.workflow_run.id }}
 
-      - name: Verify downloaded package
+      - name: Verify and stage downloaded package
         if: steps.freshness.outputs.persist == 'true'
         run: |
           set -euo pipefail
-          package_filename="${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp"
-          test -f "${PACKAGE_DIR}/${package_filename}"
-          test -f "${PACKAGE_DIR}/${package_filename}.sha256"
-          (
-            cd "$PACKAGE_DIR"
-            sha256sum --check "${package_filename}.sha256"
+          artifact_dir="${RUNNER_TEMP}/switch_port_sync-mkp"
+
+          mapfile -t packages < <(
+            find "$artifact_dir" -maxdepth 1 -type f \
+              -name "${PACKAGE_NAME}-*.mkp" -printf '%f\n' | sort
           )
+          if [ "${#packages[@]}" -ne 1 ]; then
+            printf 'Expected exactly one generated MKP, found %s: %s\n' \
+              "${#packages[@]}" "${packages[*]-}" >&2
+            exit 1
+          fi
+
+          package_filename="${packages[0]}"
+          checksum_filename="${package_filename}.sha256"
+          test -f "${artifact_dir}/${checksum_filename}"
+          (
+            cd "$artifact_dir"
+            sha256sum --check "$checksum_filename"
+          )
+
+          package_version="${package_filename#${PACKAGE_NAME}-}"
+          package_version="${package_version%.mkp}"
+          test -n "$package_version"
+
+          install -m 0644 \
+            "${artifact_dir}/${package_filename}" \
+            "${PACKAGE_DIR}/${package_filename}"
+          install -m 0644 \
+            "${artifact_dir}/${checksum_filename}" \
+            "${PACKAGE_DIR}/${checksum_filename}"
+
+          echo "PACKAGE_FILENAME=${package_filename}" >>"$GITHUB_ENV"
+          echo "PACKAGE_VERSION=${package_version}" >>"$GITHUB_ENV"
 
       - name: Commit generated package
         if: steps.freshness.outputs.persist == 'true'
@@ -83,8 +108,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          package_filename="${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp"
-          package_path="${PACKAGE_DIR}/${package_filename}"
+          package_path="${PACKAGE_DIR}/${PACKAGE_FILENAME}"
           checksum_path="${package_path}.sha256"
           remote_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
