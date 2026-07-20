@@ -1,0 +1,11 @@
+title: AudioCodes SBC license usage
+agents: snmp
+catalog: hw/network/audiocodes
+license: GPL
+distribution: kuhn-ruess
+description:
+ Monitors current and retained maximum SBC media and signaling license usage.
+ It also reports the remaining licensed capacity as a percentage.
+
+inventory:
+ One service named {SBC License Usage} is created when license KPI objects exist.

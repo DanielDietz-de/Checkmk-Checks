@@ -1,0 +1,14 @@
+title: AudioCodes SBC call capacity
+agents: snmp
+catalog: hw/network/audiocodes
+license: GPL
+distribution: kuhn-ruess
+description:
+ Monitors current inbound and outbound SBC calls, current sessions and the
+ maximum values retained by the AudioCodes 15-minute KPI history.
+
+ The Active Sessions values require SDR syslog or SDR local storage to be
+ enabled on the AudioCodes device.
+
+inventory:
+ One service named {SBC Call Capacity} is created when the KPI objects exist.
