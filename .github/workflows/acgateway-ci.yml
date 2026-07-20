@@ -182,7 +182,7 @@ jobs:
           persist-credentials: false
 
       - name: Prepare artifact directory
-        run: mkdir -p "$GITHUB_WORKSPACE/artifacts"
+        run: install -d -m 0777 "$GITHUB_WORKSPACE/artifacts"
 
       - name: Start Checkmk Raw packaging container
         run: |
