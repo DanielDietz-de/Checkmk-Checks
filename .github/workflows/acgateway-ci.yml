@@ -187,6 +187,8 @@ jobs:
       - checkmk-api-load
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: write
 
     steps:
       - name: Check out repository
@@ -378,6 +380,30 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
+
+      - name: Commit MKP to package folder
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master' && github.actor != 'github-actions[bot]'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          package_name="${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp"
+          package_path="${PACKAGE_DIR}/${package_name}"
+          checksum_path="${package_path}.sha256"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "$package_path" "$checksum_path"
+
+          if git diff --cached --quiet; then
+            echo "Generated MKP is unchanged; nothing to commit."
+            exit 0
+          fi
+
+          git commit -m "build(${PACKAGE_NAME}): update MKP ${PACKAGE_VERSION} [skip ci]"
+          git push \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "HEAD:${GITHUB_REF_NAME}"
 
       - name: Show Checkmk logs on failure
         if: failure()
