@@ -84,6 +84,7 @@ def section(*records: dict[str, Any]) -> dict[str, Any]:
         "pair_name": "Switch pair 1",
         "host_a": "switch-1",
         "host_b": "switch-2",
+        "service_regex": r"^Interface (?P<item>.+)$",
         "records": list(records),
     }
 
@@ -116,6 +117,14 @@ def test_discovery_baseline() -> None:
     ]
 
 
+def test_discovery_with_missing_configuration_only_keeps_pair_status() -> None:
+    data = section(record("01", "up", "up"))
+    del data["service_regex"]
+    assert [service.item for service in module.discover_switch_port_sync(data)] == [
+        "Pair status"
+    ]
+
+
 def test_requested_state_matrix() -> None:
     assert result_for("up", "up").state == State.OK
     assert result_for("up", "down").state == State.CRIT
@@ -144,6 +153,22 @@ def test_pair_status_reports_query_health_not_port_health() -> None:
 def test_pair_status_without_records_is_unknown() -> None:
     result = list(module.check_switch_port_sync("Pair status", section()))[0]
     assert result.state == State.UNKNOWN
+
+
+def test_pair_status_missing_configuration_is_unknown() -> None:
+    data = section(record("01", "up", "up"))
+    del data["host_b"]
+    result = list(module.check_switch_port_sync("Pair status", data))[0]
+    assert result.state == State.UNKNOWN
+    assert "host_b" in (result.summary or "")
+
+
+def test_port_record_switch_names_must_match_configuration() -> None:
+    mismatched = record("01", "up", "up")
+    mismatched["host_b"]["name"] = "different-switch"
+    result = list(module.check_switch_port_sync("01", section(mismatched)))[0]
+    assert result.state == State.UNKNOWN
+    assert "configured switch names" in (result.summary or "")
 
 
 def test_pair_status_error_is_unknown() -> None:
