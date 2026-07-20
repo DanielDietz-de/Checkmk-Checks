@@ -13,6 +13,13 @@ on:
       - ".github/workflows/acgateway-ci.yml"
   workflow_dispatch:
 
+env:
+  PACKAGE_DIR: acgateway
+  PACKAGE_NAME: acgateway
+  PACKAGE_SOURCE: acgateway/src/acgateway
+  PACKAGE_VERSION: "2.0.4"
+  PLUGIN_BASE: /omd/sites/cmk/local/lib/python3/cmk_addons/plugins
+
 permissions:
   contents: read
 
@@ -44,22 +51,23 @@ jobs:
         run: >-
           ruff check
           --select E9,F63,F7,F82
-          acgateway/src/acgateway
-          acgateway/tests
+          "$PACKAGE_SOURCE"
+          "$PACKAGE_DIR/tests"
 
       - name: Compile all Python files
-        run: python -m compileall -q acgateway/src/acgateway acgateway/tests
+        run: python -m compileall -q "$PACKAGE_SOURCE" "$PACKAGE_DIR/tests"
 
       - name: Run parser and alarm-correlation tests
-        run: pytest -q acgateway/tests
+        run: pytest -q "$PACKAGE_DIR/tests"
 
       - name: Validate check manual metadata
         run: |
           python - <<'PY'
+          import os
           from pathlib import Path
 
           required = {"title", "agents", "catalog", "license", "distribution", "description", "inventory"}
-          checkman_dir = Path("acgateway/src/acgateway/checkman")
+          checkman_dir = Path(os.environ["PACKAGE_SOURCE"]) / "checkman"
           errors = []
 
           for path in sorted(checkman_dir.iterdir()):
@@ -104,6 +112,9 @@ jobs:
             --name checkmk-ci \
             --env CMK_PASSWORD='acgateway-ci-password' \
             --env CMK_SITE_ID='cmk' \
+            --env PACKAGE_NAME \
+            --env PACKAGE_SOURCE \
+            --env PLUGIN_BASE \
             --volume "$GITHUB_WORKSPACE:/work:ro" \
             "$CHECKMK_IMAGE"
 
@@ -126,9 +137,11 @@ jobs:
         run: |
           docker exec --user root checkmk-ci bash -lc '
             set -euo pipefail
-            target=/omd/sites/cmk/local/lib/python3/cmk_addons/plugins/acgateway
+            source="/work/${PACKAGE_SOURCE}"
+            target="${PLUGIN_BASE}/${PACKAGE_NAME}"
+            test -d "$source"
             install -d -o cmk -g cmk "$target"
-            cp -a /work/acgateway/src/acgateway/. "$target/"
+            cp -a "$source/." "$target/"
             chown -R cmk:cmk "$target"
           '
 
@@ -137,7 +150,7 @@ jobs:
           docker exec --user cmk checkmk-ci bash -lc '
             set -euo pipefail
             export PAGER=cat
-            plugin_root="$HOME/local/lib/python3/cmk_addons/plugins/acgateway"
+            plugin_root="${PLUGIN_BASE}/${PACKAGE_NAME}"
 
             python3 -m compileall -q "$plugin_root"
 
@@ -181,9 +194,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Prepare package output directory
-        run: install -d -m 0777 "$GITHUB_WORKSPACE/acgateway/dist"
-
       - name: Start Checkmk Raw packaging container
         run: |
           set -euo pipefail
@@ -191,11 +201,13 @@ jobs:
             --name checkmk-mkp \
             --env CMK_PASSWORD='acgateway-ci-password' \
             --env CMK_SITE_ID='cmk' \
-            --env CI_PACKAGE_VERSION='2.0.4' \
-            --env CI_SHORT_SHA="${GITHUB_SHA::12}" \
-            --env CI_RUN_NUMBER="${GITHUB_RUN_NUMBER}" \
+            --env GITHUB_REPOSITORY \
+            --env PACKAGE_DIR \
+            --env PACKAGE_NAME \
+            --env PACKAGE_SOURCE \
+            --env PACKAGE_VERSION \
+            --env PLUGIN_BASE \
             --volume "$GITHUB_WORKSPACE:/work:ro" \
-            --volume "$GITHUB_WORKSPACE/acgateway/dist:/artifacts" \
             checkmk/check-mk-raw:2.4.0p34
 
           for _ in $(seq 1 120); do
@@ -217,9 +229,11 @@ jobs:
         run: |
           docker exec --user root checkmk-mkp bash -lc '
             set -euo pipefail
-            target=/omd/sites/cmk/local/lib/python3/cmk_addons/plugins/acgateway
+            source="/work/${PACKAGE_SOURCE}"
+            target="${PLUGIN_BASE}/${PACKAGE_NAME}"
+            test -d "$source"
             install -d -o cmk -g cmk "$target"
-            cp -a /work/acgateway/src/acgateway/. "$target/"
+            cp -a "$source/." "$target/"
             find "$target" -type d -name __pycache__ -prune -exec rm -rf {} +
             find "$target" -type f -name "*.pyc" -delete
             chown -R cmk:cmk "$target"
@@ -229,17 +243,17 @@ jobs:
         run: |
           docker exec --user cmk checkmk-mkp bash -lc '
             set -euo pipefail
-            plugin_base="$HOME/local/lib/python3/cmk_addons/plugins"
-            manifest="$HOME/tmp/check_mk/acgateway-ci.manifest.temp"
+            manifest="$HOME/tmp/check_mk/${PACKAGE_NAME}-ci.manifest.temp"
             mkdir -p "$(dirname "$manifest")"
 
-            MANIFEST="$manifest" PLUGIN_BASE="$plugin_base" python3 - <<"PY"
+            MANIFEST="$manifest" python3 - <<"PY"
           import ast
           import os
           from pathlib import Path
 
           plugin_base = Path(os.environ["PLUGIN_BASE"])
-          plugin_root = plugin_base / "acgateway"
+          package_name = os.environ["PACKAGE_NAME"]
+          plugin_root = plugin_base / package_name
           files = sorted(
               str(path.relative_to(plugin_base))
               for path in plugin_root.rglob("*")
@@ -247,18 +261,21 @@ jobs:
           )
 
           manifest = {
-              "name": "acgateway",
+              "name": package_name,
               "title": "AudioCode Gateway",
               "author": "Kuhn & Ruess GmbH",
               "description": (
                   "SNMP monitoring for AudioCodes gateways and SBCs, including calls, "
                   "license capacity, HA health, TLS connections, alarms and SIP statistics."
               ),
-              "version": os.environ["CI_PACKAGE_VERSION"],
+              "version": os.environ["PACKAGE_VERSION"],
               "version.min_required": "2.4.0b1",
               "version.packaged": "2.4.0p34",
               "version.usable_until": "2.4.99",
-              "download_url": "https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/acgateway",
+              "download_url": (
+                  f"https://github.com/{os.environ['GITHUB_REPOSITORY']}"
+                  f"/tree/master/{os.environ['PACKAGE_DIR']}"
+              ),
               "files": {"cmk_addons_plugins": files},
           }
 
@@ -277,88 +294,88 @@ jobs:
         run: |
           docker exec --user cmk checkmk-mkp bash -lc '
             set -euxo pipefail
-            mkp --debug package "$HOME/tmp/check_mk/acgateway-ci.manifest.temp"
-            find "$HOME/var/check_mk/packages_local" -maxdepth 1 -type f -name "*.mkp" -ls
+            manifest="$HOME/tmp/check_mk/${PACKAGE_NAME}-ci.manifest.temp"
+            mkp --debug package "$manifest"
+            find "$HOME/var/check_mk/packages_local" -maxdepth 1 -type f -name "${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp" -ls
           '
 
-      - name: Inspect MKP with Checkmk
+      - name: Inspect and verify MKP with Checkmk
         run: |
           docker exec --user cmk checkmk-mkp bash -lc '
             set -euo pipefail
             export PAGER=cat
-            package=$(find "$HOME/var/check_mk/packages_local" -maxdepth 1 -type f -name "acgateway-${CI_PACKAGE_VERSION}.mkp" -print -quit)
-            test -n "$package"
+            package="$HOME/var/check_mk/packages_local/${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp"
+            test -f "$package"
             mkp inspect "$package"
-          '
-
-      - name: Verify MKP archive contents and checksum
-        run: |
-          docker exec --user cmk checkmk-mkp bash -lc '
-            set -euo pipefail
-            package=$(find "$HOME/var/check_mk/packages_local" -maxdepth 1 -type f -name "acgateway-${CI_PACKAGE_VERSION}.mkp" -print -quit)
-            test -n "$package"
 
             PACKAGE="$package" python3 - <<"PY"
+          import ast
           import os
           import tarfile
           from pathlib import PurePosixPath
 
           package = os.environ["PACKAGE"]
-          required_outer = {"info", "info.json", "cmk_addons_plugins.tar"}
-          required_inner = {
-              "acgateway/agent_based/call_capacity.py",
-              "acgateway/agent_based/ha.py",
-              "acgateway/agent_based/license.py",
-              "acgateway/agent_based/tls.py",
-              "acgateway/graphing/acgateway_extended.py",
-          }
 
           def normalized(name: str) -> str:
               return str(PurePosixPath(name.removeprefix("./")))
 
           with tarfile.open(package, "r:*") as outer:
               outer_members = outer.getmembers()
-              outer_names = {PurePosixPath(normalized(member.name)).name for member in outer_members}
-              missing_outer = required_outer - outer_names
+              by_basename = {
+                  PurePosixPath(normalized(member.name)).name: member
+                  for member in outer_members
+              }
+              required_outer = {"info", "info.json", "cmk_addons_plugins.tar"}
+              missing_outer = required_outer - set(by_basename)
               if missing_outer:
                   raise SystemExit(f"Missing outer MKP members: {sorted(missing_outer)}")
 
-              component_member = next(
-                  member
-                  for member in outer_members
-                  if PurePosixPath(normalized(member.name)).name == "cmk_addons_plugins.tar"
-              )
-              component_file = outer.extractfile(component_member)
-              if component_file is None:
-                  raise SystemExit("Unable to read cmk_addons_plugins.tar")
+              info_file = outer.extractfile(by_basename["info"])
+              component_file = outer.extractfile(by_basename["cmk_addons_plugins.tar"])
+              if info_file is None or component_file is None:
+                  raise SystemExit("Unable to read MKP metadata or component archive")
+
+              info = ast.literal_eval(info_file.read().decode("utf-8"))
+              required_inner = set(info.get("files", {}).get("cmk_addons_plugins", []))
+              if not required_inner:
+                  raise SystemExit("Manifest contains no cmk_addons_plugins files")
 
               with tarfile.open(fileobj=component_file, mode="r:*") as inner:
                   inner_names = {normalized(member.name) for member in inner.getmembers()}
 
-          for required in required_inner:
-              if not any(name == required or name.endswith("/" + required) for name in inner_names):
-                  raise SystemExit(f"Missing packaged plug-in: {required}")
+          missing_inner = sorted(
+              required
+              for required in required_inner
+              if not any(name == required or name.endswith("/" + required) for name in inner_names)
+          )
+          if missing_inner:
+              raise SystemExit(f"Missing packaged plug-ins: {missing_inner}")
 
-          print(f"Verified {len(required_inner)} required plug-in files")
+          print(f"Verified all {len(required_inner)} manifest files")
           PY
-
-            output="/artifacts/acgateway-${CI_PACKAGE_VERSION}-run${CI_RUN_NUMBER}-${CI_SHORT_SHA}.mkp"
-            cp "$package" "$output"
-            artifact_name=$(basename "$output")
-            (
-              cd /artifacts
-              sha256sum "$artifact_name" >"${artifact_name}.sha256"
-            )
-            chmod 0644 "$output" "${output}.sha256"
           '
+
+      - name: Export MKP to package folder
+        run: |
+          set -euo pipefail
+          package_name="${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp"
+          output="${PACKAGE_DIR}/${package_name}"
+          docker cp \
+            "checkmk-mkp:/omd/sites/cmk/var/check_mk/packages_local/${package_name}" \
+            "$output"
+          chmod 0644 "$output"
+          (
+            cd "$PACKAGE_DIR"
+            sha256sum "$package_name" >"${package_name}.sha256"
+          )
 
       - name: Upload MKP artifact
         uses: actions/upload-artifact@v6
         with:
-          name: acgateway-mkp-${{ github.run_number }}
+          name: ${{ env.PACKAGE_NAME }}-mkp-${{ github.run_number }}
           path: |
-            acgateway/dist/*.mkp
-            acgateway/dist/*.sha256
+            ${{ env.PACKAGE_DIR }}/${{ env.PACKAGE_NAME }}-${{ env.PACKAGE_VERSION }}.mkp
+            ${{ env.PACKAGE_DIR }}/${{ env.PACKAGE_NAME }}-${{ env.PACKAGE_VERSION }}.mkp.sha256
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
