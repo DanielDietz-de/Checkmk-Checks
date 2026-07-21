@@ -1,6 +1,5 @@
 import json
 import os
-import stat
 import sys
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
@@ -16,7 +15,7 @@ sys.modules[loader.name] = module
 loader.exec_module(module)
 
 
-def test_json_config_is_data_not_shell(tmp_path, monkeypatch):
+def test_json_config_is_data_not_shell(tmp_path):
     config = tmp_path / "bacula_jobs.json"
     marker = tmp_path / "executed"
     config.write_text(
@@ -89,8 +88,9 @@ def test_postgresql_peer_auth_uses_runuser_without_shell(monkeypatch):
     assert "/usr/bin/psql" in command
 
 
-def test_no_hardcoded_root_or_etc_check_mk_paths():
+def test_no_hardcoded_credential_or_config_paths():
     source = MODULE_PATH.read_text(encoding="utf-8")
     assert "/root/.my.cnf" not in source
     assert 'MK_CONFDIR="/etc/check_mk"' not in source
-    assert ". " not in source
+    assert "shell=True" not in source
+    assert "os.system" not in source
