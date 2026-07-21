@@ -1,10 +1,10 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Rediscover services through the local Checkmk REST API while confining the site automation secret to the executing site on loopback.\n',
+ 'description': 'Rediscover one service through the local Checkmk REST API with problem-only notification gating, pending-change ownership checks, ETag concurrency protection, and site-scoped activation without forcing foreign changes.\n',
  'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/rediscover_service',
  'files': {'cmk_addons_plugins': ['redis_service/rulesets/redis_service.py'],
            'notifications': ['rediscover_service']},
  'name': 'rediscover_service',
  'title': 'Rediscover service',
- 'version': '2.0.5',
+ 'version': '2.0.6',
  'version.min_required': '2.3.0b1',
  'version.packaged': '2.4.0p5'}
