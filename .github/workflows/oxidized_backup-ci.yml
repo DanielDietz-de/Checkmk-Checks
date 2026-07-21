@@ -1,0 +1,424 @@
+name: oxidized_backup checks
+
+on:
+  pull_request:
+    paths:
+      - "oxidized_backup/**"
+      - ".github/workflows/oxidized_backup-ci.yml"
+  push:
+    branches:
+      - master
+    paths:
+      - "oxidized_backup/**"
+      - ".github/workflows/oxidized_backup-ci.yml"
+  workflow_dispatch:
+
+env:
+  PACKAGE_DIR: oxidized_backup
+  PACKAGE_NAME: oxidized_backup
+  PACKAGE_SOURCE: oxidized_backup/src/oxidized_backup
+  AGENT_SOURCE: oxidized_backup/src/agents/plugins/oxidized_backup
+  PACKAGE_VERSION: "1.0.0"
+  PLUGIN_BASE: /omd/sites/cmk/local/lib/python3/cmk_addons/plugins
+  AGENT_BASE: /omd/sites/cmk/local/share/check_mk/agents
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oxidized_backup-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-tests:
+    name: Python syntax, security, and functional tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install test tools
+        run: python -m pip install --disable-pip-version-check pytest==8.4.1 ruff==0.12.4
+
+      - name: Check for fatal Python errors
+        run: >-
+          ruff check
+          --select E9,F63,F7,F82
+          "$PACKAGE_SOURCE"
+          "$AGENT_SOURCE"
+          "$PACKAGE_DIR/tests"
+
+      - name: Compile all Python files
+        run: |
+          python -m compileall -q "$PACKAGE_SOURCE" "$PACKAGE_DIR/tests"
+          python -m py_compile "$AGENT_SOURCE"
+
+      - name: Run functional and security tests
+        run: pytest -q "$PACKAGE_DIR/tests"
+
+      - name: Validate check manual metadata
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          required = {"title", "agents", "catalog", "license", "distribution", "description", "inventory"}
+          checkman_dir = Path(os.environ["PACKAGE_SOURCE"]) / "checkman"
+          errors = []
+
+          for path in sorted(checkman_dir.iterdir()):
+              if not path.is_file():
+                  continue
+              keys = {
+                  line.split(":", 1)[0].strip()
+                  for line in path.read_text(encoding="utf-8").splitlines()
+                  if line and not line[0].isspace() and ":" in line
+              }
+              missing = sorted(required - keys)
+              if missing:
+                  errors.append(f"{path}: missing {', '.join(missing)}")
+
+          if errors:
+              raise SystemExit("\n".join(errors))
+          PY
+
+      - name: Validate examples contain no environment names or inline secrets
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          config = json.loads(Path("oxidized_backup/examples/oxidized_backup.json").read_text())
+          serialized = json.dumps(config).lower()
+          forbidden = ("rkg", "rau", '"password"', '"token"')
+          found = [value for value in forbidden if value in serialized]
+          if found:
+              raise SystemExit(f"Example configuration contains forbidden values: {found}")
+          PY
+
+  checkmk-api-load:
+    name: Checkmk API load (${{ matrix.checkmk }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        checkmk:
+          - 2.4.0p5
+          - 2.4.0p34
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Start Checkmk Raw container
+        env:
+          CHECKMK_IMAGE: checkmk/check-mk-raw:${{ matrix.checkmk }}
+        run: |
+          set -euo pipefail
+          docker run --detach \
+            --name checkmk-ci \
+            --env CMK_PASSWORD='oxidized-backup-ci-password' \
+            --env CMK_SITE_ID='cmk' \
+            --env PACKAGE_NAME \
+            --env PACKAGE_SOURCE \
+            --env AGENT_SOURCE \
+            --env PLUGIN_BASE \
+            --env AGENT_BASE \
+            --volume "$GITHUB_WORKSPACE:/work:ro" \
+            "$CHECKMK_IMAGE"
+
+          for _ in $(seq 1 120); do
+            if docker logs checkmk-ci 2>&1 | grep -q '### CONTAINER STARTED'; then
+              exit 0
+            fi
+            if ! docker inspect --format '{{.State.Running}}' checkmk-ci | grep -q true; then
+              docker logs checkmk-ci
+              exit 1
+            fi
+            sleep 2
+          done
+
+          docker logs checkmk-ci
+          echo 'Checkmk container did not become ready' >&2
+          exit 1
+
+      - name: Install plug-ins into the temporary site
+        run: |
+          docker exec --user root checkmk-ci bash -lc '
+            set -euo pipefail
+            plugin_source="/work/${PACKAGE_SOURCE}"
+            plugin_target="${PLUGIN_BASE}/${PACKAGE_NAME}"
+            agent_source="/work/${AGENT_SOURCE}"
+            agent_target="${AGENT_BASE}/plugins/${PACKAGE_NAME}"
+
+            test -d "$plugin_source"
+            test -f "$agent_source"
+            install -d -o cmk -g cmk "$plugin_target"
+            cp -a "$plugin_source/." "$plugin_target/"
+            install -D -m 0755 -o cmk -g cmk "$agent_source" "$agent_target"
+            chown -R cmk:cmk "$plugin_target"
+          '
+
+      - name: Load and validate plug-ins with Checkmk
+        run: |
+          docker exec --user cmk checkmk-ci bash -lc '
+            set -euo pipefail
+            export PAGER=cat
+            plugin_root="${PLUGIN_BASE}/${PACKAGE_NAME}"
+            agent_plugin="${AGENT_BASE}/plugins/${PACKAGE_NAME}"
+
+            python3 -m compileall -q "$plugin_root"
+            python3 -m py_compile "$agent_plugin"
+            "$agent_plugin" --help >/dev/null
+
+            while IFS= read -r -d "" plugin; do
+              echo "Loading ${plugin#$plugin_root/}"
+              python3 "$plugin"
+            done < <(find "$plugin_root/agent_based" -type f -name "*.py" -print0 | sort -z)
+
+            cmk-validate-plugins
+            cmk -M oxidized_backup >/dev/null
+            cmk -R
+          '
+
+      - name: Show Checkmk logs on failure
+        if: failure()
+        run: docker logs checkmk-ci || true
+
+      - name: Remove temporary Checkmk container
+        if: always()
+        run: docker rm --force checkmk-ci || true
+
+  mkp-package:
+    name: Build and inspect MKP
+    needs:
+      - python-tests
+      - checkmk-api-load
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Start Checkmk Raw packaging container
+        run: |
+          set -euo pipefail
+          docker run --detach \
+            --name checkmk-mkp \
+            --env CMK_PASSWORD='oxidized-backup-ci-password' \
+            --env CMK_SITE_ID='cmk' \
+            --env GITHUB_REPOSITORY \
+            --env PACKAGE_DIR \
+            --env PACKAGE_NAME \
+            --env PACKAGE_SOURCE \
+            --env AGENT_SOURCE \
+            --env PACKAGE_VERSION \
+            --env PLUGIN_BASE \
+            --env AGENT_BASE \
+            --volume "$GITHUB_WORKSPACE:/work:ro" \
+            checkmk/check-mk-raw:2.4.0p34
+
+          for _ in $(seq 1 120); do
+            if docker logs checkmk-mkp 2>&1 | grep -q '### CONTAINER STARTED'; then
+              exit 0
+            fi
+            if ! docker inspect --format '{{.State.Running}}' checkmk-mkp | grep -q true; then
+              docker logs checkmk-mkp
+              exit 1
+            fi
+            sleep 2
+          done
+
+          docker logs checkmk-mkp
+          echo 'Checkmk packaging container did not become ready' >&2
+          exit 1
+
+      - name: Install package source into Checkmk
+        run: |
+          docker exec --user root checkmk-mkp bash -lc '
+            set -euo pipefail
+            plugin_source="/work/${PACKAGE_SOURCE}"
+            plugin_target="${PLUGIN_BASE}/${PACKAGE_NAME}"
+            agent_source="/work/${AGENT_SOURCE}"
+            agent_target="${AGENT_BASE}/plugins/${PACKAGE_NAME}"
+
+            test -d "$plugin_source"
+            test -f "$agent_source"
+            install -d -o cmk -g cmk "$plugin_target"
+            cp -a "$plugin_source/." "$plugin_target/"
+            install -D -m 0755 -o cmk -g cmk "$agent_source" "$agent_target"
+            find "$plugin_target" -type d -name __pycache__ -prune -exec rm -rf {} +
+            find "$plugin_target" -type f -name "*.pyc" -delete
+            chown -R cmk:cmk "$plugin_target"
+          '
+
+      - name: Generate and validate MKP manifest
+        run: |
+          docker exec --user cmk checkmk-mkp bash -lc '
+            set -euo pipefail
+            manifest="$HOME/tmp/check_mk/${PACKAGE_NAME}-ci.manifest.temp"
+            mkdir -p "$(dirname "$manifest")"
+
+            MANIFEST="$manifest" python3 - <<"PY"
+          import ast
+          import os
+          from pathlib import Path
+
+          plugin_base = Path(os.environ["PLUGIN_BASE"])
+          agent_base = Path(os.environ["AGENT_BASE"])
+          package_name = os.environ["PACKAGE_NAME"]
+          package_dir = os.environ["PACKAGE_DIR"]
+          repository = os.environ["GITHUB_REPOSITORY"]
+          plugin_root = plugin_base / package_name
+          agent_file = agent_base / "plugins" / package_name
+
+          addon_files = sorted(
+              str(path.relative_to(plugin_base))
+              for path in plugin_root.rglob("*")
+              if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"
+          )
+          agent_files = [str(agent_file.relative_to(agent_base))]
+
+          manifest = {
+              "name": package_name,
+              "title": "Oxidized Backup Verification",
+              "author": "Daniel Dietz",
+              "description": (
+                  "Verifies Oxidized inventory, collection freshness, local Git backup "
+                  "artifacts, repository integrity, and remote Git synchronization."
+              ),
+              "version": os.environ["PACKAGE_VERSION"],
+              "version.min_required": "2.4.0b1",
+              "version.packaged": "2.4.0p34",
+              "version.usable_until": "2.4.99",
+              "download_url": f"https://github.com/{repository}/tree/master/{package_dir}",
+              "files": {
+                  "agents": agent_files,
+                  "cmk_addons_plugins": addon_files,
+              },
+          }
+
+          content = repr(manifest) + "\n"
+          path = Path(os.environ["MANIFEST"])
+          path.write_text(content, encoding="utf-8")
+          parsed = ast.literal_eval(path.read_text(encoding="utf-8"))
+          assert parsed == manifest
+          assert addon_files
+          assert agent_files == [f"plugins/{package_name}"]
+          print(f"Manifest contains {len(addon_files)} Checkmk files and {len(agent_files)} agent file")
+          print(content)
+          PY
+          '
+
+      - name: Build MKP with Checkmk
+        run: |
+          docker exec --user cmk checkmk-mkp bash -lc '
+            set -euxo pipefail
+            manifest="$HOME/tmp/check_mk/${PACKAGE_NAME}-ci.manifest.temp"
+            mkp --debug package "$manifest"
+            find "$HOME/var/check_mk/packages_local" -maxdepth 1 -type f -name "${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp" -ls
+          '
+
+      - name: Inspect and verify MKP with Checkmk
+        run: |
+          docker exec --user cmk checkmk-mkp bash -lc '
+            set -euo pipefail
+            export PAGER=cat
+            package="$HOME/var/check_mk/packages_local/${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp"
+            test -f "$package"
+            mkp inspect "$package"
+
+            PACKAGE="$package" python3 - <<"PY"
+          import ast
+          import io
+          import os
+          import tarfile
+          from pathlib import PurePosixPath
+
+          package = os.environ["PACKAGE"]
+
+          def normalized(name: str) -> str:
+              return str(PurePosixPath(name.removeprefix("./")))
+
+          with tarfile.open(package, "r:*") as outer:
+              outer_members = outer.getmembers()
+              by_basename = {
+                  PurePosixPath(normalized(member.name)).name: member
+                  for member in outer_members
+              }
+              info_file = outer.extractfile(by_basename["info"])
+              if info_file is None:
+                  raise SystemExit("Unable to read MKP metadata")
+              info = ast.literal_eval(info_file.read().decode("utf-8"))
+              components = info.get("files", {})
+              required_outer = {"info", "info.json"} | {
+                  f"{component}.tar" for component in components
+              }
+              missing_outer = required_outer - set(by_basename)
+              if missing_outer:
+                  raise SystemExit(f"Missing outer MKP members: {sorted(missing_outer)}")
+
+              for component, required_files in components.items():
+                  component_file = outer.extractfile(by_basename[f"{component}.tar"])
+                  if component_file is None:
+                      raise SystemExit(f"Unable to read {component}.tar")
+                  with tarfile.open(fileobj=io.BytesIO(component_file.read()), mode="r:*") as inner:
+                      inner_names = {normalized(member.name) for member in inner.getmembers()}
+                  missing_inner = sorted(
+                      required
+                      for required in required_files
+                      if not any(name == required or name.endswith("/" + required) for name in inner_names)
+                  )
+                  if missing_inner:
+                      raise SystemExit(f"Missing packaged {component} files: {missing_inner}")
+                  print(f"Verified {len(required_files)} files in {component}.tar")
+          PY
+          '
+
+      - name: Export MKP to package folder
+        run: |
+          set -euo pipefail
+          package_name="${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp"
+          output="${PACKAGE_DIR}/${package_name}"
+          docker cp \
+            "checkmk-mkp:/omd/sites/cmk/var/check_mk/packages_local/${package_name}" \
+            "$output"
+          chmod 0644 "$output"
+          (
+            cd "$PACKAGE_DIR"
+            sha256sum "$package_name" >"${package_name}.sha256"
+          )
+
+      - name: Upload MKP artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.PACKAGE_NAME }}-mkp-${{ github.run_number }}
+          path: |
+            ${{ env.PACKAGE_DIR }}/${{ env.PACKAGE_NAME }}-${{ env.PACKAGE_VERSION }}.mkp
+            ${{ env.PACKAGE_DIR }}/${{ env.PACKAGE_NAME }}-${{ env.PACKAGE_VERSION }}.mkp.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Show Checkmk logs on failure
+        if: failure()
+        run: docker logs checkmk-mkp || true
+
+      - name: Remove packaging container
+        if: always()
+        run: docker rm --force checkmk-mkp || true
