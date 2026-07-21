@@ -1,9 +1,9 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Export host for oxidized every 15 minutes.\n',
- 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
+ 'description': 'Export the local Checkmk Oxidized host view to a validated private atomic JSON inventory with managed scheduling.\n',
+ 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/oxidized',
  'files': {'bin': ['export_oxidized']},
  'name': 'oxidized',
  'title': 'Oxidized export',
- 'version': '1.0.3',
+ 'version': '1.1.0',
  'version.min_required': '2.3.0b1',
  'version.packaged': '2.4.0p5'}
