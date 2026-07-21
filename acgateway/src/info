@@ -1,8 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'SNMP checks for AudioCodes SIP gateways\n'
-                '\n'
-                'based on Robert Sander\n',
- 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
+ 'description': 'SNMP checks for AudioCodes SIP gateways\n\nbased on Robert Sander\n',
+ 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/acgateway',
  'files': {'cmk_addons_plugins': ['acgateway/agent_based/alarms.py',
                                   'acgateway/agent_based/calls.py',
                                   'acgateway/agent_based/ipgroup.py',
@@ -16,4 +14,5 @@
  'title': 'AudioCode Gateway',
  'version': '2.0.5',
  'version.min_required': '2.4.0b1',
- 'version.packaged': '2.4.0p5'}
+ 'version.packaged': '2.5.0p9',
+ 'version.usable_until': '2.5.99'}
