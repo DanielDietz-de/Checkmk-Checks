@@ -1,331 +1,299 @@
 #!/usr/bin/env php
 <?php
-/*
-  Copyright 2023 - Stefan Mikuszeit <stefan.mikuszeit@syzygy.de>
-  Licensed under the Apache License, Version 2.0 (the "License");
-  you may not use this file except in compliance with the License.
-  You may obtain a copy of the License at
-      http://www.apache.org/licenses/LICENSE-2.0
-  Unless required by applicable law or agreed to in writing, software
-  distributed under the License is distributed on an "AS IS" BASIS,
-  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  See the License for the specific language governing permissions and
-  limitations under the License.
-*/
+/**
+ * Checkmk WordPress core version inventory.
+ *
+ * This plug-in intentionally never includes or executes WordPress application
+ * code. It reads the installed core version from wp-includes/version.php and
+ * queries the public WordPress version-check API for the latest release.
+ */
 
-ini_set('memory_limit', '100M');
+const DEFAULT_BASE_DIR = '/var/www/sites.d';
+const DEFAULT_SEARCH_STRING = 'deploy/current';
+const MAX_SCAN_ENTRIES = 100000;
+const API_TIMEOUT_SECONDS = 10;
 
-$update_core    = array();
-$update_plugins = array();
-$update_themes  = array();
-$arr_output = array();
-$wp_instance_info = "";
-$GlobalStatus = 0;
-$perfdata = "";
-$long_output = "";
-$default_output_text = "WordPress Status";
-$output_errors = "";
-
-function get_cfg_vars() {
-    $cfg = array('BASEDIR' => '/var/www', 'SEARCH_STRING' => '/wp/wp-load.php');
-    if (file_exists('/etc/check_mk/wp_instances.cfg')) {
-        $lines = file('/etc/check_mk/wp_instances.cfg');
-        foreach ($lines as $line) {
-            if (preg_match('/^\s*BASEDIR\s*=\s*([\S]+)/', $line, $m)) {
-                $cfg['BASEDIR'] = $m[1];
-            }
-            if (preg_match('/^\s*SEARCH_STRING\s*=\s*([\S]+)/', $line, $m)) {
-                $cfg['SEARCH_STRING'] = $m[1];
-            }
-        }
+function config_path(): string
+{
+    $configDir = getenv('MK_CONFDIR');
+    if ($configDir === false || trim($configDir) === '') {
+        $configDir = '/etc/check_mk';
     }
-    return $cfg;
+    return rtrim($configDir, '/') . '/wp_instances.cfg';
 }
 
-function find_wp_instances($basedir, $search_string) {
-    $cmd = "locate '" . escapeshellcmd($search_string) . "' | grep '" . escapeshellcmd($basedir) . "' | grep -v 'release'";
-    exec($cmd, $output, $ret);
-    return $output;
-}
+function load_config(): array
+{
+    $config = [
+        'BASEDIR' => DEFAULT_BASE_DIR,
+        'SEARCH_STRING' => DEFAULT_SEARCH_STRING,
+    ];
 
-if ($argc == 1) {
-    $cfg = get_cfg_vars();
-    $wp_instances = find_wp_instances($cfg['BASEDIR'], $cfg['SEARCH_STRING']);
-    $result = array();
-    foreach ($wp_instances as $wp_instance_path) {
-        $wp_orig_dest = trim(shell_exec('readlink -f ' . escapeshellarg($wp_instance_path)));
-        if ($wp_orig_dest && file_exists($wp_orig_dest)) {
-            $wp_instance_name = explode('/', $wp_orig_dest);
-            $wp_instance_name = isset($wp_instance_name[4]) ? $wp_instance_name[4] : basename($wp_orig_dest);
-            $wp_load_directory = dirname($wp_orig_dest);
-            ob_start();
-            $GLOBALS['wp_instance_name'] = $wp_instance_name;
-            get_wp_instance_infos($wp_load_directory);
-            $json = ob_get_clean();
-            $json = rtrim($json, ",");
-            if ($json) {
-                $result[] = $json;
+    $path = config_path();
+    if (!is_readable($path)) {
+        return $config;
+    }
+
+    $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if ($lines === false) {
+        return $config;
+    }
+
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if ($line === '' || str_starts_with($line, '#') || !str_contains($line, '=')) {
+            continue;
+        }
+        [$key, $value] = explode('=', $line, 2);
+        $key = trim($key);
+        $value = trim($value);
+        if (strlen($value) >= 2) {
+            $first = $value[0];
+            $last = $value[strlen($value) - 1];
+            if (($first === '"' && $last === '"') || ($first === "'" && $last === "'")) {
+                $value = substr($value, 1, -1);
             }
         }
+        if ($key === 'BASEDIR') {
+            $config['BASEDIR'] = $value;
+        } elseif ($key === 'SEARCH_STRING' || $key === 'SEACH_STRING') {
+            // Accept the historical misspelling for existing baked agents.
+            $config['SEARCH_STRING'] = $value;
+        }
     }
-    echo "{\"instances\": [" . implode(',', $result) . "]}" . PHP_EOL;
-    exit;
-} elseif ($argc == 3) {
-    $wp_directory = $argv[1];
-    $wp_instance_name = $argv[2];
-    if (is_dir($wp_directory)) {
-        $GLOBALS['wp_instance_name'] = $wp_instance_name;
-        get_wp_instance_infos($wp_directory);
-        exit;
-    } else {
-        echo "Base Directory doesn't exist" . PHP_EOL;
-        exit(3);
-    }
-} else {
-    echo "Usage: php " . basename(__FILE__) . " [Full path to wp-load.php] [WP Instance]" . PHP_EOL;
-    exit;
+
+    return $config;
 }
 
-function syzygy_json_ErrorHandler($errno, $errstr, $errfile, $errline){
-    $errstr=htmlentities($errstr, ENT_QUOTES);
-    return true;
-    switch ($errno) {
-        case E_USER_ERROR:
-	    echo json_encode(['errno' => $errno, 'error' => $errstr, 'errfile' => $errfile, 'errline' => $errline]).",";
-            exit(1);
-
-        case E_USER_WARNING:
-            echo json_encode(['errno' => $errno, 'error' => $errstr, 'errfile' => $errfile, 'errline' => $errline]).",";
-            break;
-
-        case E_USER_NOTICE:
-            echo json_encode(['errno' => $errno, 'error' => $errstr, 'errfile' => $errfile, 'errline' => $errline]).",";
-            break;
-
-        default:
-            echo json_encode(['errno' => $errno, 'error' => $errstr, 'errfile' => $errfile, 'errline' => $errline]).",";
-            break;
-    }
-    /* Don't execute PHP internal error handler */
-    return true;
-}
-
-function get_wp_instance_infos($wp_directory){
-    set_error_handler("syzygy_json_ErrorHandler");
-    chdir($wp_directory);
-    try{
-        require($wp_directory."/wp-load.php");
-    }catch(Throwable $e){
-	echo "";
-    	// var_dump($e);
-	// echo "{'errno':'".$e->errno."','error':'".$e->errstr."','file':'".$e->errfile."','line':'".$e->errline."'},";
-	// echo json_encode(['errno' => $e->getCode(), 'error' => $e->getMessage(), 'errfile' => $e->getFile(), 'errline' => $e->getLine()]).",";
-	# echo 'And my error is: ' . $e->getMessage();
-    }
-    GLOBAL $wp_version;
-    GLOBAL $wp_instance_name;
-
-    try{
-    	wp_update_plugins();
-    }catch(Throwable $e){
-        echo "";
-        // var_dump($e);
-        // echo "{'errno':'".$e->errno."','error':'".$e->errstr."','file':'".$e->errfile."','line':'".$e->errline."'},";
-        //echo json_encode(['errno' => $e->getCode(), 'error' => $e->getMessage(), 'errfile' => $e->getFile(), 'errline' => $e->getLine()]).",";
-        # echo 'And my error is: ' . $e->getMessage();
+function find_wordpress_roots(string $baseDir, string $searchString): array
+{
+    $realBase = realpath($baseDir);
+    if ($realBase === false || !is_dir($realBase) || !is_readable($realBase)) {
+        throw new RuntimeException("Base directory is not readable: {$baseDir}");
     }
 
-    @wp_version_check();
-    @wp_update_themes();
-    restore_error_handler();
-    $core = @get_site_transient('update_core');
-    $plugins = @get_site_transient('update_plugins');
-    $themes = @get_site_transient('update_themes');
+    $queue = [$realBase];
+    $visited = [];
+    $roots = [];
+    $entries = 0;
 
-    if ($themes && $themes !== null) {
-	$update_themes=@get_wp_themes_infos($themes);
-    }
+    while ($queue !== []) {
+        $directory = array_pop($queue);
+        $realDirectory = realpath($directory);
+        if ($realDirectory === false || isset($visited[$realDirectory])) {
+            continue;
+        }
+        $visited[$realDirectory] = true;
 
-    if ($plugins && $plugins !== null) {
-        $update_plugins=@get_wp_plugins_infos($plugins);
-    }
+        $children = @scandir($realDirectory);
+        if ($children === false) {
+            continue;
+        }
 
-    if ($core && $core !== null) {
-	$update_core=@get_wp_core_infos($core);
-    }
-
-    if ( $update_core || $update_plugins || $update_themes) {
-        generate_output($update_core,$update_plugins,$update_themes);
-    } else {
-        if ($wp_version < 3 ) {
-            $arr_output['error']="Wordpress Version < 3 - Check Script does not work - Upgrade ASAP!";
-            die(json_encode($arr_output).",");
-	}
-	$arr_output['name']=$wp_instance_name;
-	$arr_output['core_status']=0;
-        $arr_output['core_version']=$wp_version;
-        $arr_output['core_new_version']="";
-        die(json_encode($arr_output).",");
-    }
-}
-
-function get_wp_themes_infos($themes){
-    GLOBAL $update_themes;
-    $arr_theme_updates=array();
-    $i=0;
-    if(is_array($themes->translations) && count($themes->translations)>0){
-        $arr_themes_translations = json_decode(json_encode($themes->translations), true);
-        foreach($arr_themes_translations as $installed_theme){
-            $installed_theme_name=strval($installed_theme['slug']);
-            $installed_theme_version=strval($installed_theme['version']);
-	    $arr_theme_updates[$installed_theme_name]['version']=$installed_theme_version;
-            if(is_array($themes->response) && count($themes->response)>0){
-                $arr_themes_response = json_decode(json_encode($themes->response), true);
-		foreach($arr_themes_response as $theme) {
-                    $arr_theme_updates[$theme['theme']]['new_version']=$theme['new_version'];
-                    $arr_theme_updates[$theme['theme']]['status']=1;
-                }
+        foreach ($children as $child) {
+            if ($child === '.' || $child === '..') {
+                continue;
             }
-            if(!isset($arr_theme_updates[$installed_theme_name]['new_version'])){
-                $arr_theme_updates[$installed_theme_name]['new_version']="";
-                $arr_theme_updates[$installed_theme_name]['status']=0;
+            $entries++;
+            if ($entries > MAX_SCAN_ENTRIES) {
+                throw new RuntimeException('Directory scan exceeded the safety limit');
+            }
+
+            $path = $realDirectory . DIRECTORY_SEPARATOR . $child;
+            if (is_dir($path)) {
+                $queue[] = $path;
+                continue;
+            }
+            if ($child !== 'wp-load.php' || !is_file($path)) {
+                continue;
+            }
+            if ($searchString !== '' && !str_contains($path, $searchString)) {
+                continue;
+            }
+            $root = dirname($path);
+            $realRoot = realpath($root);
+            if ($realRoot !== false) {
+                $roots[$realRoot] = true;
             }
         }
-    }else{
-        // No Themes Installed
-        $arr_theme_updates=Array();
     }
-    // echo "arr_theme_updates: ".var_dump($arr_theme_updates);
-    return $arr_theme_updates;
+
+    $result = array_keys($roots);
+    sort($result, SORT_NATURAL | SORT_FLAG_CASE);
+    return $result;
 }
 
-function get_wp_plugins_infos($plugins){
-    GLOBAL $update_plugins;
-    $arr_plugin_updates=array();
-    if(is_array($plugins->translations) && count($plugins->translations)>0){
-        $arr_plugins_translations = json_decode(json_encode($plugins->translations), true);
-	// var_dump($arr_plugins_translations);
-        foreach($arr_plugins_translations as $installed_plugin){
-            $installed_plugin_name=strval($installed_plugin['slug']);
-            $installed_plugin_version=strval($installed_plugin['version']);
-	    $installed_plugin_language=strval($installed_plugin['language']);
-            $arr_plugin_updates[$installed_plugin_name]['version']=$installed_plugin_version;
-            if(is_array($plugins->response) && count($plugins->response)>0){
-                $arr_plugin_response = json_decode(json_encode($plugins->response), true);
-		// var_dump($arr_plugin_response);
-                foreach($arr_plugin_response as $plugin){
-                    $arr_plugin_updates[$plugin['slug']]['new_version']=$plugin['new_version'];
-                    $arr_plugin_updates[$plugin['slug']]['status']=1;
-                }
-            }
-	    if(!isset($arr_plugin_updates[$installed_plugin_name]['new_version'])){
-		$arr_plugin_updates[$installed_plugin_name]['new_version']="";
-	        $arr_plugin_updates[$installed_plugin_name]['status']=0;
-	    }
-        }
-    }else{
-        // No Plugins installed
-        $arr_plugin_updates=array();
+function read_installed_version(string $wordpressRoot): string
+{
+    $versionFile = $wordpressRoot . '/wp-includes/version.php';
+    if (!is_readable($versionFile)) {
+        throw new RuntimeException('wp-includes/version.php is not readable');
     }
-    return $arr_plugin_updates;
+
+    $content = file_get_contents($versionFile);
+    if ($content === false) {
+        throw new RuntimeException('Unable to read wp-includes/version.php');
+    }
+
+    if (!preg_match('/\$wp_version\s*=\s*[\'\"]([^\'\"]+)[\'\"]\s*;/', $content, $matches)) {
+        throw new RuntimeException('Unable to determine the installed WordPress version');
+    }
+    return trim($matches[1]);
 }
 
-function get_wp_core_infos($core){
-    GLOBAL $update_core;
-    $arr_core = @$core->updates;
-    if (is_array($arr_core) && $arr_core[0]) {
-        $obj_core = $arr_core[0];
-        if ($obj_core->response && $obj_core->response != "latest") {
-            $update_core = $obj_core->current;
+function fetch_url(string $url): string
+{
+    if (function_exists('curl_init')) {
+        $handle = curl_init($url);
+        if ($handle === false) {
+            throw new RuntimeException('Unable to initialize cURL');
         }
+        curl_setopt_array($handle, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 3,
+            CURLOPT_CONNECTTIMEOUT => API_TIMEOUT_SECONDS,
+            CURLOPT_TIMEOUT => API_TIMEOUT_SECONDS,
+            CURLOPT_USERAGENT => 'checkmk-wordpress-inventory/1.0',
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+        ]);
+        $body = curl_exec($handle);
+        $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
+        $error = curl_error($handle);
+        curl_close($handle);
+        if ($body === false) {
+            throw new RuntimeException('WordPress version API request failed: ' . $error);
+        }
+        if ($status < 200 || $status >= 300) {
+            throw new RuntimeException("WordPress version API returned HTTP {$status}");
+        }
+        return (string) $body;
     }
-    return $update_core;
+
+    $context = stream_context_create([
+        'http' => [
+            'timeout' => API_TIMEOUT_SECONDS,
+            'follow_location' => 1,
+            'max_redirects' => 3,
+            'user_agent' => 'checkmk-wordpress-inventory/1.0',
+            'ignore_errors' => false,
+        ],
+        'ssl' => [
+            'verify_peer' => true,
+            'verify_peer_name' => true,
+        ],
+    ]);
+    $body = @file_get_contents($url, false, $context);
+    if ($body === false) {
+        throw new RuntimeException('WordPress version API request failed');
+    }
+    return $body;
 }
 
-function generate_output($update_core,$update_plugins,$update_themes){
-    /*
-        print "Installed WP Version: $wp_version\n";
-        print "Core: $update_core\n";
-        print "Plugins: " . join($update_plugins,',') . "\n";
-        print "Themes: " . join($update_themes,',') . "\n";
-     */
-
-    global $wp_version;
-    global $wp_instance_name;
-    global $arr_output;
-
-    $status="";
-    #$arr_output["instance"]["$wp_instance_name"]=Array();
-    $arr_output["name"]=$wp_instance_name;
-    if ($update_core) {
-	$core_status=0;
-	if(isset($wp_version)){
-		@list($major, $minor, $patch) = explode('.', $wp_version);
-		@list($update_major, $update_minor, $update_patch) = explode('.', $update_core);
-		if(
-			isset($major) && is_numeric($major) && 
-			isset($minor) && is_numeric($minor) && 
-			isset($patch) && is_numeric($patch) &&
-                        isset($update_major) && is_numeric($update_major) && 
-                        isset($update_minor) && is_numeric($update_minor) && 
-                        isset($update_patch) && is_numeric($update_patch)
-		){
-			if(($update_major > $major) OR ($update_minor > $minor)){
-				$core_status=2;
-			}
-			if($update_patch > $patch){
-				if($core_status < 1){
-					$core_status=1;
-				}
-			}
-		}
-	}else{
-		$core_status=2;
-	}
-	$arr_output["core_status"] = $core_status;
-	$arr_output["core_version"] = $wp_version;
-	$arr_output["core_new_version"] = $update_core;
-    } else {
-	$arr_output["core_status"] = 0;
-        $arr_output["core_version"] = $wp_version;
-        $arr_output["core_new_version"] = "";
+function latest_core_version(string $installedVersion, array &$cache): string
+{
+    if (isset($cache[$installedVersion])) {
+        return $cache[$installedVersion];
     }
 
-    if (isset($update_plugins) && is_array($update_plugins) && count($update_plugins) > 0 ) {
-	$i=0;
-        foreach($update_plugins AS $key => $value){
-            if(isset($value['version'])){
-		$arr_output['plugins'][$i]['name']=$key;
-                $arr_output['plugins'][$i]['version']=$value['version'];
-		$arr_output['plugins'][$i]['new_version']=$value['new_version'];
-		$arr_output['plugins'][$i]['status']=$value['status'];
-		$i++;
-	    }
+    $query = http_build_query([
+        'version' => $installedVersion,
+        'php' => PHP_VERSION,
+        'locale' => 'en_US',
+    ]);
+    $body = fetch_url('https://api.wordpress.org/core/version-check/1.7/?' . $query);
+    $payload = json_decode($body, true, 32, JSON_THROW_ON_ERROR);
+    $offers = $payload['offers'] ?? null;
+    if (!is_array($offers) || $offers === []) {
+        throw new RuntimeException('WordPress version API returned no offers');
+    }
+
+    foreach ($offers as $offer) {
+        if (is_array($offer) && isset($offer['current']) && is_string($offer['current'])) {
+            $cache[$installedVersion] = trim($offer['current']);
+            return $cache[$installedVersion];
         }
-#    } else {
-#        $arr_output["instance"][$wp_instance_name]['plugin']['status']=0;
     }
-
-    # $message .= " - ";
-
-    if (isset($update_themes) && is_array($update_themes) && count($update_themes) > 0) {
-	$i=0;
-        foreach($update_themes AS $key => $value){
-	    if(isset($value['version'])){
-		$arr_output["themes"][$i]['name']=$key;
-                $arr_output["themes"][$i]['version']=$value['version'];
-		$arr_output["themes"][$i]['new_version']=$value['new_version'];
-		$arr_output["themes"][$i]['status']=$value['status'];
-		$i++;
-            }
-        }
-#    } else {
-#	$arr_output["instance"][$wp_instance_name]['theme']['status']=0;
-    }
-
-    die(json_encode($arr_output).",");
+    throw new RuntimeException('WordPress version API returned no current version');
 }
 
-?>
+function core_status(string $installedVersion, string $latestVersion): int
+{
+    if (version_compare($installedVersion, $latestVersion, '>=')) {
+        return 0;
+    }
 
+    $installed = array_pad(explode('.', $installedVersion), 3, '0');
+    $latest = array_pad(explode('.', $latestVersion), 3, '0');
+    if ($installed[0] !== $latest[0] || $installed[1] !== $latest[1]) {
+        return 2;
+    }
+    return 1;
+}
 
+function instance_name(string $root, string $baseDir, array &$seen): string
+{
+    $realBase = realpath($baseDir);
+    $name = basename($root);
+    if ($realBase !== false && str_starts_with($root, $realBase . DIRECTORY_SEPARATOR)) {
+        $relative = substr($root, strlen($realBase) + 1);
+        if ($relative !== false && $relative !== '') {
+            $name = $relative;
+        }
+    }
+    $name = str_replace(DIRECTORY_SEPARATOR, '/', $name);
+    $candidate = $name;
+    $index = 2;
+    while (isset($seen[$candidate])) {
+        $candidate = $name . ' ' . $index;
+        $index++;
+    }
+    $seen[$candidate] = true;
+    return $candidate;
+}
+
+function build_instance(string $root, string $baseDir, array &$latestCache, array &$seenNames): array
+{
+    $name = instance_name($root, $baseDir, $seenNames);
+    try {
+        $installed = read_installed_version($root);
+        $latest = latest_core_version($installed, $latestCache);
+        return [
+            'name' => $name,
+            'path' => $root,
+            'core_status' => core_status($installed, $latest),
+            'core_version' => $installed,
+            'core_new_version' => $latest,
+        ];
+    } catch (Throwable $error) {
+        return [
+            'name' => $name,
+            'path' => $root,
+            'core_status' => 3,
+            'core_version' => '',
+            'core_new_version' => '',
+            'error' => $error->getMessage(),
+        ];
+    }
+}
+
+$config = load_config();
+$instances = [];
+try {
+    $roots = find_wordpress_roots($config['BASEDIR'], $config['SEARCH_STRING']);
+    $latestCache = [];
+    $seenNames = [];
+    foreach ($roots as $root) {
+        $instances[] = build_instance($root, $config['BASEDIR'], $latestCache, $seenNames);
+    }
+    $payload = ['instances' => $instances];
+} catch (Throwable $error) {
+    $payload = [
+        'instances' => [],
+        'error' => $error->getMessage(),
+    ];
+}
+
+echo "<<<wordpress_instances:sep(0)>>>", PHP_EOL;
+echo json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), PHP_EOL;
