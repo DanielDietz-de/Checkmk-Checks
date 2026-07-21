@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-
-"""
-Kuhn & Rueß GmbH
-Consulting and Development
-https://kuhn-ruess.de
-"""
+"""Server-side command wiring for Spring Boot Actuator."""
 
 from typing import Optional
 
@@ -28,11 +23,10 @@ class SpringBootActuatorParams(BaseModel):
 def generate_spring_boot_actuator_command(
     params: SpringBootActuatorParams, host_config: HostConfig
 ):
-    password = params.password.unsafe() if params.password else ""
-    arguments = [
+    arguments: list[str | Secret] = [
         params.url,
         params.username or "",
-        password,
+        params.password if params.password is not None else "",
         "1" if params.verify_ssl else "0",
     ]
     yield SpecialAgentCommand(command_arguments=arguments)
