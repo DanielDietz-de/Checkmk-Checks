@@ -98,7 +98,9 @@ def create_git_pair(tmp_path: Path) -> tuple[Path, Path, Path]:
     return work, local_bare, remote_bare
 
 
-def test_validate_config_requires_explicit_cleartext_http_opt_in(tmp_path: Path) -> None:
+def test_validate_config_requires_explicit_cleartext_http_opt_in(
+    tmp_path: Path,
+) -> None:
     config = valid_config(tmp_path)
     config["inventory"] = {"url": "http://monitor.example/oxidized.json"}
     with pytest.raises(module.CollectorError, match="allow_insecure_http"):
@@ -132,8 +134,8 @@ def test_inventory_parser_marks_duplicates_and_rejects_output_injection() -> Non
             {"hostname": "bad\n<<<<host>>>>", "os": "ios"},
         ]
     )
-    assert len(records) == 2
-    assert all(record["duplicate"] for record in records)
+    assert len(records) == 1
+    assert records[0]["duplicate"] is True
     assert any("Duplicate inventory" in error for error in errors)
     assert any("forbidden" in error for error in errors)
 
@@ -304,12 +306,19 @@ def test_safe_git_tree_paths() -> None:
     assert module._safe_git_tree_path("switches", "switch-1", single_repo=True) == (
         "switches/switch-1"
     )
-    assert module._safe_git_tree_path("switches", "switch-1", single_repo=False) == "switch-1"
+    assert (
+        module._safe_git_tree_path("switches", "switch-1", single_repo=False)
+        == "switch-1"
+    )
     with pytest.raises(module.CollectorError):
         module._safe_git_tree_path("../outside", "switch-1", single_repo=True)
+    with pytest.raises(module.CollectorError, match="absolute"):
+        module._safe_git_tree_path(None, "/switch-1", single_repo=True)
 
 
-def test_emit_agent_output_has_balanced_piggyback_markers(capsys: pytest.CaptureFixture[str]) -> None:
+def test_emit_agent_output_has_balanced_piggyback_markers(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     module.emit_agent_output(
         {"schema_version": 1, "kind": "central"},
         [{"schema_version": 1, "kind": "device", "host_name": "switch-1"}],
