@@ -4,34 +4,74 @@
 ![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.3.0b1-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.3.0p9-blue)
 <!-- compatibility-badges:end -->
 
-Helper script that cleans out stale notifications from the Checkmk notification spooler. When a notification outburst hits the spooler, recovery or downtime-end notifications can queue up behind problem or downtime-start notifications that will never be useful any more. This script scans the spool directory and deletes matching problem/recovery and downtime-start/downtime-end pairs so the spooler drains faster.
+Helper script that identifies stale problem/recovery and downtime-start/downtime-end notification groups in the Checkmk notification spool and moves explicitly approved groups into a recoverable quarantine.
 
-## How it works
+## Safety model
 
-The script reads every file in `$OMD_ROOT/var/check_mk/notify/spool`, orders them by mtime, and walks through them:
+- Read-only dry run by default.
+- `--execute` is required before any file is moved.
+- Interactive execution requires the exact confirmation `MOVE <file-count>` unless `--yes` is supplied deliberately.
+- Files newer than five minutes are ignored by default; adjust with `--min-age-seconds`.
+- Only regular files are parsed. Symlinks and other filesystem objects are rejected.
+- Every file is revalidated by device, inode, mtime, and size immediately before a group is moved.
+- A non-blocking site-local lock prevents two cleanup processes from running together.
+- Files are moved atomically to a timestamped quarantine directory on the same filesystem; they are not unlinked.
+- If a group move fails partway through, already moved files are rolled back where possible and the command reports a non-zero status.
+- Repeated problem or downtime-start notifications are retained in the plan instead of silently overwriting earlier records.
 
-- For hosts: a `DOWNTIMESTART` paired with a later `DOWNTIMEEND` causes both files to be deleted; likewise a `PROBLEM` paired with a later `RECOVERY`.
-- For services: the same logic keyed on `HOSTNAME###SERVICEDESC`.
-- At the end it prints a small ASCII summary of how many host/service state and downtime entries were removed and the total number of files inspected.
+Spool records are parsed with bounded `ast.literal_eval`, never `eval`.
 
-Spool records are parsed with `ast.literal_eval`, never `eval`. Only dictionary records containing a dictionary `context` and the required string fields are accepted. Files larger than 1 MiB, malformed literals, executable expressions, and invalid schemas are skipped.
+## Usage
+
+Preview the plan:
+
+```text
+clean_spoolfiles
+```
+
+Execute with the default five-minute age threshold:
+
+```text
+clean_spoolfiles --execute
+```
+
+Non-interactive execution with a 15-minute age threshold:
+
+```text
+clean_spoolfiles --execute --yes --min-age-seconds 900
+```
+
+By default, files are moved from:
+
+```text
+$OMD_ROOT/var/check_mk/notify/spool
+```
+
+to a timestamped directory below:
+
+```text
+$OMD_ROOT/var/check_mk/notify/spool-cleanup
+```
+
+Use `--quarantine-dir` only for a directory on the same filesystem as the active spool.
+
+## Pairing behavior
+
+- Host state: all unmatched `PROBLEM` records followed by `RECOVERY`.
+- Service state: all unmatched `PROBLEM` records followed by `RECOVERY`, keyed by `HOSTNAME###SERVICEDESC`.
+- Host downtime: all unmatched `DOWNTIMESTART` records followed by `DOWNTIMEEND`.
+- Service downtime: all unmatched `DOWNTIMESTART` records followed by `DOWNTIMEEND`.
+
+Only complete groups are planned. Unmatched records stay in the active spool.
 
 ## Package contents
 
 | Path | Purpose |
 | --- | --- |
-| `src/bin/clean_spoolfiles` | Python script installed as `bin/clean_spoolfiles` in the site. |
-| `tests/test_parser.py` | Regression tests for non-executable spool parsing. |
+| `src/bin/clean_spoolfiles` | Safe planning and quarantine command. |
+| `tests/test_parser.py` | Non-executable parser regression tests. |
+| `tests/test_cleanup_safety.py` | Dry-run, age, pairing, revalidation, and quarantine tests. |
 
-## Installation
+## Recovery
 
-1. Install the MKP on the Checkmk site.
-2. Run `clean_spoolfiles` as the site user when the notification spooler is backed up. There is no scheduled trigger — you run it manually or wire it into a cron of your choice.
-
-## Remaining operational limitations
-
-- Matching spool files are still unlinked directly rather than quarantined.
-- The command does not yet lock against a concurrently running notification spooler.
-- The command is destructive by default.
-
-Those deletion-safety concerns are handled in a separate change so this parser fix remains reviewable in isolation.
+Quarantined records remain available for operator review. To restore a record, stop or otherwise coordinate with the notification spooler, verify that the destination name is unused, and move the file back into the active spool as the Checkmk site user.
