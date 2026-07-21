@@ -1,13 +1,7 @@
 #!/usr/bin/env python3
-
-"""
-Kuhn & Rueß GmbH
-Consulting and Development
-https://kuhn-ruess.de
-"""
+"""Server-side command wiring for Pure Storage."""
 
 from pydantic import BaseModel
-from typing import Optional
 
 from cmk.server_side_calls.v1 import (
     HostConfig,
@@ -22,18 +16,17 @@ class PureParams(BaseModel):
 
 
 def generate_pure_command(params: PureParams, host_config: HostConfig):
-    args = [
+    args: list[str | Secret] = [
         "-i",
         host_config.primary_ip_config.address,
         "-t",
-        params.token.unsafe(),
+        params.token,
     ]
-
-    yield SpecialAgentCommand(command_arguments = args)
+    yield SpecialAgentCommand(command_arguments=args)
 
 
 special_agent_pure = SpecialAgentConfig(
-    name = "pure",
-    parameter_parser = PureParams.model_validate,
-    commands_function = generate_pure_command,
+    name="pure",
+    parameter_parser=PureParams.model_validate,
+    commands_function=generate_pure_command,
 )
