@@ -289,9 +289,9 @@ Repository definition:
 - `remote`: optional Git remote name; default `origin`
 - `branch`: optional explicit branch; when omitted, the current symbolic `HEAD` branch is used
 - `command_timeout_seconds`: optional, 1 to 300 seconds
-- `fsck_timeout_seconds`: optional integrity-check timeout
+- `fsck_timeout_seconds`: optional integrity-check timeout, 1 to 3600 seconds
 
-The remote is queried as `git.run_as_user` with `GIT_TERMINAL_PROMPT=0`. Configure SSH keys, `known_hosts`, SSH agent access, or a non-interactive Git credential helper for that account. Do not place tokens or passwords in this JSON file.
+The remote is queried as `git.run_as_user` with `GIT_TERMINAL_PROMPT=0`. Configure SSH keys, `known_hosts`, or a non-interactive Git credential helper for that account. Do not place tokens or passwords in this JSON file.
 
 ### `policy`
 
