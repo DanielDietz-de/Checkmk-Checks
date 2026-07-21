@@ -88,3 +88,77 @@ Web interface:
 2. Set **TLS Expiry Check Start** to the required warning horizon. AudioCodes defaults to 60 days.
 3. Set **TLS Expiry Check Period** to the required check interval. AudioCodes defaults to 7 days.
 4. Apply and save the configuration.
+
+CLI example using the defaults:
+
+```text
+configure network
+security-settings
+tls-expiry-check-start 60
+tls-expiry-check-period 7
+```
+
+Correct NTP configuration is required for meaningful X.509 validity checks. The SNMP user must also be able to read the active alarm table under `.1.3.6.1.4.1.5003.11.1.1.1.1`.
+
+### HA and synchronization monitoring
+
+No additional KPI switch is required for the HA module-state or keepalive packet-loss objects. The check evaluates:
+
+- module operational state, presence and HA role/status from `acSysModuleTable`;
+- active and redundant HA keepalive packet loss;
+- `acHASystemFaultAlarm`, `acHASystemConfigMismatchAlarm` and `acHASystemSwitchOverAlarm`;
+- active alarm text indicating synchronization or redundant-unit problems.
+
+The synchronization result is alarm-based because the AudioCodes SNMP HA module table exposes HA role/status but not the CLI's textual `Last HA sync action/state` value. Validate the pair directly on the SBC with:
+
+```text
+show high-availability status
+```
+
+A healthy active node normally reports `Active`, `Connected` and `Sync. ended !`. Checkmk also ships the official per-module services `AudioCodes: Operational State` and `AudioCodes: Operational State Redundant`; these can remain enabled. `SBC HA Health` adds an aggregate view, HA packet-loss metrics and synchronization-related alarm correlation.
+
+### Interpreting “Idles of”
+
+AudioCodes does not document a performance KPI named `Idles of`. This implementation treats the requested value as **idle licensed SBC capacity**:
+
+```text
+100% - max(SBC media license usage, SBC signaling license usage)
+```
+
+The service reports both the current idle percentage and the minimum idle percentage calculated from the retained maximum utilization. It deliberately does not infer an absolute number of free calls because the installed absolute `SBC=<sessions>` license value is not exposed by these KPI objects.
+
+## Services and metrics
+
+| Service | Notes |
+| --- | --- |
+| `SIP Alarms` | State driven by active alarm severity. Metrics: `active_alarms`, `archived_alarms`. |
+| `SBC Calls` | Existing metrics: `active_calls`, `calls_per_sec`, `average_success_ratio`, `average_call_duration`. |
+| `SBC Call Capacity` | `active_calls_in`, `active_calls_out`, `active_sessions`, `active_calls_in_max`, `active_calls_out_max`, `active_sessions_max`. |
+| `SBC License Usage` | `sbc_media_license_usage`, `sbc_signaling_license_usage`, retained maxima, current idle capacity and retained minimum idle capacity. |
+| `SBC HA Health` | Aggregate module HA status, synchronization/fault alarms, current and retained active/redundant keepalive packet loss. |
+| `SBC TLS Health` | Active and retained-maximum SIP TLS connections, attempt/rejection rates and retained interval values, certificate-expiry and socket-limit alarms. |
+| `SBC Users` | Metrics: `rx_trans`, `tx_trans`, `num_user`. |
+| `SIP Performance` | Metrics: `tel2ip_*` and `ip2tel_*` counters (attempted, established, busy, no_answer, no_route, no_capability, failed, fax_attempted, fax_success, total_duration). |
+| `SIP Interface <index> <name>` | Discovery saves row status; any later change goes CRIT. |
+| `IP Group <index> <name>` | Discovery saves row status; any later change goes CRIT. |
+
+## Device-side verification
+
+Use numeric OIDs to confirm that the monitored objects are visible to the same SNMP credentials used by Checkmk:
+
+```bash
+snmpget -v2c -c '<community>' '<sbc>' \
+  .1.3.6.1.4.1.5003.15.3.1.1.1.2.0 \
+  .1.3.6.1.4.1.5003.15.3.1.1.1.3.0 \
+  .1.3.6.1.4.1.5003.15.3.1.1.1.43.0
+
+snmpwalk -v2c -c '<community>' '<sbc>' \
+  .1.3.6.1.4.1.5003.9.10.10.4.21.1
+
+snmpget -v2c -c '<community>' '<sbc>' \
+  .1.3.6.1.4.1.5003.15.6.4.1.2.1.0 \
+  .1.3.6.1.4.1.5003.15.6.4.1.2.2.0 \
+  .1.3.6.1.4.1.5003.15.6.4.1.2.3.0
+```
+
+Adapt the command for SNMPv3 where applicable. `No Such Object` indicates firmware/MIB support or SNMP-view restrictions; a literal `null` on the Active Sessions objects normally indicates that SDR generation is disabled or that no post-enable session has yet been observed.
