@@ -1,209 +1,257 @@
 #!/usr/bin/env python3
+"""Collect Dell EMC PowerMax data through the Unisphere REST API."""
 
-import sys
-import urllib3
-import requests
+from __future__ import annotations
+
 import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Any
+from urllib.parse import quote
 
+import requests
 from requests.auth import HTTPBasicAuth
-from requests.packages import urllib3
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+MAX_RESPONSE_BYTES = 10 * 1024 * 1024
 
 
-def parse_arguments(argv):
+class PowerMaxError(RuntimeError):
+    """Raised when a complete, trustworthy agent output cannot be produced."""
+
+
+def parse_arguments(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-
-    parser.add_argument(
-        "-d", "--debug",
-        action="store_true",
-        default=False,
-        help="Debug mode: Print API responses",
-    )
-    parser.add_argument(
-        "-a",
-        "--address",
-        type=str,
-        required=True,
-        help="Host name or IP address of the target device",
-    )
-    parser.add_argument(
-        "-p",
-        "--port",
-        type=int,
-        default=8443,
-        help="Port for Unisphere for PowerMax API Login (default 8443)",
-    )
-    parser.add_argument(
-        "-u",
-        "--username",
-        type=str,
-        required=True,
-        help="Username for Unisphere for PowerMax API Login",
-    )
-    parser.add_argument(
-        "-s",
-        "--secret",
-        type=str,
-        required=True,
-        help="Password for Unisphere for PowerMax API Login",
-    )
+    parser.add_argument("-a", "--address", required=True)
+    parser.add_argument("-p", "--port", type=int, default=8443)
+    parser.add_argument("-u", "--username", required=True)
+    parser.add_argument("-s", "--secret", required=True)
+    parser.add_argument("--api-version", type=int, default=100)
+    parser.add_argument("--timeout", type=float, default=15.0)
+    parser.add_argument("--ca-bundle", type=Path)
     args = parser.parse_args(argv)
-    args.port = str(args.port)
-
+    if not 1 <= args.port <= 65535:
+        parser.error("--port must be between 1 and 65535")
+    if not 0.5 <= args.timeout <= 120:
+        parser.error("--timeout must be between 0.5 and 120 seconds")
+    if not 1 <= args.api_version <= 999:
+        parser.error("--api-version must be between 1 and 999")
+    if args.ca_bundle is not None:
+        if (
+            not args.ca_bundle.is_absolute()
+            or not args.ca_bundle.is_file()
+            or args.ca_bundle.is_symlink()
+        ):
+            parser.error("--ca-bundle must be an absolute regular file")
     return args
 
 
 class PmaxAgent:
-    def __init__(self, debug, address, port, username, secret, verify_ssl=False):
-        self.debug = debug
-        self.username = username
-        self.password = secret
-        self.headers = {"Content-Type": "application/json"}
-        self.verify_ssl = verify_ssl
-        self.base_url = "https://%s:%s/univmax/restapi/" % (
-            address,
-            port,
-        )
+    def __init__(
+        self,
+        *,
+        address: str,
+        port: int,
+        username: str,
+        secret: str,
+        api_version: int,
+        timeout: float,
+        verify: bool | str,
+    ):
+        self.api_version = str(api_version)
+        self.timeout = timeout
+        self.verify = verify
+        self.base_url = f"https://{address}:{port}/univmax/restapi/"
+        self.session = requests.Session()
+        self.session.trust_env = False
+        self.session.auth = HTTPBasicAuth(username, secret)
+        self.session.headers.update({"Accept": "application/json"})
 
-    def do_get(self, endpoint):
-        url = self.base_url + endpoint
+    def do_get(self, endpoint: str) -> dict[str, Any]:
         try:
-            response = requests.get(
-                url,
-                auth=HTTPBasicAuth(self.username, self.password),
-                headers={
-                    "Accept": "application/json",
-                },
-                verify=False,
+            response = self.session.get(
+                self.base_url + endpoint.lstrip("/"),
+                timeout=self.timeout,
+                verify=self.verify,
+                allow_redirects=False,
+                stream=True,
             )
+        except requests.RequestException as exc:
+            raise PowerMaxError(f"request failed for {endpoint}: {exc}") from exc
+        if response.is_redirect:
+            raise PowerMaxError(f"unexpected redirect for {endpoint}")
+        body = bytearray()
+        for chunk in response.iter_content(chunk_size=65536):
+            body.extend(chunk)
+            if len(body) > MAX_RESPONSE_BYTES:
+                raise PowerMaxError(f"response too large for {endpoint}")
+        if not 200 <= response.status_code < 300:
+            raise PowerMaxError(
+                f"HTTP {response.status_code} returned for {endpoint}"
+            )
+        try:
+            data = json.loads(body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise PowerMaxError(f"invalid JSON returned for {endpoint}") from exc
+        if not isinstance(data, dict):
+            raise PowerMaxError(f"non-object JSON returned for {endpoint}")
+        return data
 
-            if response.status_code == 200:
-                if self.debug:
-                    print(response.json())
-                return response.json()
+    @staticmethod
+    def require_mapping(data: dict[str, Any], key: str) -> dict[str, Any]:
+        value = data.get(key)
+        if not isinstance(value, dict):
+            raise PowerMaxError(f"missing object {key}")
+        return value
 
-            elif response.status_code == 401:
-                raise Exception("Unauthorized: " + str(response.status_code))
+    @staticmethod
+    def require_list(data: dict[str, Any], key: str) -> list[Any]:
+        value = data.get(key)
+        if not isinstance(value, list):
+            raise PowerMaxError(f"missing list {key}")
+        return value
 
-            else:
-                raise Exception("Invalid Request: " + str(response.status_code))
+    @staticmethod
+    def scalar(value: Any, label: str) -> str:
+        if not isinstance(value, (str, int, float, bool)):
+            raise PowerMaxError(f"invalid scalar {label}")
+        text = str(value).replace("|", "/").replace("\n", " ").replace("\r", " ")
+        return text[:4096]
 
-        except requests.ConnectionError:
-            sys.exit(1)
+    def get_local_array_id(self) -> str:
+        data = self.do_get(f"{self.api_version}/vvol/symmetrix")
+        for symm_id in self.require_list(data, "symmetrixId"):
+            symm = self.scalar(symm_id, "symmetrixId")
+            info = self.do_get(
+                f"{self.api_version}/vvol/symmetrix/{quote(symm, safe='')}"
+            )
+            if info.get("local") is True:
+                return symm
+        raise PowerMaxError("no local PowerMax array was returned")
 
-    def output(self, data):
-        pmax_output = []
-        pmax_output.append(data)
+    def build_output(self) -> list[str]:
+        lines: list[str] = []
 
-        for line in pmax_output:
-            sys.stdout.write(line + "\n")
-
-    # SYSTEMINFO
-
-    def get_version(self):
-        self.output("<<<dellpmax_systeminfo:sep(124)>>>")
-        data = self.do_get("version")
-        self.output("version|" + data["version"])
-
-    # RUNTIME USAGE
-
-    def get_system_stats(self):
-        self.output("<<<dellpmax_systemstats:sep(124)>>>")
-        data = self.do_get("management/RuntimeUsage/read")
-        jvm_stats = data["runtimeGenericResources"]["jvmStats"]
-        sys_stats = data["runtimeGenericResources"]["systemStats"]
-        self.output(
-            "systemStatistics|%s|%s|%s|%s|%s|%s"
-            % (
-                jvm_stats["heap"],
-                jvm_stats["heapMax"],
-                jvm_stats["heapUsed"],
-                sys_stats["cpuStats"]["usage"],
-                sys_stats["memoryStats"]["total"],
-                sys_stats["memoryStats"]["used"],
+        version = self.do_get("version")
+        lines.extend(
+            (
+                "<<<dellpmax_systeminfo:sep(124)>>>",
+                "version|" + self.scalar(version.get("version"), "version"),
             )
         )
 
-    # STORAGE RESSOURCE POOLS
-
-    def get_local_array_id(self):
-        data = self.do_get("92/vvol/symmetrix")
-        for id in data["symmetrixId"]:
-            sym_info = self.do_get("92/vvol/symmetrix/%s" % id)
-            if sym_info["local"] == True:
-                return id
-        return None
-
-    def get_storage_ressource_pools(self, symm_id):
-        self.output("<<<dellpmax_storage_pools:sep(124)>>>")
-        data = self.do_get("92/sloprovisioning/symmetrix/%s/srp" % symm_id)
-        for srp_id in data["srpId"]:
-            data = self.do_get(
-                "92/sloprovisioning/symmetrix/%s/srp/%s" % (symm_id, srp_id)
+        runtime = self.do_get("management/RuntimeUsage/read")
+        resources = self.require_mapping(runtime, "runtimeGenericResources")
+        jvm = self.require_mapping(resources, "jvmStats")
+        system = self.require_mapping(resources, "systemStats")
+        cpu = self.require_mapping(system, "cpuStats")
+        memory = self.require_mapping(system, "memoryStats")
+        lines.extend(
+            (
+                "<<<dellpmax_systemstats:sep(124)>>>",
+                "systemStatistics|"
+                + "|".join(
+                    self.scalar(value, label)
+                    for value, label in (
+                        (jvm.get("heap"), "heap"),
+                        (jvm.get("heapMax"), "heapMax"),
+                        (jvm.get("heapUsed"), "heapUsed"),
+                        (cpu.get("usage"), "cpu usage"),
+                        (memory.get("total"), "memory total"),
+                        (memory.get("used"), "memory used"),
+                    )
+                ),
             )
+        )
 
-            self.output(
-                "{}|{subscribed_allocated_tb}|{subscribed_total_tb}|{snapshot_modified_tb}|{snapshot_total_tb}|{usable_used_tb}|{usable_total_tb}|{effective_used_capacity_percent}".format(
-                    srp_id, **data["srp_capacity"]
-                )
-            )
-
-    # ALERTS
-
-    def get_alerts(self, symm_id):
-        alert_categories = [
+        symm_id = self.get_local_array_id()
+        alerts = self.do_get(f"{self.api_version}/system/alert_summary")
+        categories = (
             "critical_unacknowledged_count",
             "fatal_unacknowledged_count",
             "warning_unacknowledged_count",
-        ]
-        alert_types = ["arrayAlertSummary", "performanceAlertSummary"]
-
-        data = self.do_get("92/system/alert_summary")
-
-        # Server alerts
-        self.output("<<<dellpmax_server_alerts:sep(124)>>>")
-        server_alert = data["serverAlertSummary"]
-        self.output(
-            "serverAlertSummary"
-            + "|"
-            + "|".join(str(server_alert[category]) for category in alert_categories)
         )
+        server_alert = self.require_mapping(alerts, "serverAlertSummary")
+        lines.extend(
+            (
+                "<<<dellpmax_server_alerts:sep(124)>>>",
+                "serverAlertSummary|"
+                + "|".join(
+                    self.scalar(server_alert.get(category), category)
+                    for category in categories
+                ),
+                "<<<dellpmax_symm_alerts:sep(124)>>>",
+            )
+        )
+        found_alert = False
+        for symm in self.require_list(alerts, "symmAlertSummary"):
+            if not isinstance(symm, dict) or str(symm.get("symmId")) != symm_id:
+                continue
+            values: list[str] = []
+            for alert_type in ("arrayAlertSummary", "performanceAlertSummary"):
+                summary = self.require_mapping(symm, alert_type)
+                values.extend(
+                    self.scalar(summary.get(category), f"{alert_type}.{category}")
+                    for category in categories
+                )
+            lines.append("symmAlertSummary|" + "|".join(values))
+            found_alert = True
+            break
+        if not found_alert:
+            raise PowerMaxError(f"no alert summary found for array {symm_id}")
 
-        # Symm alerts
-        self.output("<<<dellpmax_symm_alerts:sep(124)>>>")
-        for symm in data["symmAlertSummary"]:
-            if symm["symmId"] == symm_id:
-                output = "symmAlertSummary|"
-                for atype in alert_types:
-                    output += "|".join(
-                        str(symm[atype][category]) for category in alert_categories
-                    )
-                    output += "|" if atype == "arrayAlertSummary" else ""
-                self.output(output)
-                break
+        pools = self.do_get(
+            f"{self.api_version}/sloprovisioning/symmetrix/"
+            f"{quote(symm_id, safe='')}/srp"
+        )
+        lines.append("<<<dellpmax_storage_pools:sep(124)>>>")
+        for srp_id in self.require_list(pools, "srpId"):
+            srp = self.scalar(srp_id, "srpId")
+            detail = self.do_get(
+                f"{self.api_version}/sloprovisioning/symmetrix/"
+                f"{quote(symm_id, safe='')}/srp/{quote(srp, safe='')}"
+            )
+            capacity = self.require_mapping(detail, "srp_capacity")
+            fields = (
+                "subscribed_allocated_tb",
+                "subscribed_total_tb",
+                "snapshot_modified_tb",
+                "snapshot_total_tb",
+                "usable_used_tb",
+                "usable_total_tb",
+                "effective_used_capacity_percent",
+            )
+            lines.append(
+                srp
+                + "|"
+                + "|".join(
+                    self.scalar(capacity.get(field), f"srp_capacity.{field}")
+                    for field in fields
+                )
+            )
+        return lines
 
-    def run(self):
 
-        self.get_version()
-
-        self.get_system_stats()
-
-        local_id = self.get_local_array_id()
-
-        self.get_alerts(local_id)
-
-        self.get_storage_ressource_pools(local_id)
-
-
-def main(argv=None):
-
-    args = parse_arguments(argv or sys.argv[1:])
-
-    agent_dellpmax = PmaxAgent(
-        args.debug, args.address, args.port, args.username, args.secret
+def main(argv: list[str] | None = None) -> int:
+    args = parse_arguments(sys.argv[1:] if argv is None else argv)
+    verify: bool | str = str(args.ca_bundle) if args.ca_bundle else True
+    agent = PmaxAgent(
+        address=args.address,
+        port=args.port,
+        username=args.username,
+        secret=args.secret,
+        api_version=args.api_version,
+        timeout=args.timeout,
+        verify=verify,
     )
-    agent_dellpmax.run()
+    try:
+        lines = agent.build_output()
+    except PowerMaxError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    sys.stdout.write("\n".join(lines) + "\n")
+    return 0
 
 
-main()
+if __name__ == "__main__":
+    raise SystemExit(main())
