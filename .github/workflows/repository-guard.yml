@@ -1,0 +1,69 @@
+name: Repository security and supply-chain guard
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-guard-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Verify immutable workflow dependencies
+        run: python3 tools/ci/pin_supply_chain.py --check
+
+      - name: Resolve comparison range
+        id: range
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            base="$PR_BASE_SHA"
+            head="$PR_HEAD_SHA"
+          else
+            base="$BEFORE_SHA"
+            head="$CURRENT_SHA"
+          fi
+          printf 'base=%s\nhead=%s\n' "$base" "$head" >>"$GITHUB_OUTPUT"
+
+      - name: Enforce changed-code baseline
+        env:
+          BASE_SHA: ${{ steps.range.outputs.base }}
+          HEAD_SHA: ${{ steps.range.outputs.head }}
+        run: |
+          set -euo pipefail
+          guard=tools/ci/repository_guard.py
+          if [[ -f tools/ci/repository_guard_corrected.py ]]; then
+            guard=tools/ci/repository_guard_corrected.py
+          fi
+          python3 "$guard" --base "$BASE_SHA" --head "$HEAD_SHA"
+
+      - name: Test CI guard tools
+        run: python3 -m unittest discover -s tests -p 'test_ci_tools.py' -v
