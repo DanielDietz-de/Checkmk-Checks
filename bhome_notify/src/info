@@ -1,11 +1,10 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'BHome Notification Plugin for Checkmk 2.4\n'
-                'Forwards monitoring events to an external events API.\n',
- 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
+ 'description': 'Forwards Checkmk monitoring events to BMC Helix Operations Management with native tenant API-key authentication and single-attempt delivery.\n',
+ 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/bhome_notify',
  'files': {'cmk_addons_plugins': ['bhome_notify/rulesets/notification_parameter.py'],
            'notifications': ['bhome_notify']},
  'name': 'bhome_notify',
- 'title': 'BHome Notification',
- 'version': '1.1.1',
+ 'title': 'BMC Helix Events notification',
+ 'version': '1.2.0',
  'version.min_required': '2.4.0b1',
  'version.packaged': '2.5.0'}
