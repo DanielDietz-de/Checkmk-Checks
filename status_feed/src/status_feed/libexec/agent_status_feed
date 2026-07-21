@@ -1,209 +1,170 @@
 #!/usr/bin/env python3
-"""
-Kuhn & Rueß GmbH
-Consulting and Development
-https://kuhn-ruess.de
+"""Fetch public HTTPS RSS/Atom feeds through a bounded parser."""
 
-Special agent: fetch status RSS/Atom feeds and emit one section line per
-configured feed. Each line is a JSON object describing reachability, the
-latest item and the detected incident state.
+from __future__ import annotations
 
-Generalised from the original AWS-only agent: works with the per-service
-status feeds published by AWS (https://status.aws.amazon.com/) as well as
-Statuspage-style incident-history feeds (e.g. https://status.scrivito.com/
-incidents.atom).
-"""
 import argparse
+import html
+import ipaddress
 import json
 import re
+import socket
 import sys
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from urllib.error import HTTPError, URLError
-from urllib.request import ProxyHandler, Request, build_opener
+from typing import Any
+from urllib.parse import urlsplit
 from xml.etree import ElementTree as ET
 
+import requests
 
-# Keywords used to classify the most recent feed entry. Statuspage-style
-# feeds embed the lifecycle state in the entry text; AWS service feeds only
-# publish an entry while an event is in flight.
+MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+MAX_FEEDS = 100
+MAX_ITEMS = 1000
+MAX_TEXT_LENGTH = 4096
+
 ACTIVE_KEYWORDS = (
-    "investigating",
-    "identified",
-    "monitoring",
-    "degraded",
-    "degradation",
-    "partial outage",
-    "major outage",
-    "service disruption",
-    "disruption",
-    "increased error",
-    "elevated error",
-    "in progress",
-    "ongoing",
+    "investigating", "identified", "monitoring", "degraded", "degradation",
+    "partial outage", "major outage", "service disruption", "disruption",
+    "increased error", "elevated error", "in progress", "ongoing",
 )
 RESOLVED_KEYWORDS = (
-    "resolved",
-    "operational",
-    "completed",
-    "back to normal",
-    "fully restored",
-    "all systems",
+    "resolved", "operational", "completed", "back to normal",
+    "fully restored", "all systems",
 )
 
 
-def parse_arguments():
-    parser = argparse.ArgumentParser(description="Status RSS/Atom feed monitoring")
-    parser.add_argument(
-        "--feed",
-        action="append",
-        default=[],
-        metavar="NAME=URL",
-        help="Feed in the form 'Name=https://...'. May be given multiple times.",
-    )
-    parser.add_argument(
-        "--timeout",
-        type=float,
-        default=15.0,
-        help="HTTP timeout in seconds (default: 15)",
-    )
-    parser.add_argument(
-        "--user-agent",
-        default="checkmk-status-feed/1.0",
-        help="User-Agent header sent with each request.",
-    )
-    proxy_group = parser.add_mutually_exclusive_group()
-    proxy_group.add_argument(
-        "--proxy",
-        metavar="URL",
-        help="Route all feed requests through this HTTP proxy "
-        "(e.g. http://proxy.example:3128).",
-    )
-    proxy_group.add_argument(
-        "--no-proxy",
-        action="store_true",
-        help="Connect directly, ignoring any proxy set in the environment.",
-    )
-    args = parser.parse_args()
-    if not args.feed:
-        parser.error("At least one --feed NAME=URL is required")
-    return args
+class FeedError(RuntimeError):
+    """Raised when a feed target or document is unsafe."""
 
 
-def split_feed(spec):
-    if "=" not in spec:
-        raise ValueError(f"feed spec must be NAME=URL, got: {spec!r}")
-    name, url = spec.split("=", 1)
-    name = name.strip()
-    url = url.strip()
-    if not name or not url:
-        raise ValueError(f"empty name or url in feed spec: {spec!r}")
-    return name, url
+def validate_public_https_url(value: str) -> str:
+    parsed = urlsplit(value.strip())
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise FeedError("feed URL must be an absolute HTTPS URL")
+    if parsed.username or parsed.password or parsed.fragment:
+        raise FeedError("feed URL must not contain credentials or a fragment")
+    try:
+        addresses = {
+            result[4][0]
+            for result in socket.getaddrinfo(
+                parsed.hostname,
+                parsed.port or 443,
+                type=socket.SOCK_STREAM,
+            )
+        }
+    except socket.gaierror as exc:
+        raise FeedError(f"DNS resolution failed: {exc}") from exc
+    if not addresses or any(
+        not ipaddress.ip_address(address).is_global for address in addresses
+    ):
+        raise FeedError("feed URL resolves to a non-public address")
+    return value.strip()
 
 
-def parse_date(value):
-    if not value:
+def parse_date(value: str | None) -> datetime | None:
+    if not value or len(value) > 256:
         return None
     value = value.strip()
     try:
-        dt = parsedate_to_datetime(value)
+        parsed = parsedate_to_datetime(value)
     except (TypeError, ValueError):
-        dt = None
-    if dt is None:
+        parsed = None
+    if parsed is None:
         try:
-            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
             return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt
+    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
 
 
-def _strip_html(text):
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = (
-        text.replace("&nbsp;", " ")
-        .replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-    )
-    return re.sub(r"\s+", " ", text).strip()
+def clean_text(value: str | None, limit: int = MAX_TEXT_LENGTH) -> str:
+    text = html.unescape(value or "")
+    text = re.sub(r"<[^>]{0,2048}>", " ", text)
+    text = re.sub(r"[\x00-\x1f\x7f]", " ", text)
+    return " ".join(text.split())[:limit]
 
 
-def classify_state(title, summary):
-    """Best-effort lifecycle classification of an incident entry.
-
-    Returns "active", "resolved" or "unknown". Statuspage feeds list the
-    newest update first, so the leading keyword wins.
-    """
+def classify_state(title: str, summary: str) -> str:
     haystack = f"{title} {summary}".lower()
-    pos = {kw: haystack.find(kw) for kw in ACTIVE_KEYWORDS if kw in haystack}
-    pos.update({kw: haystack.find(kw) for kw in RESOLVED_KEYWORDS if kw in haystack})
-    if not pos:
+    positions = {
+        keyword: haystack.find(keyword)
+        for keyword in (*ACTIVE_KEYWORDS, *RESOLVED_KEYWORDS)
+        if keyword in haystack
+    }
+    if not positions:
         return "unknown"
-    first = min(pos, key=pos.get)
+    first = min(positions, key=positions.get)
     return "resolved" if first in RESOLVED_KEYWORDS else "active"
 
 
-def extract_items(xml_text):
-    """
-    Return list of dicts {title, published, summary} sorted newest first.
-    Supports RSS 2.0 (<item>) and Atom (<entry>); for Atom the human-readable
-    text may live in <summary> or <content>.
-    """
-    root = ET.fromstring(xml_text)
+def extract_items(xml_bytes: bytes) -> list[dict[str, str]]:
+    upper = xml_bytes[:4096].upper()
+    if b"<!DOCTYPE" in upper or b"<!ENTITY" in upper:
+        raise FeedError("DTD and entity declarations are not allowed")
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError as exc:
+        raise FeedError(f"feed is not valid XML: {exc}") from exc
+    items: list[dict[str, str]] = []
     ns = {"atom": "http://www.w3.org/2005/Atom"}
-    items = []
 
     for item in root.iter("item"):
-        items.append({
-            "title": (item.findtext("title") or "").strip(),
-            "published": (item.findtext("pubDate") or "").strip(),
-            "summary": _strip_html(item.findtext("description") or ""),
-        })
+        items.append(
+            {
+                "title": clean_text(item.findtext("title")),
+                "published": clean_text(item.findtext("pubDate"), 256),
+                "summary": clean_text(item.findtext("description")),
+            }
+        )
+        if len(items) > MAX_ITEMS:
+            raise FeedError("feed contains too many items")
 
     for entry in root.iter("{http://www.w3.org/2005/Atom}entry"):
-        title_el = entry.find("atom:title", ns)
-        published = (
-            entry.findtext("atom:updated", default="", namespaces=ns)
-            or entry.findtext("atom:published", default="", namespaces=ns)
+        title = entry.findtext("atom:title", default="", namespaces=ns)
+        published = entry.findtext("atom:updated", default="", namespaces=ns) or entry.findtext(
+            "atom:published", default="", namespaces=ns
         )
-        summary_el = entry.find("atom:summary", ns)
-        content_el = entry.find("atom:content", ns)
-        body_el = summary_el if summary_el is not None else content_el
-        items.append({
-            "title": (title_el.text or "").strip() if title_el is not None else "",
-            "published": published.strip(),
-            "summary": _strip_html(body_el.text or "") if body_el is not None else "",
-        })
+        summary = entry.findtext("atom:summary", default="", namespaces=ns) or entry.findtext(
+            "atom:content", default="", namespaces=ns
+        )
+        items.append(
+            {
+                "title": clean_text(title),
+                "published": clean_text(published, 256),
+                "summary": clean_text(summary),
+            }
+        )
+        if len(items) > MAX_ITEMS:
+            raise FeedError("feed contains too many items")
 
-    def sort_key(it):
-        dt = parse_date(it["published"])
-        return dt or datetime.min.replace(tzinfo=timezone.utc)
-
-    items.sort(key=sort_key, reverse=True)
+    items.sort(
+        key=lambda item: parse_date(item["published"])
+        or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
     return items
 
 
-def build_opener_for_proxy(proxy, no_proxy):
-    """Return a urllib opener honouring the requested proxy behaviour.
-
-    * ``--proxy URL`` routes every request through that proxy.
-    * ``--no-proxy`` disables proxies entirely (an empty ProxyHandler).
-    * neither flag keeps urllib's default, i.e. the proxies configured via
-      the process environment (http_proxy/https_proxy/no_proxy).
-    """
-    if proxy:
-        return build_opener(ProxyHandler({"http": proxy, "https": proxy}))
-    if no_proxy:
-        return build_opener(ProxyHandler({}))
-    return build_opener()
+def read_bounded(response: requests.Response) -> bytes:
+    body = bytearray()
+    for chunk in response.iter_content(chunk_size=65536):
+        body.extend(chunk)
+        if len(body) > MAX_RESPONSE_BYTES:
+            raise FeedError("feed exceeds the 2 MiB limit")
+    return bytes(body)
 
 
-def probe_feed(name, url, timeout, user_agent, opener):
-    result = {
-        "name": name,
-        "url": url,
+def probe_feed(
+    name: str,
+    url: str,
+    timeout: float,
+    user_agent: str,
+    session: requests.Session,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "name": clean_text(name, 256),
+        "url": url[:2048],
         "ok": False,
         "error": None,
         "items": 0,
@@ -215,61 +176,80 @@ def probe_feed(name, url, timeout, user_agent, opener):
         "http_status": None,
     }
     try:
-        req = Request(url, headers={"User-Agent": user_agent})
-        with opener.open(req, timeout=timeout) as resp:
-            result["http_status"] = resp.status
-            body = resp.read()
-    except HTTPError as exc:
-        result["http_status"] = exc.code
-        result["error"] = f"HTTP {exc.code}: {exc.reason}"
-        return result
-    except (URLError, TimeoutError) as exc:
-        result["error"] = f"connection error: {exc}"
-        return result
-    except Exception as exc:
-        result["error"] = f"unexpected error: {exc}"
-        return result
-
-    try:
-        items = extract_items(body.decode("utf-8", errors="replace"))
-    except ET.ParseError as exc:
-        result["error"] = f"feed is not valid XML: {exc}"
-        return result
-
-    result["ok"] = True
-    result["items"] = len(items)
-    if items:
-        latest = items[0]
-        result["latest_title"] = latest["title"] or None
-        result["latest_published"] = latest["published"] or None
-        result["latest_summary"] = (latest["summary"] or "")[:500] or None
-        result["latest_state"] = classify_state(latest["title"], latest["summary"])
-        dt = parse_date(latest["published"])
-        if dt is not None:
-            now = datetime.now(timezone.utc)
-            result["latest_age_seconds"] = max(0, int((now - dt).total_seconds()))
+        target = validate_public_https_url(url)
+        response = session.get(
+            target,
+            headers={"User-Agent": clean_text(user_agent, 256)},
+            timeout=timeout,
+            verify=True,
+            allow_redirects=False,
+            stream=True,
+        )
+        result["http_status"] = response.status_code
+        if response.is_redirect:
+            raise FeedError("feed returned an unexpected redirect")
+        if not 200 <= response.status_code < 300:
+            raise FeedError(f"feed returned HTTP {response.status_code}")
+        items = extract_items(read_bounded(response))
+        result["ok"] = True
+        result["items"] = len(items)
+        if items:
+            latest = items[0]
+            result["latest_title"] = latest["title"] or None
+            result["latest_published"] = latest["published"] or None
+            result["latest_summary"] = latest["summary"][:500] or None
+            result["latest_state"] = classify_state(
+                latest["title"], latest["summary"]
+            )
+            parsed = parse_date(latest["published"])
+            if parsed is not None:
+                result["latest_age_seconds"] = max(
+                    0,
+                    int((datetime.now(timezone.utc) - parsed).total_seconds()),
+                )
+    except (FeedError, requests.RequestException, ValueError) as exc:
+        result["error"] = str(exc)[:1024]
     return result
 
 
-def main():
-    args = parse_arguments()
-    opener = build_opener_for_proxy(args.proxy, args.no_proxy)
+def split_feed(spec: str) -> tuple[str, str]:
+    if "=" not in spec:
+        raise ValueError("feed spec must be NAME=URL")
+    name, url = (part.strip() for part in spec.split("=", 1))
+    if not name or not url:
+        raise ValueError("feed name and URL are required")
+    return name, url
+
+
+def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--feed", action="append", default=[])
+    parser.add_argument("--timeout", type=float, default=15.0)
+    parser.add_argument("--user-agent", default="checkmk-status-feed/2.0")
+    args = parser.parse_args(argv)
+    if not args.feed:
+        parser.error("At least one --feed is required")
+    if len(args.feed) > MAX_FEEDS:
+        parser.error(f"At most {MAX_FEEDS} feeds are supported")
+    if not 0.5 <= args.timeout <= 60:
+        parser.error("--timeout must be between 0.5 and 60 seconds")
+    return args
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_arguments(argv)
+    session = requests.Session()
+    session.trust_env = False
     print("<<<status_feed:sep(0)>>>")
     for spec in args.feed:
         try:
             name, url = split_feed(spec)
+            result = probe_feed(name, url, args.timeout, args.user_agent, session)
         except ValueError as exc:
-            print(json.dumps({
-                "name": spec,
-                "url": "",
-                "ok": False,
-                "error": str(exc),
-            }))
-            continue
-        info = probe_feed(name, url, args.timeout, args.user_agent, opener)
-        print(json.dumps(info, sort_keys=True))
+            result = {"name": clean_text(spec, 256), "url": "", "ok": False, "error": str(exc)}
+        print(json.dumps(result, sort_keys=True))
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())
