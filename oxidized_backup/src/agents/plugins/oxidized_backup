@@ -175,7 +175,9 @@ def _safe_open_read(path: Path, *, max_bytes: int) -> bytes:
         if not stat.S_ISREG(info.st_mode):
             raise CollectorError(f"{path} is not a regular file")
         if info.st_size > max_bytes:
-            raise CollectorError(f"{path} exceeds the allowed size of {max_bytes} bytes")
+            raise CollectorError(
+                f"{path} exceeds the allowed size of {max_bytes} bytes"
+            )
         data = b""
         while len(data) <= max_bytes:
             chunk = os.read(fd, min(65536, max_bytes + 1 - len(data)))
@@ -183,7 +185,9 @@ def _safe_open_read(path: Path, *, max_bytes: int) -> bytes:
                 break
             data += chunk
         if len(data) > max_bytes:
-            raise CollectorError(f"{path} exceeds the allowed size of {max_bytes} bytes")
+            raise CollectorError(
+                f"{path} exceeds the allowed size of {max_bytes} bytes"
+            )
         return data
     finally:
         os.close(fd)
@@ -194,7 +198,9 @@ def load_config(path: Path) -> dict[str, Any]:
     try:
         parsed = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise CollectorError(f"Invalid JSON configuration in {path}: {_redact(exc)}") from exc
+        raise CollectorError(
+            f"Invalid JSON configuration in {path}: {_redact(exc)}"
+        ) from exc
     config = dict(_require_mapping(parsed, "configuration"))
     validate_config(config)
     return config
@@ -224,7 +230,9 @@ def validate_config(config: Mapping[str, Any]) -> None:
     try:
         pwd.getpwnam(run_as_user)
     except KeyError as exc:
-        raise CollectorError(f"Configured git user {run_as_user!r} does not exist") from exc
+        raise CollectorError(
+            f"Configured git user {run_as_user!r} does not exist"
+        ) from exc
 
     repositories = _require_sequence(git_cfg.get("repositories"), "git.repositories")
     if not repositories:
@@ -241,7 +249,9 @@ def validate_config(config: Mapping[str, Any]) -> None:
             _required_string(repo, "path", f"git.repositories[{index}]"),
             f"git.repositories[{index}].path",
         )
-        groups = _require_sequence(repo.get("groups"), f"git.repositories[{index}].groups")
+        groups = _require_sequence(
+            repo.get("groups"), f"git.repositories[{index}].groups"
+        )
         if not groups:
             raise CollectorError(f"git.repositories[{index}].groups must not be empty")
         normalized_groups: set[str] = set()
@@ -267,8 +277,24 @@ def validate_config(config: Mapping[str, Any]) -> None:
             )
         _optional_string(repo, "remote")
         _optional_string(repo, "branch")
+        _bounded_number(
+            repo,
+            "command_timeout_seconds",
+            default=DEFAULT_GIT_TIMEOUT,
+            minimum=1.0,
+            maximum=300.0,
+        )
+        _bounded_number(
+            repo,
+            "fsck_timeout_seconds",
+            default=DEFAULT_FSCK_TIMEOUT,
+            minimum=1.0,
+            maximum=3600.0,
+        )
     if wildcard_count > 1:
-        raise CollectorError("Only one Git repository may use the wildcard group mapping '*'")
+        raise CollectorError(
+            "Only one Git repository may use the wildcard group mapping '*'"
+        )
 
     warn = _required_int(policy, "collection_warning_age_seconds", "policy", minimum=1)
     crit = _required_int(policy, "collection_critical_age_seconds", "policy", minimum=1)
@@ -284,7 +310,9 @@ def validate_config(config: Mapping[str, Any]) -> None:
         raise CollectorError("policy.orphan_state must be 0, 1, or 2")
 
 
-def _validate_endpoint(endpoint: Mapping[str, Any], label: str, *, allow_file: bool) -> None:
+def _validate_endpoint(
+    endpoint: Mapping[str, Any], label: str, *, allow_file: bool
+) -> None:
     source = _required_string(endpoint, "url", label)
     parsed = urllib.parse.urlsplit(source)
     allowed_schemes = {"http", "https"}
@@ -354,13 +382,17 @@ def _read_secret(path_value: str) -> str:
     raw = _safe_open_read(path, max_bytes=64 * 1024)
     info = path.stat()
     if stat.S_IMODE(info.st_mode) & 0o077:
-        raise CollectorError(f"Secret file {path} must not be readable by group or others")
+        raise CollectorError(
+            f"Secret file {path} must not be readable by group or others"
+        )
     try:
         secret = raw.decode("utf-8").strip()
     except UnicodeDecodeError as exc:
         raise CollectorError(f"Secret file {path} is not valid UTF-8") from exc
     if not secret or "\r" in secret or "\n" in secret:
-        raise CollectorError(f"Secret file {path} must contain exactly one non-empty line")
+        raise CollectorError(
+            f"Secret file {path} must contain exactly one non-empty line"
+        )
     return secret
 
 
@@ -399,20 +431,36 @@ def fetch_json(endpoint: Mapping[str, Any], label: str) -> Any:
         )
         context: ssl.SSLContext | None = None
         if parsed.scheme == "https":
-            context = ssl.create_default_context(cafile=_optional_string(endpoint, "ca_file"))
-        request = urllib.request.Request(source, headers=_endpoint_headers(endpoint), method="GET")
+            context = ssl.create_default_context(
+                cafile=_optional_string(endpoint, "ca_file")
+            )
+        request = urllib.request.Request(
+            source, headers=_endpoint_headers(endpoint), method="GET"
+        )
         opener = urllib.request.build_opener(
             SameOriginRedirectHandler(), urllib.request.HTTPSHandler(context=context)
         )
         try:
             with opener.open(request, timeout=timeout) as response:
                 content_length = response.headers.get("Content-Length")
-                if content_length and int(content_length) > max_bytes:
-                    raise CollectorError(
-                        f"{label} response exceeds the allowed size of {max_bytes} bytes"
-                    )
+                if content_length:
+                    try:
+                        declared_length = int(content_length)
+                    except ValueError as exc:
+                        raise CollectorError(
+                            f"{label} response has an invalid Content-Length header"
+                        ) from exc
+                    if declared_length < 0 or declared_length > max_bytes:
+                        raise CollectorError(
+                            f"{label} response exceeds the allowed size of {max_bytes} bytes"
+                        )
                 raw = response.read(max_bytes + 1)
-        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as exc:
+        except (
+            urllib.error.URLError,
+            urllib.error.HTTPError,
+            TimeoutError,
+            OSError,
+        ) as exc:
             raise CollectorError(f"Unable to retrieve {label}: {_redact(exc)}") from exc
         if len(raw) > max_bytes:
             raise CollectorError(
@@ -437,25 +485,30 @@ def _validate_host_name(value: object, label: str) -> str:
 
 def parse_inventory(payload: Any) -> tuple[list[dict[str, Any]], list[str]]:
     rows = _require_sequence(payload, "inventory response")
-    records: list[dict[str, Any]] = []
+    by_hostname: dict[str, dict[str, Any]] = {}
     errors: list[str] = []
     counts: dict[str, int] = {}
     for index, raw in enumerate(rows):
         try:
             row = _require_mapping(raw, f"inventory[{index}]")
-            hostname = _validate_host_name(row.get("hostname"), f"inventory[{index}].hostname")
+            hostname = _validate_host_name(
+                row.get("hostname"), f"inventory[{index}].hostname"
+            )
             os_name = row.get("os")
             if os_name is not None and not isinstance(os_name, str):
                 raise CollectorError(f"inventory[{index}].os must be a string or null")
-            records.append({"hostname": hostname, "os": os_name})
             counts[hostname] = counts.get(hostname, 0) + 1
+            by_hostname.setdefault(hostname, {"hostname": hostname, "os": os_name})
         except CollectorError as exc:
             errors.append(str(exc))
     duplicates = {name for name, count in counts.items() if count > 1}
+    records = list(by_hostname.values())
     for record in records:
         record["duplicate"] = record["hostname"] in duplicates
     if duplicates:
-        errors.append("Duplicate inventory host names: " + ", ".join(sorted(duplicates)))
+        errors.append(
+            "Duplicate inventory host names: " + ", ".join(sorted(duplicates))
+        )
     return records, errors
 
 
@@ -522,7 +575,9 @@ def parse_oxidized_nodes(payload: Any) -> tuple[list[dict[str, Any]], list[str]]
                 {
                     "name": name,
                     "group": group,
-                    "full_name": str(row.get("full_name") or (f"{group}/{name}" if group else name)),
+                    "full_name": str(
+                        row.get("full_name") or (f"{group}/{name}" if group else name)
+                    ),
                     "model": str(row.get("model") or ""),
                     "status": normalized_status,
                     "last_attempt_at": _parse_timestamp(when),
@@ -562,11 +617,15 @@ def _load_state(path: Path, *, max_bytes: int = 8 * 1024 * 1024) -> dict[str, An
     return state_map
 
 
-def _atomic_write_json(path: Path, payload: Mapping[str, Any], *, mode: int = 0o600) -> None:
+def _atomic_write_json(
+    path: Path, payload: Mapping[str, Any], *, mode: int = 0o600
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     if path.exists() and path.is_symlink():
         raise CollectorError(f"Refusing to replace symlink state file {path}")
-    encoded = (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    encoded = (
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
     fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     temporary = Path(temporary_name)
     try:
@@ -640,21 +699,26 @@ def record_hook(config: Mapping[str, Any], environ: Mapping[str, str]) -> None:
                 }
             )
         elif event == "node_fail":
-            status = environ.get("OX_JOB_STATUS", "fail").strip().lower().lstrip(":") or "fail"
+            status = (
+                environ.get("OX_JOB_STATUS", "fail").strip().lower().lstrip(":")
+                or "fail"
+            )
             record.update(
                 {
                     "last_attempt_at": now,
                     "last_attempt_status": status,
                     "last_failure_at": now,
                     "last_error_type": _redact(environ.get("OX_ERR_TYPE", "")) or None,
-                    "last_error_reason": _redact(environ.get("OX_ERR_REASON", "")) or None,
+                    "last_error_reason": _redact(environ.get("OX_ERR_REASON", ""))
+                    or None,
                 }
             )
         else:
             record.update(
                 {
                     "last_store_at": now,
-                    "last_store_commit": _redact(environ.get("OX_REPO_COMMITREF", "")) or None,
+                    "last_store_commit": _redact(environ.get("OX_REPO_COMMITREF", ""))
+                    or None,
                     "ever_stored": True,
                 }
             )
@@ -687,7 +751,9 @@ def _run_as_user_prefix(user: str) -> tuple[list[str], dict[str, str]]:
         )
     runuser = shutil.which("runuser")
     if not runuser:
-        raise CollectorError("runuser is required to execute Git as the Oxidized account")
+        raise CollectorError(
+            "runuser is required to execute Git as the Oxidized account"
+        )
     env_args = [f"{key}={value}" for key, value in env.items()]
     return [runuser, "-u", user, "--", "/usr/bin/env", *env_args], env
 
@@ -730,16 +796,23 @@ def run_git(
 
 def _git_required(result: CommandResult, action: str) -> str:
     if result.returncode != 0:
-        raise CollectorError(f"{action} failed: {result.stderr or 'Git returned an error'}")
+        raise CollectorError(
+            f"{action} failed: {result.stderr or 'Git returned an error'}"
+        )
     return result.stdout
 
 
 def _safe_git_tree_path(group: str | None, name: str, *, single_repo: bool) -> str:
-    components: list[str] = []
+    values = [name]
     if single_repo and group:
-        components.extend(PurePosixPath(group).parts)
-    components.extend(PurePosixPath(name).parts)
-    if not components or any(part in {"", ".", ".."} for part in components):
+        values.insert(0, group)
+    components: list[str] = []
+    for value in values:
+        candidate = PurePosixPath(value)
+        if candidate.is_absolute():
+            raise CollectorError("Oxidized node resolves to an absolute Git tree path")
+        components.extend(candidate.parts)
+    if not components or any(part in {"", ".", "..", "/"} for part in components):
         raise CollectorError("Oxidized node resolves to an unsafe Git tree path")
     if any("\x00" in part or "\n" in part or "\r" in part for part in components):
         raise CollectorError("Oxidized node resolves to an unsafe Git tree path")
@@ -753,7 +826,9 @@ def _repository_for_group(
     exact: list[Mapping[str, Any]] = []
     wildcard: list[Mapping[str, Any]] = []
     for repo in repositories:
-        groups = ["" if value is None else str(value).strip() for value in repo["groups"]]
+        groups = [
+            "" if value is None else str(value).strip() for value in repo["groups"]
+        ]
         if normalized in groups:
             exact.append(repo)
         if "*" in groups:
@@ -771,6 +846,9 @@ def _classify_remote_error(stderr: str) -> str:
         "could not read username",
         "access denied",
         "repository not found",
+        "host key verification failed",
+        "ssl certificate problem",
+        "certificate verify failed",
     )
     network = (
         "could not resolve host",
@@ -801,7 +879,9 @@ def inspect_repository(
     now: int,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     repo_id = str(repo_cfg["id"])
-    repo_path_configured = _absolute_path(str(repo_cfg["path"]), f"repository {repo_id} path")
+    repo_path_configured = _absolute_path(
+        str(repo_cfg["path"]), f"repository {repo_id} path"
+    )
     result: dict[str, Any] = {
         "id": repo_id,
         "configured_path": str(repo_path_configured),
@@ -919,7 +999,9 @@ def inspect_repository(
         fsck_interval = int(policy["fsck_interval_seconds"])
         last_fsck_at = int(updated_monitor.get("last_fsck_at") or 0)
         if now - last_fsck_at >= fsck_interval:
-            fsck_timeout = float(repo_cfg.get("fsck_timeout_seconds", DEFAULT_FSCK_TIMEOUT))
+            fsck_timeout = float(
+                repo_cfg.get("fsck_timeout_seconds", DEFAULT_FSCK_TIMEOUT)
+            )
             fsck_result = run_git(
                 git_binary=git_binary,
                 repo_path=repo_path,
@@ -1034,7 +1116,9 @@ def _merge_node_status(
         status = str(api_node.get("status") or "never") if api_node else "unknown"
         last_attempt = api_time or None
     hook_success = int(hook_node.get("last_success_at") or 0) if hook_node else 0
-    api_success = api_time if api_node and str(api_node.get("status")) == "success" else 0
+    api_success = (
+        api_time if api_node and str(api_node.get("status")) == "success" else 0
+    )
     result = {
         "present": api_node is not None,
         "source": source,
@@ -1068,7 +1152,9 @@ def collect(config: Mapping[str, Any]) -> tuple[dict[str, Any], list[dict[str, A
     }
 
     try:
-        inventory_payload = fetch_json(_require_mapping(config["inventory"], "inventory"), "inventory")
+        inventory_payload = fetch_json(
+            _require_mapping(config["inventory"], "inventory"), "inventory"
+        )
         inventory, inventory_errors = parse_inventory(inventory_payload)
     except CollectorError as exc:
         central["error"] = str(exc)
@@ -1079,7 +1165,9 @@ def collect(config: Mapping[str, Any]) -> tuple[dict[str, Any], list[dict[str, A
     central["inventory"]["errors"] = inventory_errors
 
     try:
-        oxidized_payload = fetch_json(_require_mapping(config["oxidized"], "oxidized"), "Oxidized API")
+        oxidized_payload = fetch_json(
+            _require_mapping(config["oxidized"], "oxidized"), "Oxidized API"
+        )
         oxidized_nodes, oxidized_errors = parse_oxidized_nodes(oxidized_payload)
         api_error = None
     except CollectorError as exc:
@@ -1102,9 +1190,13 @@ def collect(config: Mapping[str, Any]) -> tuple[dict[str, Any], list[dict[str, A
 
     expected_names = {str(record["hostname"]) for record in inventory}
     orphan_nodes = sorted(
-        node["full_name"] for node in oxidized_nodes if str(node["name"]) not in expected_names
+        node["full_name"]
+        for node in oxidized_nodes
+        if str(node["name"]) not in expected_names
     )
-    duplicate_api_names = sorted(name for name, rows in api_by_name.items() if len(rows) > 1)
+    duplicate_api_names = sorted(
+        name for name, rows in api_by_name.items() if len(rows) > 1
+    )
     missing_names = sorted(name for name in expected_names if name not in api_by_name)
     central["inventory"].update(
         {
@@ -1143,7 +1235,9 @@ def collect(config: Mapping[str, Any]) -> tuple[dict[str, Any], list[dict[str, A
         git_path_value = None
         repo_id = None
         if repo_cfg is None:
-            mapping_error = f"No unique Git repository mapping for group {group or 'default'}"
+            mapping_error = (
+                f"No unique Git repository mapping for group {group or 'default'}"
+            )
         else:
             repo_id = str(repo_cfg["id"])
             try:
@@ -1173,7 +1267,11 @@ def collect(config: Mapping[str, Any]) -> tuple[dict[str, Any], list[dict[str, A
         monitor_state = _load_state(monitor_path)
         monitor_error = None
     except CollectorError as exc:
-        monitor_state = {"schema_version": SCHEMA_VERSION, "nodes": {}, "repositories": {}}
+        monitor_state = {
+            "schema_version": SCHEMA_VERSION,
+            "nodes": {},
+            "repositories": {},
+        }
         monitor_error = str(exc)
     monitor_repos = dict(monitor_state.get("repositories", {}))
     inspected_by_id: dict[str, dict[str, Any]] = {}
@@ -1186,7 +1284,9 @@ def collect(config: Mapping[str, Any]) -> tuple[dict[str, Any], list[dict[str, A
                 git_binary=str(git_path),
                 run_as_user=run_as_user,
                 expected_paths=paths_by_repo.get(repo_id, []),
-                monitor_record=_require_mapping(monitor_repos.get(repo_id, {}), "monitor repository"),
+                monitor_record=_require_mapping(
+                    monitor_repos.get(repo_id, {}), "monitor repository"
+                ),
                 policy=policy,
                 now=now,
             )
@@ -1212,7 +1312,9 @@ def collect(config: Mapping[str, Any]) -> tuple[dict[str, Any], list[dict[str, A
         artifact: dict[str, Any]
         remote: dict[str, Any]
         if repo_data and git_path_value:
-            artifact = dict(repo_data.get("artifacts", {}).get(git_path_value, {"exists": False}))
+            artifact = dict(
+                repo_data.get("artifacts", {}).get(git_path_value, {"exists": False})
+            )
             artifact.update(
                 {
                     "repository_id": repo_id,
@@ -1254,9 +1356,13 @@ def emit_section(payload: Mapping[str, Any]) -> None:
     print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
 
 
-def emit_agent_output(central: Mapping[str, Any], devices: Sequence[Mapping[str, Any]]) -> None:
+def emit_agent_output(
+    central: Mapping[str, Any], devices: Sequence[Mapping[str, Any]]
+) -> None:
     emit_section(central)
-    for device in sorted(devices, key=lambda item: str(item.get("host_name", "")).casefold()):
+    for device in sorted(
+        devices, key=lambda item: str(item.get("host_name", "")).casefold()
+    ):
         hostname = _validate_host_name(device.get("host_name"), "piggyback host name")
         print(f"<<<<{hostname}>>>>")
         emit_section(device)
@@ -1264,7 +1370,9 @@ def emit_agent_output(central: Mapping[str, Any], devices: Sequence[Mapping[str,
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Monitor Oxidized backups and Git replication")
+    parser = argparse.ArgumentParser(
+        description="Monitor Oxidized backups and Git replication"
+    )
     parser.add_argument(
         "--config",
         type=Path,
