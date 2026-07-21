@@ -1,6 +1,8 @@
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
+import pytest
+
 MODULE_PATH = Path(__file__).parents[1] / "src" / "bin" / "sync_ec_events.py"
 spec = spec_from_file_location("sync_ec_events", MODULE_PATH)
 module = module_from_spec(spec)
@@ -35,3 +37,12 @@ def test_execute_with_exact_confirmation_archives_candidates():
     client = FakeCheckmk()
     assert client.sync_ec_data(execute=True, input_fn=lambda _: "DELETE 1") == 0
     assert client.closed == [(12, "cmk")]
+
+
+def test_local_automation_secret_accepts_loopback_site_url():
+    module.validate_local_site_url("http://127.0.0.1:5000/cmk/", "cmk")
+
+
+def test_local_automation_secret_rejects_remote_site_url():
+    with pytest.raises(RuntimeError, match="loopback"):
+        module.validate_local_site_url("https://monitoring.example/cmk", "cmk")
