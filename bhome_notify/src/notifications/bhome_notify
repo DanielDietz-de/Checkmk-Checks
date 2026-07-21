@@ -1,93 +1,236 @@
 #!/usr/bin/env python3
-# BHome Events API Notification Plugin for Checkmk
+"""Forward Checkmk notifications to the BMC Helix Events API."""
 
+from __future__ import annotations
+
+import json
+import re
 import sys
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlsplit, urlunsplit
+
 import requests
-from time import sleep
 from cmk.notification_plugins import utils
 from cmk.notification_plugins.utils import get_password_from_env_or_context
 
+MAX_RESPONSE_BYTES = 1024 * 1024
+DOMAIN_RE = re.compile(r"^[A-Za-z0-9.-]+(?::[0-9]{1,5})?$")
 
-def get_alarm_group(group_list):
-    """Return first contact group ending with '_ALARM', else None."""
-    if group_list:
-        for group in group_list.split(','):
-            if group.endswith('_ALARM'):
-                return group
+
+class HelixNotificationError(RuntimeError):
+    """Raised when a BMC Helix event cannot be delivered safely."""
+
+
+def get_alarm_group(group_list: str | None) -> str | None:
+    """Return the first contact group ending with _ALARM."""
+    if not group_list:
+        return None
+    for raw_group in group_list.split(","):
+        group = raw_group.strip()
+        if group.endswith("_ALARM"):
+            return group
     return None
 
 
-def build_payload(context):
-    host = context.get('HOSTNAME', 'unknown_host').split('.')[0]
-    notify_what = context.get('WHAT', 'HOST')
-    host_contact_groups = context.get('HOSTCONTACTGROUPNAMES')
+def validate_portal_domain(value: str) -> str:
+    domain = value.strip().rstrip("/")
+    if not DOMAIN_RE.fullmatch(domain):
+        raise HelixNotificationError(
+            "portal domain must be a hostname with an optional port"
+        )
+    parsed = urlsplit(f"https://{domain}")
+    if not parsed.hostname or parsed.username or parsed.password:
+        raise HelixNotificationError("portal domain is invalid")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise HelixNotificationError("portal port is invalid") from exc
+    if port is not None and not 1 <= port <= 65535:
+        raise HelixNotificationError("portal port is outside the valid range")
+    return urlunsplit(
+        (
+            "https",
+            parsed.netloc,
+            "/events-service/api/v1.0/events",
+            "",
+            "",
+        )
+    )
 
-    if notify_what == 'SERVICE':
-        severity = context.get('SERVICESTATE', 'UNKNOWN')
-        msg = context.get('SERVICEOUTPUT', '')
-        source_identifier = context.get('SERVICEDESC', 'unknown_service')
-        checkmk_id = context.get('SERVICEPROBLEMID', '')
-        alarm_contact = get_alarm_group(context.get('SERVICECONTACTGROUPNAMES')) \
-                        or get_alarm_group(host_contact_groups)
-        service_level = context.get('SVC_SL')
+
+def validate_ca_bundle(value: str | None) -> bool | str:
+    if not value:
+        return True
+    path = Path(value)
+    if not path.is_absolute() or not path.is_file() or path.is_symlink():
+        raise HelixNotificationError(
+            "CA bundle must be an absolute regular file"
+        )
+    return str(path)
+
+
+def stable_problem_id(context: dict[str, str]) -> str:
+    what = context.get("WHAT", "HOST")
+    if what == "SERVICE":
+        problem_id = context.get("SERVICEPROBLEMID", "").strip()
+        if problem_id:
+            return problem_id
+        return (
+            f"service:{context.get('HOSTNAME', 'unknown')}:"
+            f"{context.get('SERVICEDESC', 'unknown')}"
+        )
+    problem_id = context.get("HOSTPROBLEMID", "").strip()
+    if problem_id:
+        return problem_id
+    return f"host:{context.get('HOSTNAME', 'unknown')}"
+
+
+def build_payload(context: dict[str, str]) -> list[dict[str, Any]]:
+    full_host = context.get("HOSTNAME", "unknown_host")
+    short_host = full_host.split(".", 1)[0]
+    notify_what = context.get("WHAT", "HOST")
+    host_contact_groups = context.get("HOSTCONTACTGROUPNAMES")
+
+    if notify_what == "SERVICE":
+        severity = context.get("SERVICESTATE", "UNKNOWN").upper()
+        message = context.get("SERVICEOUTPUT", "")
+        service = context.get("SERVICEDESC", "unknown_service")
+        source_identifier = f"{full_host}/{service}"
+        alarm_contact = get_alarm_group(
+            context.get("SERVICECONTACTGROUPNAMES")
+        ) or get_alarm_group(host_contact_groups)
+        service_level = context.get("SVC_SL")
     else:
-        hoststate = context.get('HOSTSTATE', 'UNKNOWN').upper()
-        severity = {'DOWN': 'CRITICAL', 'UP': 'OK'}.get(hoststate, hoststate)
-        msg = hoststate
-        source_identifier = host
-        checkmk_id = ''
+        host_state = context.get("HOSTSTATE", "UNKNOWN").upper()
+        severity = {"DOWN": "CRITICAL", "UP": "OK"}.get(
+            host_state, host_state
+        )
+        message = context.get("HOSTOUTPUT", host_state)
+        source_identifier = full_host
         alarm_contact = get_alarm_group(host_contact_groups)
-        service_level = context.get('HOST_SL')
+        service_level = context.get("HOST_SL")
 
-    return [{
-        'class': 'checkmk_ev',
-        'severity': severity,
-        'priority': 'PRIORITY_3',
-        'msg': msg,
-        'source_identifier': source_identifier,
-        'source_hostname': host,
-        'checkmk_id': checkmk_id,
-        'checkmk_alarm': service_level,
-        'checkmk_tag1': alarm_contact,
-        'checkmk_tag2': context.get('HOSTLABEL_anwendung'),
-    }]
-
-
-def send_event(payload, config):
-    url = f"https://{config['portal_domain']}/events-service/api/v1.0/events"
-
-    import auth_api
-    jwt = auth_api.login(config)
-
-    headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {jwt}',
+    event = {
+        "class": "checkmk_ev",
+        "severity": severity,
+        "priority": "PRIORITY_3",
+        "msg": message,
+        "source_identifier": source_identifier,
+        "source_hostname": short_host,
+        "checkmk_id": stable_problem_id(context),
+        "checkmk_alarm": service_level,
+        "checkmk_tag1": alarm_contact,
+        "checkmk_tag2": context.get("HOSTLABEL_anwendung"),
     }
+    return [event]
 
-    for attempt in range(1, 6):
+
+def read_bounded_response(response: requests.Response) -> bytes:
+    declared = response.headers.get("Content-Length")
+    if declared:
         try:
-            response = requests.post(url, json=payload, headers=headers, timeout=10)
-            response.raise_for_status()
-            print(f"Event sent successfully: {response.text}")
-            return 0
-        except requests.RequestException as e:
-            print(f"Send attempt {attempt}/5 failed: {e}")
-            if attempt < 5:
-                sleep(min(2 ** attempt, 60))
+            if int(declared) > MAX_RESPONSE_BYTES:
+                raise HelixNotificationError("response exceeds the size limit")
+        except ValueError:
+            pass
+    body = bytearray()
+    for chunk in response.iter_content(chunk_size=65536):
+        body.extend(chunk)
+        if len(body) > MAX_RESPONSE_BYTES:
+            raise HelixNotificationError("response exceeds the size limit")
+    return bytes(body)
 
-    print("All send attempts failed.")
-    return 2
+
+def validate_api_response(response: requests.Response, body: bytes) -> dict[str, Any]:
+    if not 200 <= response.status_code < 300:
+        raise HelixNotificationError(
+            f"BMC Helix returned HTTP {response.status_code}"
+        )
+    if not body:
+        return {}
+    try:
+        data = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HelixNotificationError("BMC Helix returned invalid JSON") from exc
+    if not isinstance(data, dict):
+        raise HelixNotificationError("BMC Helix returned non-object JSON")
+    status = data.get("statusCode", data.get("status"))
+    if status is not None and str(status) not in {"200", "201", "202", "SUCCESS"}:
+        message = data.get("statusMsg", "event API reported failure")
+        raise HelixNotificationError(str(message)[:500])
+    failed = data.get("failedEventIDs") or data.get("failed")
+    if failed:
+        raise HelixNotificationError("BMC Helix rejected one or more events")
+    return data
 
 
-if __name__ == '__main__':
+def send_event(
+    payload: list[dict[str, Any]],
+    config: dict[str, Any],
+    *,
+    session: requests.Session | None = None,
+) -> int:
+    url = validate_portal_domain(config["portal_domain"])
+    api_key = f"{config['tenant_id']}::{config['access']}::{config['secret']}"
+    client = requests.Session() if session is None else session
+    client.trust_env = False
+    try:
+        response = client.post(
+            url,
+            json=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "Authorization": f"apiKey {api_key}",
+            },
+            timeout=float(config.get("timeout", 10.0)),
+            verify=config.get("verify", True),
+            allow_redirects=False,
+            stream=True,
+        )
+    except requests.RequestException as exc:
+        # Do not retry an event-creation POST after an ambiguous transport
+        # failure: the server may already have accepted it.
+        raise HelixNotificationError(f"event request failed: {exc}") from exc
+    if response.is_redirect:
+        raise HelixNotificationError("BMC Helix returned an unexpected redirect")
+    data = validate_api_response(response, read_bounded_response(response))
+    successful = data.get("successfullEventIds", data.get("succeeded", []))
+    if isinstance(successful, list) and successful:
+        print(f"BMC Helix accepted {len(successful)} event(s).")
+    else:
+        print("BMC Helix accepted the event request.")
+    return 0
+
+
+def main() -> int:
     context = utils.collect_context()
+    try:
+        timeout = float(context.get("PARAMETER_TIMEOUT", "10"))
+    except ValueError as exc:
+        raise HelixNotificationError("timeout must be numeric") from exc
+    if not 0.5 <= timeout <= 120:
+        raise HelixNotificationError("timeout must be between 0.5 and 120 seconds")
 
     config = {
-        'portal_domain': context['PARAMETER_PORTAL_DOMAIN'],
-        'id': context['PARAMETER_ID'],
-        'access': get_password_from_env_or_context(key='PARAMETER_ACCESS', context=context),
-        'secret': get_password_from_env_or_context(key='PARAMETER_SECRET', context=context),
+        "portal_domain": context["PARAMETER_PORTAL_DOMAIN"],
+        "tenant_id": context["PARAMETER_ID"],
+        "access": get_password_from_env_or_context(
+            key="PARAMETER_ACCESS", context=context
+        ),
+        "secret": get_password_from_env_or_context(
+            key="PARAMETER_SECRET", context=context
+        ),
+        "timeout": timeout,
+        "verify": validate_ca_bundle(context.get("PARAMETER_CA_BUNDLE")),
     }
+    return send_event(build_payload(context), config)
 
-    payload = build_payload(context)
-    sys.exit(send_event(payload, config))
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (HelixNotificationError, KeyError, OSError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
