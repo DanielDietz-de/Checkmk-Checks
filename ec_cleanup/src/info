@@ -1,14 +1,9 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'In case your EC is floated with Monitoring Events and the '
-                'Notification Spooler can not process the OK Monitoring Event '
-                'to close the EC Event, this script makes sure the events '
-                'which are OK in Checkmk will be also closed in the Event '
-                'Console. Run it from the command line with at least the '
-                'rule_id as filter.\n',
- 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
+ 'description': 'Safely reconcile open Event Console events with current Checkmk states. The command is read-only by default and requires explicit execution and confirmation before archiving eligible events.\n',
+ 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/ec_cleanup',
  'files': {'bin': ['sync_ec_events.py']},
  'name': 'ec_cleanup',
  'title': 'EC Cleanup Script',
- 'version': '1.0.4',
+ 'version': '1.0.5',
  'version.min_required': '2.4.0',
  'version.packaged': '2.4.0p13'}
