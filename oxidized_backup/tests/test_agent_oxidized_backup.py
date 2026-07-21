@@ -317,4 +317,4 @@ def test_emit_agent_output_has_balanced_piggyback_markers(capsys: pytest.Capture
     output = capsys.readouterr().out
     assert "<<<<switch-1>>>>" in output
     assert output.rstrip().endswith("<<<<>>>>")
-    assert output.count("<<<oxidized_backup:sep(0)>>>" ) == 2
+    assert output.count("<<<oxidized_backup:sep(0)>>>") == 2
