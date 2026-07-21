@@ -1,22 +1,67 @@
 #!/usr/bin/env python3
-"""Rediscover a Checkmk service using only the local site's automation secret."""
+"""Rediscover one Checkmk service without activating unrelated pending changes."""
 
 from __future__ import annotations
 
+import fcntl
 import ipaddress
 import sys
+from contextlib import contextmanager
+from dataclasses import dataclass
+from html import unescape
 from os import environ
 from pathlib import Path
+from typing import Any, Iterator
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from requests import Session
 from requests.exceptions import RequestException
 
 REQUEST_TIMEOUT = 15.0
+AUTOMATION_USER = "automation"
 
 
 class UnsafeSiteTarget(ValueError):
     """Raised when the local automation secret would leave the local site."""
+
+
+class RediscoveryError(RuntimeError):
+    """Raised when rediscovery cannot be completed safely."""
+
+
+@dataclass(frozen=True)
+class PendingChanges:
+    etag: str
+    changes: tuple[dict[str, str], ...]
+
+    @property
+    def ids(self) -> set[str]:
+        return {change["id"] for change in self.changes}
+
+    def ids_for_user(self, user_id: str) -> set[str]:
+        return {
+            change["id"]
+            for change in self.changes
+            if change.get("user_id") == user_id
+        }
+
+
+@contextmanager
+def rediscovery_lock() -> Iterator[None]:
+    omd_root = environ.get("OMD_ROOT")
+    if not omd_root:
+        raise RediscoveryError("OMD_ROOT is not set")
+    lock_path = Path(omd_root) / "tmp/rediscover_service.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise RediscoveryError("Another rediscovery notification is already running") from exc
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def _is_loopback_host(hostname: str | None) -> bool:
@@ -53,9 +98,9 @@ def local_api_url(protocol: str, hostname: str, site_name: str) -> str:
 def get_user() -> tuple[str, str]:
     omd_root = environ.get("OMD_ROOT")
     if not omd_root:
-        raise RuntimeError("OMD_ROOT is not set")
+        raise RediscoveryError("OMD_ROOT is not set")
     secret_path = Path(omd_root) / "var/check_mk/web/automation/automation.secret"
-    return "automation", secret_path.read_text(encoding="utf-8").strip()
+    return AUTOMATION_USER, secret_path.read_text(encoding="utf-8").strip()
 
 
 def api_session(username: str, password: str) -> Session:
@@ -70,66 +115,172 @@ def api_session(username: str, password: str) -> Session:
     return session
 
 
-def get_discovery(session: Session, url: str, host: str, service: str):
+def _json_object(response: Any, operation: str) -> dict[str, Any]:
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise RediscoveryError(f"{operation} returned invalid JSON") from exc
+    if not isinstance(data, dict):
+        raise RediscoveryError(f"{operation} returned a non-object JSON response")
+    return data
+
+
+def get_pending_changes(session: Session, url: str) -> PendingChanges:
+    response = session.get(
+        f"{url}/domain-types/activation_run/collections/pending_changes",
+        timeout=REQUEST_TIMEOUT,
+    )
+    if response.status_code != 200:
+        raise RediscoveryError(
+            f"Could not read pending changes: HTTP {response.status_code}"
+        )
+    etag = response.headers.get("ETag")
+    if not etag:
+        raise RediscoveryError("Pending changes response did not contain an ETag")
+
+    raw_changes = _json_object(response, "Pending changes").get("value", [])
+    if not isinstance(raw_changes, list):
+        raise RediscoveryError("Pending changes response has no valid value list")
+
+    changes: list[dict[str, str]] = []
+    for raw_change in raw_changes:
+        if not isinstance(raw_change, dict) or not raw_change.get("id"):
+            continue
+        changes.append(
+            {
+                "id": str(raw_change["id"]),
+                "user_id": str(raw_change.get("user_id", "")),
+                "action_name": str(raw_change.get("action_name", "")),
+                "text": str(raw_change.get("text", "")),
+            }
+        )
+    return PendingChanges(etag=etag, changes=tuple(changes))
+
+
+def ensure_clean_automation_scope(snapshot: PendingChanges, username: str) -> None:
+    existing = snapshot.ids_for_user(username)
+    if existing:
+        raise RediscoveryError(
+            "Refusing rediscovery because the automation user already has pending changes: "
+            + ", ".join(sorted(existing))
+        )
+
+
+def verify_new_automation_changes(
+    before: PendingChanges,
+    after: PendingChanges,
+    username: str,
+    expected_host: str,
+) -> set[str]:
+    if not before.ids.issubset(after.ids):
+        raise RediscoveryError(
+            "Pending changes changed unexpectedly while rediscovery was running"
+        )
+
+    new_ids = after.ids - before.ids
+    if not new_ids:
+        raise RediscoveryError("Rediscovery created no pending changes")
+
+    new_changes = [change for change in after.changes if change["id"] in new_ids]
+    unexpected = [
+        change["id"]
+        for change in new_changes
+        if change.get("user_id") != username
+        or expected_host not in unescape(change.get("text", ""))
+    ]
+    if unexpected:
+        raise RediscoveryError(
+            "Refusing activation because concurrent or unrelated pending changes appeared: "
+            + ", ".join(sorted(unexpected))
+        )
+
+    owned_ids = after.ids_for_user(username)
+    if owned_ids != new_ids:
+        raise RediscoveryError(
+            "Refusing activation because the automation user's pending changes are not "
+            "limited to this rediscovery run"
+        )
+    return new_ids
+
+
+def get_discovery(session: Session, url: str, host: str, service: str) -> dict[str, Any]:
     response = session.get(
         f"{url}/objects/service_discovery/{quote(host, safe='')}",
         timeout=REQUEST_TIMEOUT,
     )
     if response.status_code != 200:
-        print(f"ERROR: Could not get discovery information: HTTP {response.status_code}")
-        return False
+        raise RediscoveryError(
+            f"Could not get discovery information: HTTP {response.status_code}"
+        )
 
-    data = response.json()
-    services = data.get("extensions", {}).get("check_table", {})
+    extensions = _json_object(response, "Service discovery").get("extensions", {})
+    services = extensions.get("check_table", {}) if isinstance(extensions, dict) else {}
     if not isinstance(services, dict):
-        return False
+        raise RediscoveryError("Service discovery response has no valid check table")
+
     for item in services.values():
         if not isinstance(item, dict) or item.get("id") != service:
             continue
         links = item.get("links", [])
-        if len(links) > 1 and isinstance(links[1], dict):
-            return links[1].get("body_params")
-    return False
+        if not isinstance(links, list):
+            continue
+        for link in links:
+            if isinstance(link, dict) and isinstance(link.get("body_params"), dict):
+                return dict(link["body_params"])
+    raise RediscoveryError(f"Service {service!r} was not found in discovery data")
 
 
-def update_discovery(session: Session, url: str, host: str, content: dict) -> bool:
+def update_discovery(session: Session, url: str, host: str, content: dict[str, Any]) -> None:
     response = session.put(
         f"{url}/objects/host/{quote(host, safe='')}/actions/update_discovery_phase/invoke",
         headers={"Content-Type": "application/json"},
         json=content,
         timeout=REQUEST_TIMEOUT,
     )
-    return response.status_code == 204
+    if response.status_code != 204:
+        raise RediscoveryError(
+            f"Could not update service discovery phase: HTTP {response.status_code}"
+        )
 
 
-def activate_changes(session: Session, url: str) -> None:
-    session.max_redirects = 100
-    response = session.get(
-        f"{url}/domain-types/activation_run/collections/pending_changes",
-        timeout=REQUEST_TIMEOUT,
-    )
-    etag = response.headers.get("ETag") if response.status_code == 200 else None
-
+def activate_changes(
+    session: Session,
+    url: str,
+    site_name: str,
+    snapshot: PendingChanges,
+) -> None:
     response = session.post(
         f"{url}/domain-types/activation_run/actions/activate-changes/invoke",
         headers={
-            "If-Match": str(etag),
+            "If-Match": snapshot.etag,
             "Content-Type": "application/json",
         },
         json={
             "redirect": False,
-            "sites": [],
-            "force_foreign_changes": True,
+            "sites": [site_name],
+            "force_foreign_changes": False,
         },
-        allow_redirects=True,
+        allow_redirects=False,
         timeout=REQUEST_TIMEOUT,
     )
-    if response.status_code not in {200, 204, 302, 422}:
-        print(f"ERROR: Failed to activate changes: HTTP {response.status_code}")
+    if response.status_code not in {200, 201, 204, 303}:
+        detail = response.text.strip().replace("\n", " ")[:500]
+        raise RediscoveryError(
+            f"Could not activate rediscovery changes: HTTP {response.status_code}: "
+            f"{detail or 'no response body'}"
+        )
+
+
+def notification_is_eligible() -> bool:
+    if environ.get("NOTIFY_WHAT", "NA") != "SERVICE":
+        return False
+    if environ.get("NOTIFY_NOTIFICATIONTYPE", "") != "PROBLEM":
+        return False
+    return environ.get("NOTIFY_SERVICESTATE", "").upper() not in {"", "OK"}
 
 
 def main() -> int:
-    if environ.get("NOTIFY_WHAT", "NA") != "SERVICE":
+    if not notification_is_eligible():
         return 0
 
     protocol = environ.get("NOTIFY_PARAMETER_PROTO", "http")
@@ -139,33 +290,48 @@ def main() -> int:
         environ.get("NOTIFY_PARAMATER_SITENAME", environ.get("OMD_SITE", "")),
     )
 
-    # Validate the complete target before reading the automation secret.
     api_url = local_api_url(protocol, hostname, site_name)
     username, password = get_user()
     session = api_session(username, password)
 
-    host_name = environ.get("NOTIFY_HOSTNAME", "NA")
-    service_name = environ.get("NOTIFY_SERVICEDESC", "NA")
-    body_json = get_discovery(session, api_url, host_name, service_name)
-    if not body_json:
-        return 1
+    with rediscovery_lock():
+        before = get_pending_changes(session, api_url)
+        ensure_clean_automation_scope(before, username)
 
-    if not update_discovery(session, api_url, host_name, body_json):
-        print("ERROR: Could not make service undecided")
-        return 1
+        host_name = environ.get("NOTIFY_HOSTNAME", "NA")
+        service_name = environ.get("NOTIFY_SERVICEDESC", "NA")
+        body_json = get_discovery(session, api_url, host_name, service_name)
 
-    body_json["target_phase"] = "monitored"
-    if not update_discovery(session, api_url, host_name, body_json):
-        print("ERROR: Could not make service monitored again")
-        return 1
+        update_discovery(session, api_url, host_name, body_json)
+        monitored_body = dict(body_json)
+        monitored_body["target_phase"] = "monitored"
+        update_discovery(session, api_url, host_name, monitored_body)
 
-    activate_changes(session, api_url)
+        after = get_pending_changes(session, api_url)
+        new_ids = verify_new_automation_changes(
+            before,
+            after,
+            username,
+            host_name,
+        )
+        activate_changes(session, api_url, site_name, after)
+
+    print(
+        "Activated rediscovery changes for "
+        f"{host_name}/{service_name}: {', '.join(sorted(new_ids))}"
+    )
     return 0
 
 
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (OSError, RuntimeError, UnsafeSiteTarget, RequestException, ValueError) as exc:
+    except (
+        OSError,
+        RediscoveryError,
+        RequestException,
+        UnsafeSiteTarget,
+        ValueError,
+    ) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
