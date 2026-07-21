@@ -4,55 +4,92 @@
 ![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.3.0b1-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.3.0p9-blue)
 <!-- compatibility-badges:end -->
 
-Special agent that queries one or more HTTP(S) endpoints and converts the returned JSON into Checkmk local checks. Useful for exposing arbitrary application health checks through REST endpoints without writing a dedicated plugin. Each endpoint has its own credentials and selectable HTTP method (POST by default, GET for endpoints that serve the JSON on GET).
+Special agent that queries one or more application-health endpoints and converts a strictly validated JSON document into safely escaped Checkmk local checks.
 
-## How it works
+## Endpoint security
 
-The agent script (`libexec/agent_json`) performs an HTTP request (`POST` by default, `GET` selectable per endpoint) to each configured URL, optionally using HTTP Basic Auth, and expects a JSON document of the form:
+- Endpoints must use absolute HTTPS URLs.
+- Embedded URL credentials and URL fragments are rejected.
+- TLS certificate verification is mandatory and uses the Checkmk server's system trust store.
+- Redirects are rejected, preventing credentials from being forwarded to another origin.
+- Proxy environment variables are ignored for requests.
+- Each request has a 15-second timeout.
+- Responses are streamed and capped at 1 MiB.
+- HTTP status must be in the 2xx range.
+- Failure messages contain only the endpoint hostname and error class; response bodies are never copied into monitoring output.
 
-```text
+Existing rules using cleartext HTTP will produce a visible UNKNOWN service until migrated to HTTPS.
+
+## JSON schema
+
+The response root must be an object containing a `checks` list:
+
+```json
 {
   "checks": [
-    {"name": "My Check", "status": "OK", "data": {"info1": "value", "info2": "more info"}},
-    {"name": "Disks", "status": "WARN", "summary": "2 disks degraded",
-     "data": {"sda": "ok", "sdb": "degraded"}},
-    ...
+    {
+      "name": "Application health",
+      "status": "OK",
+      "summary": "All components operational",
+      "data": {
+        "database": "UP",
+        "queue": "UP"
+      }
+    }
   ]
 }
 ```
 
-Each entry is emitted as one line under the `<<<local>>>` section. The checks from all configured endpoints are merged into a single `<<<local>>>` section.
+Limits and validation:
 
-- **Status mapping:** the `status` string is mapped (case-insensitively) to a Checkmk state — `OK`/`UP` → `0`, `WARN`/`WARNING` → `1`, `CRIT`/`CRITICAL`/`DOWN` → `2`, `UNKN`/`UNKNOWN` → `3`. An unrecognised status becomes `3` (UNKNOWN).
-- **Summary & details:** without a `summary` key the `data` dictionary is flattened into the summary line as comma-separated `key: value` pairs (legacy behaviour). If a `summary` key is present, its value is shown as the service summary and the `data` fields are rendered below it as multi-line details (one `key: value` per line).
-- **Duplicate names:** when the same `name` appears more than once, repeated services are automatically numbered (`My Check`, `My Check 2`, …) so none get lost. Numbering spans all endpoints.
-- **Failed endpoints:** if an endpoint returns something that is not parseable JSON, it is reported as a single `UNKNOWN` service (`JSON agent <url>`) including the HTTP status and a snippet of the body, so the failure stays visible instead of dropping out silently.
+- at most 1,000 checks per endpoint;
+- every check must be an object;
+- `name` must be a non-empty string of at most 256 characters;
+- `status` must be a string;
+- `summary` may be a scalar value;
+- `data` must be an object with at most 100 fields.
 
-## Package contents
+A schema violation rejects the complete endpoint response instead of emitting a partially trusted set of services.
 
-| Path | Purpose |
+## Local-check output safety
+
+Service names, summaries, keys and values are normalized and bounded before emission. Control characters, physical newlines, quotes and backslashes cannot create additional local-check lines, sections or services.
+
+Duplicate service names are numbered across all configured endpoints. Unknown status strings map to UNKNOWN.
+
+## Status mapping
+
+| Input | Checkmk state |
 | --- | --- |
-| `src/agent_json/libexec/agent_json` | Python special agent called by the Checkmk server. |
-| `src/agent_json/server_side_calls/agent_json.py` | Builds the command line as `(api_url, user, password, method)` groups, one per endpoint. |
-| `src/agent_json/rulesets/agent_json.py` | WATO form: a list of endpoints, each with URL, HTTP method, username and password. |
-
-## Installation
-
-1. Install the MKP on the Checkmk site.
-2. Create the host that should carry the local checks.
-3. Configure the special agent rule (see below).
+| `OK`, `UP` | OK |
+| `WARN`, `WARNING` | WARN |
+| `CRIT`, `CRITICAL`, `DOWN` | CRIT |
+| `UNKN`, `UNKNOWN`, anything else | UNKNOWN |
 
 ## Configuration
 
 Rule: **Setup → Agents → Other integrations → Agent JSON**
 
-Add one or more **endpoints**. Each endpoint has:
+Each endpoint contains:
 
-| Parameter | Type | Meaning |
-| --- | --- | --- |
-| `api_url` | String (required) | Full URL the agent queries. |
-| `method` | Choice (optional) | HTTP method: `POST` (default) or `GET`. |
-| `username` | String (optional) | HTTP Basic Auth user. |
-| `password` | Password (optional) | HTTP Basic Auth password. |
+| Parameter | Meaning |
+| --- | --- |
+| `api_url` | Absolute HTTPS URL. |
+| `method` | `POST` (default) or `GET`. |
+| `username` | Optional HTTP Basic user. |
+| `password` | Optional HTTP Basic password stored as a Checkmk secret. |
 
-Rules saved with the previous single-URL format are migrated automatically into a one-entry endpoint list, so existing configuration keeps working without changes.
+Rules saved with the historical single-endpoint format are migrated into the endpoint list automatically.
+
+## Failure behavior
+
+Every failed endpoint produces one sanitized UNKNOWN service named `JSON agent <hostname>`. The special agent returns non-zero when at least one endpoint fails, while still emitting valid services from other configured endpoints.
+
+## Package contents
+
+| Path | Purpose |
+| --- | --- |
+| `src/agent_json/libexec/agent_json` | HTTPS client, schema validator and safe local-check renderer. |
+| `src/agent_json/server_side_calls/agent_json.py` | Secret-aware special-agent command generation. |
+| `src/agent_json/rulesets/agent_json.py` | Endpoint configuration form and legacy migration. |
+| `tests/test_agent_json_security.py` | Endpoint, schema, failure and output-injection regression tests. |
