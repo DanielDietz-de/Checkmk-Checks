@@ -1,27 +1,58 @@
 #!/usr/bin/env python3
-"""Remove superseded notification pairs from the Checkmk notification spool."""
+"""Safely quarantine superseded Checkmk notification spool records."""
 
 from __future__ import annotations
 
+import argparse
 import ast
-from os import environ, listdir, stat, unlink
-from os.path import isfile
+import fcntl
+import os
+import stat as stat_module
+import sys
+import time
+from collections import defaultdict
+from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator, Sequence
 
 MAX_SPOOL_FILE_SIZE = 1024 * 1024
+DEFAULT_MIN_AGE_SECONDS = 300
 
 
 class SpoolFormatError(ValueError):
     """Raised when a spool file is not a supported literal notification record."""
 
 
+class CleanupSafetyError(RuntimeError):
+    """Raised when a cleanup operation cannot be completed safely."""
+
+
+@dataclass(frozen=True)
+class FileSnapshot:
+    path: Path
+    device: int
+    inode: int
+    mtime_ns: int
+    size: int
+
+
+@dataclass(frozen=True)
+class CleanupGroup:
+    category: str
+    key: str
+    files: tuple[FileSnapshot, ...]
+
+
 def load_context(spool_file: Path) -> dict[str, Any]:
     try:
-        size = spool_file.stat().st_size
+        file_stat = spool_file.lstat()
     except OSError as exc:
         raise SpoolFormatError(f"cannot stat file: {exc}") from exc
-    if size > MAX_SPOOL_FILE_SIZE:
+    if not stat_module.S_ISREG(file_stat.st_mode):
+        raise SpoolFormatError("entry is not a regular file")
+    if file_stat.st_size > MAX_SPOOL_FILE_SIZE:
         raise SpoolFormatError(
             f"file exceeds the {MAX_SPOOL_FILE_SIZE}-byte parser limit"
         )
@@ -55,109 +86,294 @@ def load_context(spool_file: Path) -> dict[str, Any]:
     return context
 
 
-def main() -> int:
-    path = Path(environ["OMD_ROOT"]) / "var/check_mk/notify/spool"
-    files_unsorted = listdir(path)
-    files = list(map(lambda f: (stat(path / f)[9], f), files_unsorted))
-    files.sort(key=lambda tup: tup[0])
+def snapshot_file(path: Path) -> FileSnapshot:
+    file_stat = path.lstat()
+    if not stat_module.S_ISREG(file_stat.st_mode):
+        raise CleanupSafetyError(f"{path} is not a regular file")
+    return FileSnapshot(
+        path=path,
+        device=file_stat.st_dev,
+        inode=file_stat.st_ino,
+        mtime_ns=file_stat.st_mtime_ns,
+        size=file_stat.st_size,
+    )
 
-    entries = {
-        "Hosts": {"Downtime": {}, "State": {}},
-        "Services": {"Downtime": {}, "State": {}},
-    }
-    stats = {
-        "Hosts": {"Downtime": 0, "State": 0},
-        "Services": {"Downtime": 0, "State": 0},
-    }
 
-    count_skip = 0
-    total_count = 0
-    for file in files:
-        total_count += 1
-        spool_file = path / file[1]
+def same_snapshot(snapshot: FileSnapshot) -> bool:
+    try:
+        current = snapshot.path.lstat()
+    except OSError:
+        return False
+    return (
+        stat_module.S_ISREG(current.st_mode)
+        and current.st_dev == snapshot.device
+        and current.st_ino == snapshot.inode
+        and current.st_mtime_ns == snapshot.mtime_ns
+        and current.st_size == snapshot.size
+    )
+
+
+def record_key(context: dict[str, Any]) -> tuple[str, str] | None:
+    what = context["WHAT"]
+    if what == "HOST":
+        return "Hosts", context["HOSTNAME"]
+    if what == "SERVICE":
+        return "Services", f"{context['HOSTNAME']}###{context['SERVICEDESC']}"
+    return None
+
+
+def build_cleanup_plan(
+    spool_dir: Path,
+    *,
+    min_age_seconds: int,
+    now: float | None = None,
+) -> tuple[list[CleanupGroup], list[str]]:
+    current_time = time.time() if now is None else now
+    pending: dict[tuple[str, str, str], list[FileSnapshot]] = defaultdict(list)
+    groups: list[CleanupGroup] = []
+    skipped: list[str] = []
+
+    candidates: list[tuple[int, Path]] = []
+    for entry in spool_dir.iterdir():
         try:
-            info = load_context(spool_file)
-        except SpoolFormatError as exc:
-            count_skip += 1
-            print(f"Skipped {count_skip}: {spool_file}: {exc}")
+            entry_stat = entry.lstat()
+        except OSError as exc:
+            skipped.append(f"{entry}: cannot stat: {exc}")
+            continue
+        if not stat_module.S_ISREG(entry_stat.st_mode):
+            skipped.append(f"{entry}: not a regular file")
+            continue
+        candidates.append((entry_stat.st_mtime_ns, entry))
+
+    for _, entry in sorted(candidates, key=lambda item: item[0]):
+        try:
+            snapshot = snapshot_file(entry)
+            age = current_time - (snapshot.mtime_ns / 1_000_000_000)
+            if age < min_age_seconds:
+                skipped.append(
+                    f"{entry}: only {max(age, 0):.1f}s old; minimum is "
+                    f"{min_age_seconds}s"
+                )
+                continue
+            context = load_context(entry)
+        except (OSError, SpoolFormatError, CleanupSafetyError) as exc:
+            skipped.append(f"{entry}: {exc}")
             continue
 
-        if info.get("WHAT") == "HOST":
-            if info["NOTIFICATIONTYPE"] == "DOWNTIMESTART":
-                entries["Hosts"]["Downtime"][info["HOSTNAME"]] = file[1]
+        identity = record_key(context)
+        if identity is None:
+            skipped.append(f"{entry}: unsupported WHAT={context['WHAT']!r}")
+            continue
+        scope, key = identity
+        notification_type = context["NOTIFICATIONTYPE"]
 
-            elif info["NOTIFICATIONTYPE"] == "DOWNTIMEEND":
-                if info["HOSTNAME"] in entries["Hosts"]["Downtime"].keys():
-                    if isfile(path / entries["Hosts"]["Downtime"][info["HOSTNAME"]]):
-                        unlink(path / entries["Hosts"]["Downtime"][info["HOSTNAME"]])
+        if notification_type == "PROBLEM":
+            pending[(scope, "State", key)].append(snapshot)
+        elif notification_type == "RECOVERY":
+            previous = pending.pop((scope, "State", key), [])
+            if previous:
+                groups.append(
+                    CleanupGroup(
+                        category=f"{scope} state",
+                        key=key,
+                        files=tuple(previous + [snapshot]),
+                    )
+                )
+        elif notification_type == "DOWNTIMESTART":
+            pending[(scope, "Downtime", key)].append(snapshot)
+        elif notification_type == "DOWNTIMEEND":
+            previous = pending.pop((scope, "Downtime", key), [])
+            if previous:
+                groups.append(
+                    CleanupGroup(
+                        category=f"{scope} downtime",
+                        key=key,
+                        files=tuple(previous + [snapshot]),
+                    )
+                )
 
-                    if isfile(spool_file):
-                        unlink(spool_file)
+    return groups, skipped
 
-                    del entries["Hosts"]["Downtime"][info["HOSTNAME"]]
-                    stats["Hosts"]["Downtime"] += 1
 
-            elif info["NOTIFICATIONTYPE"] == "PROBLEM":
-                entries["Hosts"]["State"][info["HOSTNAME"]] = file[1]
+@contextmanager
+def cleanup_lock(lock_path: Path) -> Iterator[None]:
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise CleanupSafetyError(
+                f"another clean_spoolfiles process holds {lock_path}"
+            ) from exc
+        yield
+    finally:
+        os.close(descriptor)
 
-            elif info["NOTIFICATIONTYPE"] == "RECOVERY":
-                if info["HOSTNAME"] in entries["Hosts"]["State"].keys():
-                    if isfile(path / entries["Hosts"]["State"][info["HOSTNAME"]]):
-                        unlink(path / entries["Hosts"]["State"][info["HOSTNAME"]])
 
-                    if isfile(spool_file):
-                        unlink(spool_file)
+def create_run_directory(quarantine_root: Path, spool_dir: Path) -> Path:
+    quarantine_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if quarantine_root.stat().st_dev != spool_dir.stat().st_dev:
+        raise CleanupSafetyError(
+            "quarantine directory must be on the same filesystem as the spool"
+        )
+    run_name = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    run_dir = quarantine_root / run_name
+    run_dir.mkdir(mode=0o700)
+    return run_dir
 
-                    del entries["Hosts"]["State"][info["HOSTNAME"]]
-                    stats["Hosts"]["State"] += 1
 
-        elif info.get("WHAT") == "SERVICE":
-            name = f"{info['HOSTNAME']}###{info['SERVICEDESC']}"
+def destination_for(run_dir: Path, snapshot: FileSnapshot) -> Path:
+    destination = run_dir / snapshot.path.name
+    if not destination.exists():
+        return destination
+    return run_dir / f"{snapshot.path.name}.{snapshot.inode}"
 
-            if info["NOTIFICATIONTYPE"] == "DOWNTIMESTART":
-                entries["Services"]["Downtime"][name] = file[1]
 
-            elif info["NOTIFICATIONTYPE"] == "DOWNTIMEEND":
-                if name in entries["Services"]["Downtime"].keys():
-                    if isfile(path / entries["Services"]["Downtime"][name]):
-                        unlink(path / entries["Services"]["Downtime"][name])
+def quarantine_group(group: CleanupGroup, run_dir: Path) -> list[Path]:
+    for snapshot in group.files:
+        if not same_snapshot(snapshot):
+            raise CleanupSafetyError(
+                f"{snapshot.path} changed after the scan; refusing to move the group"
+            )
 
-                    if isfile(spool_file):
-                        unlink(spool_file)
+    moved: list[tuple[Path, Path]] = []
+    try:
+        for snapshot in group.files:
+            destination = destination_for(run_dir, snapshot)
+            os.replace(snapshot.path, destination)
+            moved.append((snapshot.path, destination))
+    except OSError as exc:
+        rollback_errors: list[str] = []
+        for original, destination in reversed(moved):
+            try:
+                os.replace(destination, original)
+            except OSError as rollback_exc:
+                rollback_errors.append(f"{destination}: {rollback_exc}")
+        detail = f"failed to quarantine {group.key}: {exc}"
+        if rollback_errors:
+            detail += "; rollback failures: " + "; ".join(rollback_errors)
+        raise CleanupSafetyError(detail) from exc
+    return [destination for _, destination in moved]
 
-                    del entries["Hosts"]["Services"][name]
-                    stats["Services"]["Downtime"] += 1
 
-            elif info["NOTIFICATIONTYPE"] == "PROBLEM":
-                entries["Services"]["State"][name] = file[1]
+def execute_plan(
+    groups: Sequence[CleanupGroup],
+    *,
+    quarantine_root: Path,
+    spool_dir: Path,
+) -> tuple[int, Path | None]:
+    if not groups:
+        return 0, None
+    run_dir = create_run_directory(quarantine_root, spool_dir)
+    failures = 0
+    for group in groups:
+        try:
+            moved = quarantine_group(group, run_dir)
+        except CleanupSafetyError as exc:
+            failures += 1
+            print(f"ERROR: {exc}", file=sys.stderr)
+            continue
+        print(
+            f"Quarantined {len(moved)} file(s) for {group.category} {group.key!r}"
+        )
+    return (2 if failures else 0), run_dir
 
-            elif info["NOTIFICATIONTYPE"] == "RECOVERY":
-                if name in entries["Services"]["State"].keys():
-                    if isfile(path / entries["Services"]["State"][name]):
-                        unlink(path / entries["Services"]["State"][name])
 
-                    if isfile(spool_file):
-                        unlink(spool_file)
-
-                    del entries["Services"]["State"][name]
-                    stats["Services"]["State"] += 1
-        else:
-            print(f"Invalid File {spool_file}")
-
-    print("#" * 80)
-    print(f"# {'Hosts':35}#    # {'Services':35}#")
-    print(
-        f"# Deleted downtimes: {stats['Hosts']['Downtime']:15} #    # "
-        f"Deleted downtimes: {stats['Services']['Downtime']:15} #"
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Find superseded notification pairs and move them out of the active "
+            "Checkmk spool"
+        )
     )
-    print(
-        f"#    Deleted states: {stats['Hosts']['State']:15} #    # "
-        f"   Deleted states: {stats['Services']['State']:15} #"
+    parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="move planned files to quarantine; default is a read-only plan",
     )
-    print(f"# Total Files: {total_count}\t\t\t\t\t\t\t #")
-    print("#" * 80)
-    return 0
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="skip the exact confirmation prompt; requires --execute",
+    )
+    parser.add_argument(
+        "--min-age-seconds",
+        type=int,
+        default=DEFAULT_MIN_AGE_SECONDS,
+        help=f"ignore newer files (default: {DEFAULT_MIN_AGE_SECONDS})",
+    )
+    parser.add_argument(
+        "--quarantine-dir",
+        type=Path,
+        help=(
+            "quarantine root; defaults to "
+            "$OMD_ROOT/var/check_mk/notify/spool-cleanup"
+        ),
+    )
+    args = parser.parse_args(argv)
+    if args.yes and not args.execute:
+        parser.error("--yes requires --execute")
+    if args.min_age_seconds < 0:
+        parser.error("--min-age-seconds must not be negative")
+    return args
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    omd_root = Path(os.environ["OMD_ROOT"])
+    spool_dir = omd_root / "var/check_mk/notify/spool"
+    quarantine_root = (
+        args.quarantine_dir
+        if args.quarantine_dir is not None
+        else omd_root / "var/check_mk/notify/spool-cleanup"
+    )
+    lock_path = omd_root / "tmp/clean_spoolfiles.lock"
+
+    with cleanup_lock(lock_path):
+        groups, skipped = build_cleanup_plan(
+            spool_dir,
+            min_age_seconds=args.min_age_seconds,
+        )
+        for message in skipped:
+            print(f"Skipped: {message}")
+
+        file_count = sum(len(group.files) for group in groups)
+        print(
+            f"Planned groups: {len(groups)}, files: {file_count}, "
+            f"minimum age: {args.min_age_seconds}s"
+        )
+        for group in groups:
+            names = ", ".join(snapshot.path.name for snapshot in group.files)
+            print(f"PLAN {group.category} {group.key!r}: {names}")
+
+        if not groups:
+            return 0
+        if not args.execute:
+            print("Dry run only. Re-run with --execute to quarantine this plan.")
+            return 0
+
+        if not args.yes:
+            confirmation = input(
+                f"Type MOVE {file_count} to quarantine exactly these files: "
+            ).strip()
+            if confirmation != f"MOVE {file_count}":
+                print("Confirmation did not match; no files were moved.")
+                return 1
+
+        status, run_dir = execute_plan(
+            groups,
+            quarantine_root=quarantine_root,
+            spool_dir=spool_dir,
+        )
+        if run_dir is not None:
+            print(f"Quarantine: {run_dir}")
+        return status
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except (CleanupSafetyError, OSError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
