@@ -1,17 +1,10 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Do a rediscover on services with stored information. This '
-                'will help you to get automatically services like mount '
-                'options, interfaces, smart, ... updated with new values, if '
-                'the stored values are not equal to the new one.\n'
-                '\n'
-                'Have a look at '
-                'https://github.com/kuhn-ruess/Checkmk-Checks/tree/master/rediscover_service '
-                'for configuration example.\n',
- 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks',
+ 'description': 'Rediscover services through the local Checkmk REST API while confining the site automation secret to the executing site on loopback.\n',
+ 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/rediscover_service',
  'files': {'cmk_addons_plugins': ['redis_service/rulesets/redis_service.py'],
            'notifications': ['rediscover_service']},
  'name': 'rediscover_service',
  'title': 'Rediscover service',
- 'version': '2.0.4',
+ 'version': '2.0.5',
  'version.min_required': '2.3.0b1',
  'version.packaged': '2.4.0p5'}
