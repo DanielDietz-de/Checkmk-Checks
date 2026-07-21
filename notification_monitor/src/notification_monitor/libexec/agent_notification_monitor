@@ -1,110 +1,121 @@
 #!/usr/bin/env python3
+"""Monitor failed notifications without exposing the local automation secret."""
 
-"""
-Kuhn & Rueß GmbH
-Consulting and Development
-https://kuhn-ruess.de
-"""
+from __future__ import annotations
 
-from sys import argv
+import ipaddress
+import sys
 from os import environ
-from requests import get
+from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
-class AgentNotificationMonitor():
-    """
-    Agent Notification Monitor
-    """
+import requests
 
-    def get_user(self):
-        """
-        Get automation user and secret
-        """
-        omd_root = environ.get('OMD_ROOT')
-        secret_path = (
-            f"{omd_root}/var/check_mk/web/automation/"
-            "automation.secret"
+
+class UnsafeSiteUrl(ValueError):
+    """Raised when a local automation secret would leave the local site."""
+
+
+def _is_loopback_host(hostname: str | None) -> bool:
+    if hostname is None:
+        return False
+    if hostname.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
+
+
+def local_site_base_url(raw_url: str) -> str:
+    site = environ.get("OMD_SITE")
+    if not site:
+        raise UnsafeSiteUrl("OMD_SITE is not set")
+
+    parsed = urlsplit(raw_url)
+    if parsed.scheme not in {"http", "https"}:
+        raise UnsafeSiteUrl("site URL must use http or https")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise UnsafeSiteUrl("site URL must not contain credentials, a query, or a fragment")
+    if not _is_loopback_host(parsed.hostname):
+        raise UnsafeSiteUrl(
+            "the local automation secret may only be sent to localhost or a loopback address"
         )
-        with open(secret_path, "r", encoding="utf-8") as f:
-            data = f.read()
-            f.close()
+    if parsed.path.rstrip("/") != f"/{site}":
+        raise UnsafeSiteUrl(f"site URL must point to the local site /{site}")
 
-        self._username = "automation"
-        self._secret = data.strip()
+    return urlunsplit((parsed.scheme, parsed.netloc, f"/{site}", "", ""))
 
 
-    def __init__(self):
-        """
-        Init
-        """
-        self.timeout = float(argv[1])
-        self.path = argv[2]
-        self.command_regex = argv[3]
-        self.get_user()
-        self._site_url = f"{self.path}check_mk/view.py?"
+def automation_credentials() -> tuple[str, str]:
+    omd_root = environ.get("OMD_ROOT")
+    if not omd_root:
+        raise RuntimeError("OMD_ROOT is not set")
+    secret_path = Path(omd_root) / "var/check_mk/web/automation/automation.secret"
+    return "automation", secret_path.read_text(encoding="utf-8").strip()
 
 
-    def get(self, url):
-        """
-        Simple Get
-        """
-        address = f"{self._site_url}{url}"
-        content = get(
-            address,
-            headers = {"Authorization": f"Bearer {self._username} {self._secret}"},
-            timeout = self.timeout,
+class AgentNotificationMonitor:
+    def __init__(self, timeout: float, path: str, command_regex: str):
+        self.timeout = timeout
+        self.command_regex = command_regex
+        self.site_url = local_site_base_url(path)
+        self.username, self.secret = automation_credentials()
+        self.session = requests.Session()
+        self.session.trust_env = False
+        self.session.headers.update(
+            {"Authorization": f"Bearer {self.username} {self.secret}"}
         )
 
+    def get_notifications(self) -> int:
+        response = self.session.get(
+            f"{self.site_url}/check_mk/view.py",
+            params={
+                "filled_in": "filter",
+                "_active": "log_type;logtime;log_class;log_command_name_regex",
+                "log_type": ".*NOTIFICATION RESULT$",
+                "logtime_from": "1",
+                "logtime_from_range": "900",
+                "logtime_until": "",
+                "logtime_until_range": "1",
+                "logclass3": "on",
+                "log_command_name_regex": self.command_regex,
+                "view_name": "failed_notifications",
+                "_show_filter_form": "1",
+                "output_format": "json",
+            },
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, list):
+            raise RuntimeError("failed_notifications view did not return a JSON list")
 
-        if content.status_code == 200 or content.status_code == 204:
-            return content.json()
-        else:
-            return []
-
-
-    def get_notifications(self):
-        """
-        Get Data from Notification Log
-        """
+        failed = max(0, len(data) - 1)
+        state = 2 if failed else 0
         print("<<<local>>>")
-        from_hour = 1
-        # Example URL for debugging:
-        # http://checkmk.host-only:5002/cmk/check_mk/view.py?
-        #   filled_in=filter
-        #   &_active=log_type%3Blogtime%3Blog_class%3Blog_command_name_regex
-        #   &log_type=.*NOTIFICATION%20RESULT%24
-        #   &logtime_from=4
-        #   &logtime_from_range=3600
-        #   &logtime_until
-        #   &logtime_until_range=3600
-        #   &logclass3=on
-        #   &log_command_name_regex=cherwell_notify
-        #   &view_name=failed_notifications
-        #   &_show_filter_form=1
-        url = (
-            "filled_in=filter"
-            "&_active=log_type%3Blogtime%3Blog_class%3Blog_command_name_regex"
-            "&log_type=.*NOTIFICATION%20RESULT%24"
-            f"&logtime_from={from_hour}"
-            f"&logtime_from_range={from_hour*900}"
-            "&logtime_until"
-            "&logtime_until_range=1"
-            "&logclass3=on"
-            f"&log_command_name_regex={self.command_regex}"
-            "&view_name=failed_notifications"
-            "&_show_filter_form=1"
-            "&output_format=json"
-        )
+        print(f'{state} "Failed Notifications" count={failed} {failed} failed')
+        return 0
 
 
-        errors = self.get(url=url)
-        num_failed = len(errors[1:])
-        state = 0
-        if num_failed >= 1:
-            state = 2
-        print(f"{state} \"Failed Notifications\" count={num_failed} {num_failed} failed")
-        print()
+def _safe_summary(error: Exception) -> str:
+    return str(error).replace("\n", " ").replace("\r", " ").replace('"', "'")[:500]
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    if len(args) != 3:
+        raise ValueError("expected timeout, local site URL, and command regex")
+    timeout = float(args[0])
+    if timeout <= 0:
+        raise ValueError("timeout must be greater than zero")
+    return AgentNotificationMonitor(timeout, args[1], args[2]).get_notifications()
 
 
 if __name__ == "__main__":
-    agent = AgentNotificationMonitor()
-    agent.get_notifications()
+    try:
+        raise SystemExit(main())
+    except (OSError, ValueError, RuntimeError, requests.RequestException) as exc:
+        print("<<<local>>>")
+        print(f'3 "Failed Notifications" - {_safe_summary(exc)}')
+        raise SystemExit(0) from exc

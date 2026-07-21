@@ -4,45 +4,52 @@
 ![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.3.0b1-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.4.0p5-blue)
 <!-- compatibility-badges:end -->
 
-Notification plugin that triggers a service rediscovery via the Checkmk REST API whenever a matching service notification fires. Useful for items that legitimately change at runtime (mount options, interface speed, SMART attributes, ...) so that the stored discovery parameters are refreshed automatically instead of requiring a manual rediscovery.
+Notification plug-in that triggers a service rediscovery through the Checkmk REST API when a matching service notification fires.
+
+## Security model
+
+The notification reads the executing site's local `automation` secret. The configured protocol, hostname, and site name are validated before that secret is read:
+
+- only HTTP or HTTPS is accepted;
+- the hostname must be `localhost`, a `127.0.0.0/8` address, or `::1`;
+- the configured site name must equal the current `OMD_SITE`;
+- proxy-environment handling is disabled for API requests.
+
+The local automation credential can therefore never be sent to a remote host or another local Checkmk site. Distributed or remote-site rediscovery requires a different design with explicitly configured, scoped credentials.
 
 ## How it works
 
-On each service notification the script reads the site's `automation` secret from `~/var/check_mk/web/automation/automation.secret` and calls the REST API against the configured Checkmk host and site:
+1. Validate that the target is the executing site through a loopback address.
+2. Read the local automation secret.
+3. Look up the affected service in the discovery table.
+4. Move the service to `undecided` and then back to `monitored` using the returned discovery parameters.
+5. Activate the resulting change.
 
-1. `GET /objects/service_discovery/<host>` to look up the affected service entry in the check table.
-2. `PUT /objects/host/<host>/actions/update_discovery_phase/invoke` — first to move the service to `undecided`, then again with `target_phase=monitored` to re-add it with the current discovery values.
-3. `POST /domain-types/activation_run/actions/activate-changes/invoke` with `force_foreign_changes=true` to activate the change.
-
-The plugin only runs for `NOTIFY_WHAT=SERVICE`; host notifications are ignored.
+The plug-in only runs for service notifications. Host notifications are ignored.
 
 ## Package contents
 
 | Path | Purpose |
 | --- | --- |
-| `src/notifications/rediscover_service` | Notification script executed by Checkmk. |
-| `src/redis_service/rulesets/redis_service.py` | WATO notification parameter form (protocol, hostname, site name). |
+| `src/notifications/rediscover_service` | Notification script with local-site credential confinement. |
+| `src/redis_service/rulesets/redis_service.py` | Notification parameter form. |
+| `tests/test_local_target.py` | Regression tests for the local credential boundary. |
 
 ## Installation
 
 1. Install the MKP on the Checkmk site.
-2. Create a new notification rule and select *Rediscover service* as the plugin.
-3. Provide the Checkmk server hostname and site name that the REST API call should target (use the central/master site in a distributed setup).
-4. Select a user with automation rights (e.g. `cmkadmin`) as the contact for the rule. The script itself authenticates as `automation` using the site secret.
-5. Restrict the rule to the hosts and services that should be auto-rediscovered (typically with a service state condition).
+2. Create a notification rule and select *Rediscover service*.
+3. Configure the current site, normally with protocol `http`, hostname `localhost`, and the current site name.
+4. Restrict the notification rule to the specific services that should be rediscovered.
 
 ## Configuration
 
-Rule: **Notifications -> Rediscover service**
+| Parameter | Meaning |
+| --- | --- |
+| `proto` | HTTP or HTTPS for the local REST API. |
+| `hostname` | `localhost` or a numeric loopback address. |
+| `sitename` | Must match the executing `OMD_SITE`. |
 
-| Parameter | Type | Meaning |
-| --- | --- | --- |
-| `proto` | `http` / `https` | Protocol used to reach the Checkmk REST API. |
-| `hostname` | String | Hostname of the Checkmk (master) server. |
-| `sitename` | String | Name of the Checkmk site. |
+## Remaining limitation
 
-## Known limitations
-
-- The script must run on a site where `~/var/check_mk/web/automation/automation.secret` exists and is readable, and that site must have permission to activate foreign changes.
-- Only service notifications are processed; host-level changes are not rediscovered.
-- Activation is forced (`force_foreign_changes=true`) and applies to all sites.
+The current activation implementation still forces activation of pending changes. That behavior is addressed separately so the credential-boundary fix remains isolated.
