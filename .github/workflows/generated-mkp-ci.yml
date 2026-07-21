@@ -1,0 +1,469 @@
+name: Reusable generated MKP validation
+
+on:
+  workflow_call:
+    inputs:
+      package_dir:
+        required: true
+        type: string
+      package_name:
+        required: true
+        type: string
+      package_source:
+        required: true
+        type: string
+      package_version:
+        required: false
+        type: string
+        default: ""
+      package_title:
+        required: true
+        type: string
+      package_author:
+        required: true
+        type: string
+      package_description:
+        required: true
+        type: string
+      min_required:
+        required: false
+        type: string
+        default: "2.4.0b1"
+      test_dir:
+        required: true
+        type: string
+      manual_checks:
+        required: false
+        type: string
+        default: ""
+      executable_relpath:
+        required: false
+        type: string
+        default: ""
+
+env:
+  PACKAGE_DIR: ${{ inputs.package_dir }}
+  PACKAGE_NAME: ${{ inputs.package_name }}
+  PACKAGE_SOURCE: ${{ inputs.package_source }}
+  PACKAGE_VERSION_INPUT: ${{ inputs.package_version }}
+  PACKAGE_TITLE: ${{ inputs.package_title }}
+  PACKAGE_AUTHOR: ${{ inputs.package_author }}
+  PACKAGE_DESCRIPTION: ${{ inputs.package_description }}
+  PACKAGE_MIN_REQUIRED: ${{ inputs.min_required }}
+  TEST_DIR: ${{ inputs.test_dir }}
+  MANUAL_CHECKS: ${{ inputs.manual_checks }}
+  EXECUTABLE_RELPATH: ${{ inputs.executable_relpath }}
+  PLUGIN_BASE: /omd/sites/cmk/local/lib/python3/cmk_addons/plugins
+  PACKAGING_IMAGE: checkmk/check-mk-community:2.5.0p9
+  PACKAGED_VERSION: 2.5.0p9
+  USABLE_UNTIL: 2.5.99
+
+jobs:
+  python-tests:
+    name: Python syntax and package tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install test tools
+        run: python -m pip install --disable-pip-version-check pytest==8.4.1 ruff==0.12.4
+
+      - name: Check for fatal Python errors
+        run: >-
+          ruff check
+          --select E9,F63,F7,F82
+          "$PACKAGE_SOURCE"
+          "$TEST_DIR"
+
+      - name: Compile all Python files
+        run: python -m compileall -q "$PACKAGE_SOURCE" "$TEST_DIR"
+
+      - name: Run package tests
+        run: pytest -q "$TEST_DIR"
+
+      - name: Validate check manual metadata
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          required = {
+              "title", "agents", "catalog", "license", "distribution",
+              "description", "inventory",
+          }
+          checkman_dir = Path(os.environ["PACKAGE_SOURCE"]) / "checkman"
+          if not checkman_dir.is_dir():
+              raise SystemExit(f"Missing checkman directory: {checkman_dir}")
+          errors = []
+          for path in sorted(checkman_dir.iterdir()):
+              if not path.is_file():
+                  continue
+              keys = {
+                  line.split(":", 1)[0].strip()
+                  for line in path.read_text(encoding="utf-8").splitlines()
+                  if line and not line[0].isspace() and ":" in line
+              }
+              missing = sorted(required - keys)
+              if missing:
+                  errors.append(f"{path}: missing {', '.join(missing)}")
+          if errors:
+              raise SystemExit("\n".join(errors))
+          PY
+
+  checkmk-api-load:
+    name: Checkmk API load (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: 2.4.0p34
+            image: checkmk/check-mk-raw:2.4.0p34
+          - label: 2.5.0p9
+            image: checkmk/check-mk-community:2.5.0p9
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Start Checkmk container
+        env:
+          CHECKMK_IMAGE: ${{ matrix.image }}
+        run: |
+          set -euo pipefail
+          docker run --detach \
+            --name checkmk-ci \
+            --env CMK_PASSWORD='generated-mkp-ci-password' \
+            --env CMK_SITE_ID='cmk' \
+            --env PACKAGE_NAME \
+            --env PACKAGE_SOURCE \
+            --env PLUGIN_BASE \
+            --env EXECUTABLE_RELPATH \
+            --volume "$GITHUB_WORKSPACE:/work:ro" \
+            "$CHECKMK_IMAGE"
+
+          for _ in $(seq 1 120); do
+            if docker logs checkmk-ci 2>&1 | grep -q '### CONTAINER STARTED'; then
+              exit 0
+            fi
+            if ! docker inspect --format '{{.State.Running}}' checkmk-ci | grep -q true; then
+              docker logs checkmk-ci
+              exit 1
+            fi
+            sleep 2
+          done
+          docker logs checkmk-ci
+          echo 'Checkmk container did not become ready' >&2
+          exit 1
+
+      - name: Install plug-ins into temporary site
+        run: |
+          docker exec --user root checkmk-ci bash -lc '
+            set -euo pipefail
+            source="/work/${PACKAGE_SOURCE}"
+            target="${PLUGIN_BASE}/${PACKAGE_NAME}"
+            test -d "$source"
+            install -d -o cmk -g cmk "$target"
+            cp -a "$source/." "$target/"
+            if [[ -n "${EXECUTABLE_RELPATH}" ]]; then
+              chmod 0755 "$target/${EXECUTABLE_RELPATH}"
+            fi
+            chown -R cmk:cmk "$target"
+          '
+
+      - name: Load and validate plug-ins with Checkmk
+        run: |
+          docker exec --user cmk checkmk-ci bash -lc '
+            set -euo pipefail
+            export PAGER=cat
+            plugin_root="${PLUGIN_BASE}/${PACKAGE_NAME}"
+            python3 -m compileall -q "$plugin_root"
+            while IFS= read -r -d "" plugin; do
+              echo "Loading ${plugin#$plugin_root/}"
+              python3 "$plugin"
+            done < <(
+              find "$plugin_root/agent_based" "$plugin_root/graphing" \
+                -type f -name "*.py" -print0 2>/dev/null | sort -z
+            )
+            cmk-validate-plugins
+            for check in ${MANUAL_CHECKS}; do
+              cmk -M "$check" >/dev/null
+            done
+            cmk -R
+          '
+
+      - name: Show Checkmk logs on failure
+        if: failure()
+        run: docker logs checkmk-ci || true
+
+      - name: Remove temporary Checkmk container
+        if: always()
+        run: docker rm --force checkmk-ci || true
+
+  mkp-package:
+    name: Build and inspect MKP with Checkmk 2.5
+    needs:
+      - python-tests
+      - checkmk-api-load
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      artifact-name: ${{ steps.metadata.outputs.artifact-name }}
+      filename: ${{ steps.metadata.outputs.filename }}
+      version: ${{ steps.metadata.outputs.version }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Resolve package metadata
+        id: metadata
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ast
+          import os
+          import re
+          from pathlib import Path
+
+          package_dir = Path(os.environ["PACKAGE_DIR"])
+          info_path = package_dir / "src" / "info"
+          supplied = os.environ["PACKAGE_VERSION_INPUT"].strip()
+          if info_path.is_file():
+              info = ast.literal_eval(info_path.read_text(encoding="utf-8"))
+              if info.get("name") != os.environ["PACKAGE_NAME"]:
+                  raise SystemExit("Package name mismatch in src/info")
+              version = supplied or str(info.get("version", ""))
+          else:
+              info = {}
+              version = supplied
+          if not re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z._+-]*", version):
+              raise SystemExit(f"Invalid package version: {version!r}")
+          filename = f"{os.environ['PACKAGE_NAME']}-{version}.mkp"
+          artifact = f"{os.environ['PACKAGE_NAME']}-mkp-{os.environ['GITHUB_RUN_NUMBER']}"
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"PACKAGE_VERSION={version}\nPACKAGE_FILENAME={filename}\n")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"version={version}\nfilename={filename}\nartifact-name={artifact}\n")
+          PY
+
+      - name: Start Checkmk 2.5 packaging container
+        run: |
+          set -euo pipefail
+          docker run --detach \
+            --name checkmk-mkp \
+            --env CMK_PASSWORD='generated-mkp-ci-password' \
+            --env CMK_SITE_ID='cmk' \
+            --env GITHUB_REPOSITORY \
+            --env PACKAGE_DIR \
+            --env PACKAGE_NAME \
+            --env PACKAGE_SOURCE \
+            --env PACKAGE_VERSION \
+            --env PACKAGE_TITLE \
+            --env PACKAGE_AUTHOR \
+            --env PACKAGE_DESCRIPTION \
+            --env PACKAGE_MIN_REQUIRED \
+            --env PACKAGED_VERSION \
+            --env USABLE_UNTIL \
+            --env PLUGIN_BASE \
+            --env EXECUTABLE_RELPATH \
+            --volume "$GITHUB_WORKSPACE:/work:ro" \
+            "$PACKAGING_IMAGE"
+
+          for _ in $(seq 1 120); do
+            if docker logs checkmk-mkp 2>&1 | grep -q '### CONTAINER STARTED'; then
+              exit 0
+            fi
+            if ! docker inspect --format '{{.State.Running}}' checkmk-mkp | grep -q true; then
+              docker logs checkmk-mkp
+              exit 1
+            fi
+            sleep 2
+          done
+          docker logs checkmk-mkp
+          echo 'Checkmk packaging container did not become ready' >&2
+          exit 1
+
+      - name: Install package source and generate manifest
+        run: |
+          docker exec --user root checkmk-mkp bash -lc '
+            set -euo pipefail
+            source="/work/${PACKAGE_SOURCE}"
+            target="${PLUGIN_BASE}/${PACKAGE_NAME}"
+            test -d "$source"
+            install -d -o cmk -g cmk "$target"
+            cp -a "$source/." "$target/"
+            if [[ -n "${EXECUTABLE_RELPATH}" ]]; then
+              chmod 0755 "$target/${EXECUTABLE_RELPATH}"
+            fi
+            find "$target" -type d -name __pycache__ -prune -exec rm -rf {} +
+            find "$target" -type f -name "*.pyc" -delete
+            chown -R cmk:cmk "$target"
+          '
+
+          docker exec --user cmk checkmk-mkp bash -lc '
+            set -euo pipefail
+            manifest="$HOME/tmp/check_mk/${PACKAGE_NAME}-ci.manifest.temp"
+            mkdir -p "$(dirname "$manifest")"
+            MANIFEST="$manifest" python3 - <<"PY"
+          import ast
+          import os
+          from pathlib import Path
+
+          plugin_base = Path(os.environ["PLUGIN_BASE"])
+          package_name = os.environ["PACKAGE_NAME"]
+          package_dir = os.environ["PACKAGE_DIR"]
+          source_info = Path("/work") / package_dir / "src" / "info"
+          if source_info.is_file():
+              manifest = ast.literal_eval(source_info.read_text(encoding="utf-8"))
+          else:
+              manifest = {
+                  "name": package_name,
+                  "title": os.environ["PACKAGE_TITLE"],
+                  "author": os.environ["PACKAGE_AUTHOR"],
+                  "description": os.environ["PACKAGE_DESCRIPTION"],
+                  "version.min_required": os.environ["PACKAGE_MIN_REQUIRED"],
+              }
+          files = sorted(
+              str(path.relative_to(plugin_base))
+              for path in (plugin_base / package_name).rglob("*")
+              if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"
+          )
+          manifest.update(
+              {
+                  "name": package_name,
+                  "version": os.environ["PACKAGE_VERSION"],
+                  "version.packaged": os.environ["PACKAGED_VERSION"],
+                  "version.usable_until": os.environ["USABLE_UNTIL"],
+                  "download_url": (
+                      f"https://github.com/{os.environ['GITHUB_REPOSITORY']}"
+                      f"/tree/master/{package_dir}"
+                  ),
+                  "files": {"cmk_addons_plugins": files},
+              }
+          )
+          if not files:
+              raise SystemExit("Manifest contains no package files")
+          path = Path(os.environ["MANIFEST"])
+          path.write_text(repr(manifest) + "\n", encoding="utf-8")
+          assert ast.literal_eval(path.read_text(encoding="utf-8")) == manifest
+          PY
+          '
+
+      - name: Build and inspect MKP
+        run: |
+          docker exec --user cmk checkmk-mkp bash -lc '
+            set -euo pipefail
+            manifest="$HOME/tmp/check_mk/${PACKAGE_NAME}-ci.manifest.temp"
+            mkp --debug package "$manifest"
+            package="$HOME/var/check_mk/packages_local/${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp"
+            test -f "$package"
+            mkp inspect "$package"
+          '
+
+      - name: Export MKP and checksum
+        run: |
+          set -euo pipefail
+          output="${PACKAGE_DIR}/${PACKAGE_FILENAME}"
+          docker cp \
+            "checkmk-mkp:/omd/sites/cmk/var/check_mk/packages_local/${PACKAGE_FILENAME}" \
+            "$output"
+          chmod 0644 "$output"
+          (
+            cd "$PACKAGE_DIR"
+            sha256sum "$PACKAGE_FILENAME" >"${PACKAGE_FILENAME}.sha256"
+          )
+
+      - name: Upload MKP artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.metadata.outputs.artifact-name }}
+          path: |
+            ${{ env.PACKAGE_DIR }}/${{ steps.metadata.outputs.filename }}
+            ${{ env.PACKAGE_DIR }}/${{ steps.metadata.outputs.filename }}.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Show Checkmk logs on failure
+        if: failure()
+        run: docker logs checkmk-mkp || true
+
+      - name: Remove packaging container
+        if: always()
+        run: docker rm --force checkmk-mkp || true
+
+  persist-mkp:
+    name: Commit validated MKP to package folder
+    needs:
+      - mkp-package
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/master' &&
+      github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Download generated MKP
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ needs.mkp-package.outputs.artifact-name }}
+          path: ${{ env.PACKAGE_DIR }}
+
+      - name: Verify and commit generated package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_FILENAME: ${{ needs.mkp-package.outputs.filename }}
+          PACKAGE_VERSION: ${{ needs.mkp-package.outputs.version }}
+        run: |
+          set -euo pipefail
+          package_path="${PACKAGE_DIR}/${PACKAGE_FILENAME}"
+          checksum_path="${package_path}.sha256"
+          test -f "$package_path"
+          test -f "$checksum_path"
+          (
+            cd "$PACKAGE_DIR"
+            sha256sum --check "${PACKAGE_FILENAME}.sha256"
+          )
+          remote_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "$package_path" "$checksum_path"
+          if git diff --cached --quiet; then
+            echo "Generated MKP is unchanged; nothing to commit."
+            exit 0
+          fi
+          git commit -m "build(${PACKAGE_NAME}): update MKP ${PACKAGE_VERSION} [skip ci]"
+          git fetch "$remote_url" "$GITHUB_REF_NAME"
+          git rebase FETCH_HEAD
+          git push "$remote_url" "HEAD:${GITHUB_REF_NAME}"
