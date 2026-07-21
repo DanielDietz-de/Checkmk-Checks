@@ -23,7 +23,7 @@ The command is read-only by default. Event deletion requires both `--execute` an
 | Path | Purpose |
 | --- | --- |
 | `src/bin/sync_ec_events.py` | Safe Event Console reconciliation tool installed into the site `bin/` directory. |
-| `tests/test_sync_ec_events.py` | Regression tests for dry-run and confirmation behavior. |
+| `tests/test_sync_ec_events.py` | Regression tests for dry-run, confirmation, and credential-boundary behavior. |
 
 ## Installation
 
@@ -66,7 +66,7 @@ sync_ec_events.py --rule-filter <rule_id> [--execute] [--yes] \
 | `--timeout` | no | API timeout in seconds. Default: 15. |
 | `--no-verify` | no | Disable TLS certificate verification for an explicitly configured remote site URL. |
 
-When credentials are not supplied, the script uses the local `automation` user and reads the site automation secret from `${OMD_ROOT}/var/check_mk/web/automation/automation.secret`.
+When credentials are not supplied, the script uses the local `automation` user and reads the site automation secret from `${OMD_ROOT}/var/check_mk/web/automation/automation.secret`. In that mode, the target is strictly limited to the current site on `localhost` or a numeric loopback address. A remote `--site-url` requires explicit `--user` and `--password` values; the local automation secret is never sent to it. Proxy environment variables are ignored when local automation credentials are used.
 
 ## Safety properties
 
@@ -77,3 +77,4 @@ When credentials are not supplied, the script uses the local `automation` user a
 - API errors are never interpreted as OK.
 - Host names are URL-encoded before use in REST paths.
 - HTTP requests use a configurable timeout.
+- Local automation credentials cannot leave the current site or loopback interface.

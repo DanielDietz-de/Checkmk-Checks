@@ -1,9 +1,9 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Safely reconcile open Event Console events with current Checkmk states. The command is read-only by default and requires explicit execution and confirmation before archiving eligible events.\n',
+ 'description': 'Safely reconcile open Event Console events with current Checkmk states. The command is read-only by default, requires explicit confirmation before archiving, and never sends the local automation secret to a remote URL.\n',
  'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/ec_cleanup',
  'files': {'bin': ['sync_ec_events.py']},
  'name': 'ec_cleanup',
  'title': 'EC Cleanup Script',
- 'version': '1.0.5',
+ 'version': '1.0.6',
  'version.min_required': '2.4.0',
  'version.packaged': '2.4.0p13'}

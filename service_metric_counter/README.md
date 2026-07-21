@@ -4,53 +4,53 @@
 ![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.3.0p1-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.3.0p25-blue)
 <!-- compatibility-badges:end -->
 
-Special agent that sums a named performance-data metric across all Checkmk services matched by a Livestatus-style filter and exposes the total as its own Checkmk service. Example use case: add up the `users` metric of every matching `Users` service in a distributed setup and alert on a global upper level.
+Special agent that sums a named performance-data metric across Checkmk services matched by a Livestatus-style filter and exposes the total as its own Checkmk service.
+
+## Security model
+
+The special agent reads the executing site's local `automation` secret. The configured Checkmk URL must therefore identify the same `OMD_SITE` through `localhost`, `127.0.0.0/8`, or `::1`. Remote hosts, another local site path, URLs containing credentials, queries, or fragments, and unsupported schemes are rejected before the secret is read.
+
+Proxy-environment handling is disabled for the local API session so the Authorization header cannot be redirected through a system proxy.
+
+Remote aggregation is intentionally not supported with the local automation credential. A remote implementation must use an explicitly configured credential scoped to that remote site.
 
 ## How it works
 
-1. For each configured entry the agent queries the central Checkmk REST API
-   (`<path>/check_mk/api/1.0/domain-types/service/collections/all`) with a Livestatus query built from the `ls_pattern` string. Sub-patterns are separated by `;`, each sub-pattern uses `=` or `~` as operator (e.g. `description~Users;host_labels='env' 'prod'`).
-2. The returned `performance_data` dict is summed over the configured metric name.
-3. One line per entry is emitted under `<<<service_metric_counter:sep(58)>>>` in the form
-   `<service_name>:<total>:<metric>:<label>`.
-4. The `service_metric_counter` check creates a service `Service <service_name>` per entry, reports the sum as a metric and compares it against optional upper levels.
+1. Validate the configured site URL against the current `OMD_SITE` and require a loopback target.
+2. Read the local automation secret.
+3. For each configured entry, query the local Checkmk REST API with the configured service filter.
+4. Sum the selected performance-data metric.
+5. Emit one line per entry under `<<<service_metric_counter:sep(58)>>>`.
+6. Emit an UNKNOWN local service if configuration or API access fails.
 
 ## Package contents
 
 | Path | Purpose |
 | --- | --- |
-| `src/service_metric_counter/libexec/agent_service_metric_counter` | Special agent that queries the REST API. |
-| `src/service_metric_counter/server_side_calls/service_counter.py` | Server-side call wiring. |
-| `src/service_metric_counter/rulesets/ruleset.py` | WATO rules for the special agent and the check parameters. |
-| `src/service_metric_counter/agent_based/service.py` | Section parser and `service_metric_counter` check plugin. |
+| `src/service_metric_counter/libexec/agent_service_metric_counter` | Local-only REST aggregation special agent. |
+| `src/service_metric_counter/server_side_calls/service_counter.py` | Server-side command generation. |
+| `src/service_metric_counter/rulesets/ruleset.py` | Special-agent and check-parameter rules. |
+| `src/service_metric_counter/agent_based/service.py` | Section parser and check plug-in. |
+| `tests/test_local_site_url.py` | Credential-boundary regression tests. |
 
 ## Installation
 
 1. Install the MKP on the Checkmk site.
-2. Pick a monitoring host to carry the aggregated services and configure the special agent rule on it.
-3. Run service discovery.
+2. Pick a monitoring host on the same site to carry the aggregated services.
+3. Configure *Setup -> Agents -> Other integrations -> Service Metric counter*.
+4. Use the local site URL, for example `http://localhost/cmk/`.
+5. Run service discovery.
 
 ## Configuration
 
-Rule: **Setup -> Agents -> Other integrations -> Service Metric counter**
+| Parameter | Meaning |
+| --- | --- |
+| `path` | Current site URL through localhost or a loopback address. The path must match `/<OMD_SITE>`. |
+| `timeout` | REST API request timeout. |
+| `service_filters` | Aggregated service definitions. |
+| `service_name` | Item of the resulting service. |
+| `ls_pattern` | Livestatus filter, for example `description~Users;host_labels='env' 'prod'`. |
+| `metric` | Performance metric to sum. |
+| `metric_label` | Human-readable label. |
 
-| Parameter | Type | Meaning |
-| --- | --- | --- |
-| `path` | String | Base URL of the Checkmk site, e.g. `https://server/site/`. Required because the agent may run on a remote site. |
-| `timeout` | Time span | REST API request timeout (default 2.5s). |
-| `service_filters` | List of entries | Each entry defines one aggregated service. |
-| &nbsp;&nbsp;`service_name` | String | Item of the resulting service. |
-| &nbsp;&nbsp;`ls_pattern` | String | Livestatus filter, e.g. `description~Users;host_labels='env' 'prod'`. |
-| &nbsp;&nbsp;`metric` | String | Name of the performance metric to sum. |
-| &nbsp;&nbsp;`metric_label` | String | Human-readable label shown in the service output. |
-
-Rule: **Parameters for discovered services -> Service Metric Count**
-
-| Parameter | Type | Meaning |
-| --- | --- | --- |
-| `levels` | Upper levels (count) | Optional WARN/CRIT on the summed value. |
-
-## Services & metrics
-
-- **Service:** `Service <service_name>` — one per configured entry.
-- **Metric:** name taken from the configured `metric` field. The value is the sum across all matched services.
+The check-parameter rule *Service Metric Count* can apply optional upper WARN/CRIT levels to the total.
