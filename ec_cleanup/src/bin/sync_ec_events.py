@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import sys
 from collections.abc import Callable, Iterable
@@ -11,7 +12,7 @@ from dataclasses import dataclass
 from os import environ
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import requests
 import urllib3
@@ -29,6 +30,31 @@ class CheckmkApiError(RuntimeError):
     """Raised when the Checkmk REST API cannot complete an operation."""
 
 
+def _is_loopback_host(hostname: str | None) -> bool:
+    if hostname is None:
+        return False
+    if hostname.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
+
+
+def validate_local_site_url(address: str, site: str) -> None:
+    parsed = urlsplit(address)
+    if parsed.scheme not in {"http", "https"}:
+        raise RuntimeError("local site URL must use http or https")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise RuntimeError("local site URL must not contain credentials, a query, or a fragment")
+    if not _is_loopback_host(parsed.hostname):
+        raise RuntimeError(
+            "the local automation secret may only be sent to localhost or a loopback address"
+        )
+    if parsed.path.rstrip("/") != f"/{site}":
+        raise RuntimeError(f"local automation credentials require the local site path /{site}")
+
+
 class Checkmk:
     def __init__(self, config: dict[str, Any]):
         self.address = str(config["address"]).rstrip("/")
@@ -39,6 +65,7 @@ class Checkmk:
         self.timeout = float(config.get("timeout", 15.0))
         self.status_cache: dict[tuple[str, str], int | None] = {}
         self.session = requests.Session()
+        self.session.trust_env = bool(config.get("trust_env", True))
         self.session.headers.update(
             {
                 "Authorization": f"Bearer {self.username} {self.password}",
@@ -272,22 +299,30 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    if args.user:
-        user = args.user
-        password = args.password
-    else:
-        user = "automation"
-        password = get_automation_password()
+    site = environ.get("OMD_SITE")
 
     if args.site_url:
         address = args.site_url.rstrip("/")
         verify = not args.no_verify
     else:
-        site = environ.get("OMD_SITE")
         if not site:
             raise RuntimeError("OMD_SITE is not set; provide --site-url")
         address = f"http://localhost/{site}"
         verify = False
+
+    if args.user:
+        user = args.user
+        password = args.password
+        trust_env = True
+    else:
+        if not site:
+            raise RuntimeError(
+                "OMD_SITE is not set; explicit --user and --password are required for a remote URL"
+            )
+        validate_local_site_url(address, site)
+        user = "automation"
+        password = get_automation_password()
+        trust_env = False
 
     cmk = Checkmk(
         {
@@ -297,6 +332,7 @@ def main(argv: list[str] | None = None) -> int:
             "verify": verify,
             "rule_filter": args.rule_filter,
             "timeout": args.timeout,
+            "trust_env": trust_env,
         }
     )
     return cmk.sync_ec_data(execute=args.execute, assume_yes=args.yes)
