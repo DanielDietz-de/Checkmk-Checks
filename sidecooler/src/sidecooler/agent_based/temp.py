@@ -1,28 +1,20 @@
 #!/usr/bin/env python3
-
-"""
-Kuhn & Rueß GmbH
-Consulting and Development
-https://kuhn-ruess.de
-"""
+"""SNMP check for Sidecooler warm- and cold-side temperatures."""
 
 from cmk.agent_based.v2 import (
-    Service,
-    Result,
-    State,
+    CheckPlugin,
     Metric,
+    Result,
+    Service,
     SimpleSNMPSection,
     SNMPTree,
+    State,
     exists,
-    CheckPlugin,
 )
 
-class SidecoolerTemp():
-    warm: dict
-    cold: dict
 
-
-    def __init__(self, warm, cold):
+class SidecoolerTemp:
+    def __init__(self, warm: dict[str, float], cold: dict[str, float]) -> None:
         self.warm = warm
         self.cold = cold
 
@@ -31,87 +23,66 @@ def parse_sidecooler_temp(string_table):
     if not string_table:
         return None
 
-    warm = {
-        "mean": int(string_table[0][0]) / 10,
-        "top": int(string_table[0][1]) / 10,
-        "center": int(string_table[0][2]) / 10,
-        "bottom": int(string_table[0][3]) / 10,
-    }
-
-    cold = {
-        "mean": int(string_table[0][4]) / 10,
-        "top": int(string_table[0][5]) / 10,
-        "center": int(string_table[0][6]) / 10,
-        "bottom": int(string_table[0][7]) / 10,
-    }
-
+    values = [int(value) / 10 for value in string_table[0]]
+    warm = dict(zip(("mean", "top", "center", "bottom"), values[:4], strict=True))
+    cold = dict(zip(("mean", "top", "center", "bottom"), values[4:8], strict=True))
     return SidecoolerTemp(warm, cold)
 
 
 def discover_sidecooler_temp(section):
     if section.warm:
         yield Service(item="warm")
-
     if section.cold:
         yield Service(item="cold")
 
 
 def check_sidecooler_temp(item, params, section):
-    if item == "warm":
-        data = section.warm
-        name = "temp_warm_"
-    else:
-        data = section.cold
-        name = "temp_cold_"
+    data = section.warm if item == "warm" else section.cold
+    metric_prefix = "temp_warm_" if item == "warm" else "temp_cold_"
 
     for which in ("mean", "top", "center", "bottom"):
-        if params[which][0] == "no_levels":
-            yield Result(state=State.OK, summary=f"{which.capitalize()}: {data[which]}°C")
-            yield Metric(name=f"{name}{which}", value=data[which])
+        value = data[which]
+        levels = params[which]
+        if levels[0] == "no_levels":
+            yield Result(state=State.OK, summary=f"{which.capitalize()}: {value}°C")
+            yield Metric(name=f"{metric_prefix}{which}", value=value)
+            continue
+
+        warn, crit = levels[1]
+        if value >= crit:
+            state = State.CRIT
+        elif value >= warn:
+            state = State.WARN
         else:
-            warn, crit = params[which][1]
-
-            if data[which] >= crit:
-                yield Result(state=State.CRIT, summary=f"{which.capitalize()}: {data[which]}°C")
-            elif data[which] >= warn:
-                yield Result(state=State.WARN, summary=f"{which.capitalize()}: {data[which]}°C")
-            else:
-                yield Result(state=State.OK, summary=f"{which.capitalize()}: {data[which]}°C")
-
-            yield Metric(name=f"{name}{which}", value=data[which], levels=params[which][1])
+            state = State.OK
+        yield Result(state=state, summary=f"{which.capitalize()}: {value}°C")
+        yield Metric(name=f"{metric_prefix}{which}", value=value, levels=levels[1])
 
 
 snmp_section_sidecooler_temp = SimpleSNMPSection(
-    name = "sidecooler_temp",
-    parse_function = parse_sidecooler_temp,
-    fetch = SNMPTree(
-        base = ".1.3.6.1.4.1.46984.17.3",
-        oids = [
-            "1",   # SideCoolerMib::tempWarmMean
-            "2",   # SideCoolerMib::tempWarmTop
-            "3",   # SideCoolerMib::tempWarmCenter
-            "4",   # SideCoolerMib::tempWarmBottom
-
-            "5",   # SideCoolerMib::tempColdMean
-            "6",   # SideCoolerMib::tempColdTop
-            "7",   # SideCoolerMib::tempColdCenter
-            "8",   # SideCoolerMib::tempColdBottom
+    name="sidecooler_temp",
+    parse_function=parse_sidecooler_temp,
+    fetch=SNMPTree(
+        base=".1.3.6.1.4.1.46984.17.3",
+        oids=[
+            "1", "2", "3", "4",  # Warm mean, top, center, bottom
+            "5", "6", "7", "8",  # Cold mean, top, center, bottom
         ],
     ),
-    detect = exists(".1.3.6.1.4.1.46984.17.3.*"),
+    detect=exists(".1.3.6.1.4.1.46984.17.3.*"),
 )
 
 
 check_plugin_sidecooler_temp = CheckPlugin(
-    name = "sidecooler_temp",
-    service_name = "Sidecooler Temp %s side",
-    discovery_function = discover_sidecooler_temp,
-    check_function = check_sidecooler_temp,
-    check_ruleset_name = "sidecooler_temp",
-    check_default_parameters = {
-        "mean": ("fixed", (30, 35)),
-        "top": ("fixed", (30, 35)),
-        "center": ("fixed", (30, 35)),
-        "bottom": ("fixed", (30, 35)),
+    name="sidecooler_temp",
+    service_name="Sidecooler Temp %s side",
+    discovery_function=discover_sidecooler_temp,
+    check_function=check_sidecooler_temp,
+    check_ruleset_name="sidecooler_temp",
+    check_default_parameters={
+        "mean": ("fixed", (30.0, 35.0)),
+        "top": ("fixed", (30.0, 35.0)),
+        "center": ("fixed", (30.0, 35.0)),
+        "bottom": ("fixed", (30.0, 35.0)),
     },
 )
