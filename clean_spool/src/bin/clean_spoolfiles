@@ -1,118 +1,163 @@
 #!/usr/bin/env python3
+"""Remove superseded notification pairs from the Checkmk notification spool."""
 
-"""
-Kuhn & Rueß GmbH
-Consulting and Development
-https://kuhn-ruess.de
-"""
+from __future__ import annotations
 
+import ast
 from os import environ, listdir, stat, unlink
 from os.path import isfile
+from pathlib import Path
+from typing import Any
 
-path = f"{environ['OMD_ROOT']}/var/check_mk/notify/spool"
-files_unsorted = listdir(f"{path}")
+MAX_SPOOL_FILE_SIZE = 1024 * 1024
 
-files = list(map(lambda f: (stat(f"{path}/{f}")[9], f), files_unsorted))
-files.sort(key=lambda tup: tup[0])
 
-entries = {}
-entries.setdefault("Hosts", {})
-entries["Hosts"].setdefault("Downtime", {})
-entries["Hosts"].setdefault("State", {})
-entries.setdefault("Services", {})
-entries["Services"].setdefault("Downtime", {})
-entries["Services"].setdefault("State", {})
+class SpoolFormatError(ValueError):
+    """Raised when a spool file is not a supported literal notification record."""
 
-stats = {}
-stats.setdefault("Hosts", {})
-stats["Hosts"]["Downtime"] = 0
-stats["Hosts"]["State"] = 0
-stats.setdefault("Services", {})
-stats["Services"]["Downtime"] = 0
-stats["Services"]["State"] = 0
 
-count_skip = 0
-total_count = 0
-for file in files:
-    total_count += 1
-
+def load_context(spool_file: Path) -> dict[str, Any]:
+    try:
+        size = spool_file.stat().st_size
+    except OSError as exc:
+        raise SpoolFormatError(f"cannot stat file: {exc}") from exc
+    if size > MAX_SPOOL_FILE_SIZE:
+        raise SpoolFormatError(
+            f"file exceeds the {MAX_SPOOL_FILE_SIZE}-byte parser limit"
+        )
 
     try:
-        with open(f"{path}/{file[1]}", "r") as data:
-            info = eval(data.read())
-            data.close()
-    except (FileNotFoundError, SyntaxError):
-        count_skip += 1
-        print(f"Skipped {count_skip}: {path}{file[1]}")
-        continue
+        raw = spool_file.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise SpoolFormatError(f"cannot read file: {exc}") from exc
 
-    info = info["context"]
+    try:
+        record = ast.literal_eval(raw)
+    except (SyntaxError, ValueError, TypeError, MemoryError, RecursionError) as exc:
+        raise SpoolFormatError("file is not a valid Python literal") from exc
 
-    if info.get("WHAT") == "HOST":
-        if info["NOTIFICATIONTYPE"] == "DOWNTIMESTART":
-            entries["Hosts"]["Downtime"][info["HOSTNAME"]] = file[1]
+    if not isinstance(record, dict):
+        raise SpoolFormatError("top-level value must be a dictionary")
+    context = record.get("context")
+    if not isinstance(context, dict):
+        raise SpoolFormatError("record has no dictionary context")
 
-        elif info["NOTIFICATIONTYPE"] == "DOWNTIMEEND":
-            if info["HOSTNAME"] in entries["Hosts"]["Downtime"].keys():
-                if isfile(f"{path}/{entries['Hosts']['Downtime'][info['HOSTNAME']]}"):
-                    unlink(f"{path}/{entries['Hosts']['Downtime'][info['HOSTNAME']]}")
+    required = ("WHAT", "NOTIFICATIONTYPE", "HOSTNAME")
+    missing = [key for key in required if not isinstance(context.get(key), str)]
+    if missing:
+        raise SpoolFormatError(
+            "context is missing string field(s): " + ", ".join(missing)
+        )
+    if context["WHAT"] == "SERVICE" and not isinstance(
+        context.get("SERVICEDESC"), str
+    ):
+        raise SpoolFormatError("service context is missing SERVICEDESC")
+    return context
 
-                if isfile(f"{path}/{file[1]}"):
-                    unlink(f"{path}/{file[1]}")
 
-                del entries["Hosts"]["Downtime"][info["HOSTNAME"]]
-                stats["Hosts"]["Downtime"] += 1
+def main() -> int:
+    path = Path(environ["OMD_ROOT"]) / "var/check_mk/notify/spool"
+    files_unsorted = listdir(path)
+    files = list(map(lambda f: (stat(path / f)[9], f), files_unsorted))
+    files.sort(key=lambda tup: tup[0])
 
-        elif info["NOTIFICATIONTYPE"] == "PROBLEM":
-            entries["Hosts"]["State"][info["HOSTNAME"]] = file[1]
+    entries = {
+        "Hosts": {"Downtime": {}, "State": {}},
+        "Services": {"Downtime": {}, "State": {}},
+    }
+    stats = {
+        "Hosts": {"Downtime": 0, "State": 0},
+        "Services": {"Downtime": 0, "State": 0},
+    }
 
-        elif info["NOTIFICATIONTYPE"] == "RECOVERY":
-            if info["HOSTNAME"] in entries["Hosts"]["State"].keys():
-                if isfile(f"{path}/{entries['Hosts']['State'][info['HOSTNAME']]}"):
-                    unlink(f"{path}/{entries['Hosts']['State'][info['HOSTNAME']]}")
+    count_skip = 0
+    total_count = 0
+    for file in files:
+        total_count += 1
+        spool_file = path / file[1]
+        try:
+            info = load_context(spool_file)
+        except SpoolFormatError as exc:
+            count_skip += 1
+            print(f"Skipped {count_skip}: {spool_file}: {exc}")
+            continue
 
-                if isfile(f"{path}/{file[1]}"):
-                    unlink(f"{path}/{file[1]}")
+        if info.get("WHAT") == "HOST":
+            if info["NOTIFICATIONTYPE"] == "DOWNTIMESTART":
+                entries["Hosts"]["Downtime"][info["HOSTNAME"]] = file[1]
 
-                del entries["Hosts"]["State"][info["HOSTNAME"]]
-                stats["Hosts"]["State"] += 1
+            elif info["NOTIFICATIONTYPE"] == "DOWNTIMEEND":
+                if info["HOSTNAME"] in entries["Hosts"]["Downtime"].keys():
+                    if isfile(path / entries["Hosts"]["Downtime"][info["HOSTNAME"]]):
+                        unlink(path / entries["Hosts"]["Downtime"][info["HOSTNAME"]])
 
-    elif info.get("WHAT") == "SERVICE":
-        name = f"{info['HOSTNAME']}###{info['SERVICEDESC']}"
+                    if isfile(spool_file):
+                        unlink(spool_file)
 
-        if info["NOTIFICATIONTYPE"] == "DOWNTIMESTART":
-            entries["Services"]["Downtime"][name] = file[1]
+                    del entries["Hosts"]["Downtime"][info["HOSTNAME"]]
+                    stats["Hosts"]["Downtime"] += 1
 
-        elif info["NOTIFICATIONTYPE"] == "DOWNTIMEEND":
-            if name in entries["Services"]["Downtime"].keys():
-                if isfile(f"{path}/{entries['Services']['Downtime'][name]}"):
-                    unlink(f"{path}/{entries['Services']['Downtime'][name]}")
+            elif info["NOTIFICATIONTYPE"] == "PROBLEM":
+                entries["Hosts"]["State"][info["HOSTNAME"]] = file[1]
 
-                if isfile(f"{path}/{file[1]}"):
-                    unlink(f"{path}/{file[1]}")
+            elif info["NOTIFICATIONTYPE"] == "RECOVERY":
+                if info["HOSTNAME"] in entries["Hosts"]["State"].keys():
+                    if isfile(path / entries["Hosts"]["State"][info["HOSTNAME"]]):
+                        unlink(path / entries["Hosts"]["State"][info["HOSTNAME"]])
 
-                del entries["Hosts"]["Services"][name]
-                stats["Services"]["Downtime"] += 1
+                    if isfile(spool_file):
+                        unlink(spool_file)
 
-        elif info["NOTIFICATIONTYPE"] == "PROBLEM":
-            entries["Services"]["State"][name] = file[1]
+                    del entries["Hosts"]["State"][info["HOSTNAME"]]
+                    stats["Hosts"]["State"] += 1
 
-        elif info["NOTIFICATIONTYPE"] == "RECOVERY":
-            if name in entries["Services"]["State"].keys():
-                if isfile(f"{path}/{entries['Services']['State'][name]}"):
-                    unlink(f"{path}/{entries['Services']['State'][name]}")
+        elif info.get("WHAT") == "SERVICE":
+            name = f"{info['HOSTNAME']}###{info['SERVICEDESC']}"
 
-                if isfile(f"{path}/{file[1]}"):
-                    unlink(f"{path}/{file[1]}")
+            if info["NOTIFICATIONTYPE"] == "DOWNTIMESTART":
+                entries["Services"]["Downtime"][name] = file[1]
 
-                del entries["Services"]["State"][name]
-                stats["Services"]["State"] += 1
-    else:
-        print(f"Invalid File {path}{file[1]}")
+            elif info["NOTIFICATIONTYPE"] == "DOWNTIMEEND":
+                if name in entries["Services"]["Downtime"].keys():
+                    if isfile(path / entries["Services"]["Downtime"][name]):
+                        unlink(path / entries["Services"]["Downtime"][name])
 
-print(f"#"*80)
-print(f"# {'Hosts':35}#    # {'Services':35}#")
-print(f"# Deleted downtimes: {stats['Hosts']['Downtime']:15} #    # Deleted downtimes: {stats['Services']['Downtime']:15} #")
-print(f"#    Deleted states: {stats['Hosts']['State']:15} #    #    Deleted states: {stats['Services']['State']:15} #")
-print(f"# Total Files: {total_count}\t\t\t\t\t\t\t #")
-print(f"#"*80)
+                    if isfile(spool_file):
+                        unlink(spool_file)
+
+                    del entries["Hosts"]["Services"][name]
+                    stats["Services"]["Downtime"] += 1
+
+            elif info["NOTIFICATIONTYPE"] == "PROBLEM":
+                entries["Services"]["State"][name] = file[1]
+
+            elif info["NOTIFICATIONTYPE"] == "RECOVERY":
+                if name in entries["Services"]["State"].keys():
+                    if isfile(path / entries["Services"]["State"][name]):
+                        unlink(path / entries["Services"]["State"][name])
+
+                    if isfile(spool_file):
+                        unlink(spool_file)
+
+                    del entries["Services"]["State"][name]
+                    stats["Services"]["State"] += 1
+        else:
+            print(f"Invalid File {spool_file}")
+
+    print("#" * 80)
+    print(f"# {'Hosts':35}#    # {'Services':35}#")
+    print(
+        f"# Deleted downtimes: {stats['Hosts']['Downtime']:15} #    # "
+        f"Deleted downtimes: {stats['Services']['Downtime']:15} #"
+    )
+    print(
+        f"#    Deleted states: {stats['Hosts']['State']:15} #    # "
+        f"   Deleted states: {stats['Services']['State']:15} #"
+    )
+    print(f"# Total Files: {total_count}\t\t\t\t\t\t\t #")
+    print("#" * 80)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
