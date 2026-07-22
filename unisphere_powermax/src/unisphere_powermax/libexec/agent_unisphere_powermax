@@ -1,754 +1,507 @@
 #!/usr/bin/env python3
-"""
-Agent Unisphere
+"""Collect Unisphere PowerMax data deterministically and fail closed."""
 
-Kuhn & Rueß GmbH
-Consulting and Development
-https://kuhn-ruess.de
-"""
+from __future__ import annotations
 
 import argparse
-import sys
-import os
-from os import getenv
+import hashlib
 import json
-import threading
-import queue
-from queue import Queue
-import time
-from random import randint
+import os
 import re
-import inspect
+import sys
+import tempfile
+import time
+from pathlib import Path
+from typing import Any, Callable
+from urllib.parse import quote
 
 import requests
-from urllib3.exceptions import InsecureRequestWarning
-import urllib3
-urllib3.disable_warnings(InsecureRequestWarning)
+
+MAX_RESPONSE_BYTES = 20 * 1024 * 1024
+MAX_CACHE_BYTES = 50 * 1024 * 1024
 
 
-def camel_to_snake(name):
-    """
-    Convert a camelCase or PascalCase string to snake_case.
-    :param name: String in camelCase or PascalCase
-    :return: String in snake_case
-    """
-    name = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
-    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', name).lower()
+class UnisphereError(RuntimeError):
+    """Raised when a selected data source cannot be collected safely."""
 
 
-class UnisphereConnectionError(Exception):
-    """
-    Custom exception for connection errors in Unisphere PowerMAX agent.
-    """
-    def __init__(self, *connection_args, **connection_kwargs):
-        """
-        Initialize the UnisphereConnectionError exception.
-        """
-        super().__init__(*connection_args, **connection_kwargs)
+def camel_to_snake(name: str) -> str:
+    name = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
+    return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name).lower()
+
+
+def clean_item(value: Any) -> str:
+    text = str(value).replace("|", "/").replace("\r", " ").replace("\n", " ")
+    return text[:1024]
+
+
+def json_object(value: Any, label: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise UnisphereError(f"{label} must be a JSON object")
+    return value
+
+
+def json_list(value: Any, label: str) -> list[Any]:
+    if not isinstance(value, list):
+        raise UnisphereError(f"{label} must be a JSON list")
+    return value
+
 
 class PmaxConnector:
-    """
-    Class to handle connections to PowerMAX
-    """
-
-    def __init__(self, username, password, host, ssl_verify=True, api_version=100, debug=False):
-        """
-        Initialize the Connector for PowerMAX access
-        :param username: Username for authentication
-        :param password: Password for authentication
-        :param host: Hostname/IP-Address for creating a base url
-        :param ssl_verify: Whether to verify SSL certificates
-        :param debug: Whether to enable debug output for HTTP requests
-        """
-        self.API_VERSION = api_version
-
-        self.header = {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        }
-        self.auth = requests.auth.HTTPBasicAuth(username, password)
-        self.base_url = f'https://{host}/univmax/restapi'
+    def __init__(
+        self,
+        username: str,
+        password: str,
+        host: str,
+        *,
+        ssl_verify: bool,
+        api_version: int,
+        timeout: float = 90.0,
+    ):
+        self.api_version = api_version
+        self.base_url = f"https://{host}/univmax/restapi"
         self.host = host
-        self.timeout = 90
+        self.timeout = timeout
         self.ssl_verify = ssl_verify
-        self.debug = debug
-        self.symmetrix_info = {}
         self.request_count = 0
+        self.symmetrix_info: dict[str, dict[str, Any]] = {}
+        self.session = requests.Session()
+        self.session.trust_env = False
+        self.session.auth = requests.auth.HTTPBasicAuth(username, password)
+        self.session.headers.update(
+            {"Accept": "application/json", "Content-Type": "application/json"}
+        )
 
-    def get(self, url):
-        """
-        GET call to URL with optional debug output
-        :param url: URL endpoint to call
-        :return: Response object
-        :raises UnisphereConnectionError: If request fails
-        """
+    def request_json(
+        self,
+        method: str,
+        endpoint: str,
+        *,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         self.request_count += 1
-        full_url = self.base_url + url
-
-        if self.debug:
-            print(f"DEBUG: GET Request #{self.request_count}", file=sys.stderr)
-            print(f"DEBUG: URL: {full_url}", file=sys.stderr)
-            print(f"DEBUG: Headers: {self.header}", file=sys.stderr)
-            print(f"DEBUG: SSL Verify: {self.ssl_verify}", file=sys.stderr)
-            print(f"DEBUG: Timeout: {self.timeout}s", file=sys.stderr)
-            start_time = time.time()
-
-        resp = requests.get(full_url,
-                            headers=self.header, verify=self.ssl_verify,
-                            auth=self.auth, timeout=self.timeout)
-
-        if self.debug:
-            end_time = time.time()
-            duration = end_time - start_time
-            print(f"DEBUG: Response Status: {resp.status_code}", file=sys.stderr)
-            print(f"DEBUG: Response Time: {duration:.3f}s", file=sys.stderr)
-            print(f"DEBUG: Response Headers: {dict(resp.headers)}", file=sys.stderr)
-            if hasattr(resp, 'text') and len(resp.text) > 0:
-                content_length = len(resp.text)
-                print(f"DEBUG: Response Content Length: {content_length} chars", file=sys.stderr)
-                if content_length < 500:  # Only show content for small responses
-                    print(f"DEBUG: Response Content: {resp.text[:500]}", file=sys.stderr)
-            print("DEBUG: ---", file=sys.stderr)
-
-        if resp.status_code >= 200 and resp.status_code < 300:
-            return resp
-        error_msg = f"ERROR in GET Method, StatusCode: {resp.status_code} - {resp.text}"
-        raise UnisphereConnectionError(error_msg)
-
-
-    def post(self, url, data):
-        """
-        POST call to URL with data as payload and optional debug output
-        :param url: URL endpoint to call
-        :param data: JSON data to send as payload
-        :return: Response object
-        :raises UnisphereConnectionError: If request fails
-        """
-        self.request_count += 1
-        full_url = self.base_url + url
-
-        if self.debug:
-            print(f"DEBUG: POST Request #{self.request_count}", file=sys.stderr)
-            print(f"DEBUG: URL: {full_url}", file=sys.stderr)
-            print(f"DEBUG: Headers: {self.header}", file=sys.stderr)
-            print(f"DEBUG: SSL Verify: {self.ssl_verify}", file=sys.stderr)
-            print(f"DEBUG: Timeout: {self.timeout}s", file=sys.stderr)
-            print(f"DEBUG: Payload: {json.dumps(data, indent=2)}", file=sys.stderr)
-            start_time = time.time()
-
-        resp = requests.post(full_url, headers=self.header,
-                             verify=self.ssl_verify, json=data, auth=self.auth,
-                             timeout=self.timeout)
-
-        if self.debug:
-            end_time = time.time()
-            duration = end_time - start_time
-            print(f"DEBUG: Response Status: {resp.status_code}", file=sys.stderr)
-            print(f"DEBUG: Response Time: {duration:.3f}s", file=sys.stderr)
-            print(f"DEBUG: Response Headers: {dict(resp.headers)}", file=sys.stderr)
-            if hasattr(resp, 'text') and len(resp.text) > 0:
-                content_length = len(resp.text)
-                print(f"DEBUG: Response Content Length: {content_length} chars", file=sys.stderr)
-                if content_length < 500:  # Only show content for small responses
-                    print(f"DEBUG: Response Content: {resp.text[:500]}", file=sys.stderr)
-            print("DEBUG: ---", file=sys.stderr)
-
-        if resp.status_code >= 200 and resp.status_code < 300:
-            return resp
-        else:
-            error_msg = f"ERROR in POST Method, StatusCode: {resp.status_code} - {resp.text}"
-            raise UnisphereConnectionError(error_msg)
-
-
-    def iterate(self, return_data):
-        """
-        Iterate through paginated result data from Unisphere API.
-        :param return_data: Initial response data containing pagination information
-        :return: Complete list of results from all pages
-        :raises ConnectionError: If there's an error during iteration
-        """
         try:
-            result = return_data['resultList']
-            start = result['from']
-            end = result['to']
-            itid = return_data['id']
-            count = return_data['count']
-            max_page_size = return_data['maxPageSize']
-
-            return_result = result['result']
-
-            while end < count:
-                start = start + max_page_size
-                end = end + max_page_size
-                if end > count:
-                    end = count
-
-                if end < start:
-                    break
-                iterator_url = f'/common/Iterator/{itid}/page?from={start}&to={end}'
-                return_value = self.get(iterator_url)
-                result = return_value.json()
-                start = result['from']
-                end = result['to']
-                return_result.extend(result['result'])
-
-            return return_result
-        except Exception as e:
-            raise UnisphereConnectionError(e) from e
-
-    def get_symmetrix(self):
-        """
-        Get all Symmetrix IDs
-        :return: dict with symmetrixId as key and empty dict as value
-        """
+            response = self.session.request(
+                method,
+                self.base_url + endpoint,
+                json=payload,
+                verify=self.ssl_verify,
+                timeout=self.timeout,
+                allow_redirects=False,
+                stream=True,
+            )
+        except requests.RequestException as exc:
+            raise UnisphereError(f"request failed for {endpoint}: {exc}") from exc
+        if response.is_redirect:
+            raise UnisphereError(f"unexpected redirect for {endpoint}")
+        body = bytearray()
+        for chunk in response.iter_content(chunk_size=65536):
+            body.extend(chunk)
+            if len(body) > MAX_RESPONSE_BYTES:
+                raise UnisphereError(f"response too large for {endpoint}")
+        if not 200 <= response.status_code < 300:
+            raise UnisphereError(
+                f"HTTP {response.status_code} returned for {endpoint}"
+            )
         try:
-            return_value = self.get(f'/{self.API_VERSION}/sloprovisioning/symmetrix')
-            return_data = {
-            key: {} for key in return_value.json()['symmetrixId']
-            }
-            return return_data
-        except Exception as e:
-            raise UnisphereConnectionError(e) from e
+            data = json.loads(body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise UnisphereError(f"invalid JSON returned for {endpoint}") from exc
+        return json_object(data, endpoint)
 
-    def get_symmetrix_info(self):
-        """
-        Get information about all Symmetrix systems
-        :return: dict with symmetrixId as key and dict with symmetrix information as value
-        """
-        for sym_id in self.get_symmetrix():
-            symm_info = self.get(f'/{self.API_VERSION}/sloprovisioning/symmetrix/{sym_id}').json()
-            self.symmetrix_info[sym_id] = symm_info
+    def get(self, endpoint: str) -> dict[str, Any]:
+        return self.request_json("GET", endpoint)
 
-    def get_symmetrix_name(self, symmetrix_id):
-        """
-        Get the display name of a Symmetrix system
-        :param symmetrix_id: ID of the Symmetrix system
-        :return: Display name of the Symmetrix system
-        """
-        if len(self.symmetrix_info) == 0:
-            self.get_symmetrix_info()
-        return self.symmetrix_info.get(symmetrix_id, {}).get('display_name', str(symmetrix_id))
+    def post(self, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.request_json("POST", endpoint, payload=payload)
 
-    def is_symentrix_local(self, symmetrix_id):
-        """
-        Check if a Symmetrix system is local or remote
-        :param symmetrix_id: ID of the Symmetrix system
-        :return: True if local, False if remote
-        """
-        if len(self.symmetrix_info) == 0:
-            self.get_symmetrix_info()
-        return self.symmetrix_info.get(symmetrix_id, {}).get('local', str(symmetrix_id))
+    def get_symmetrix(self) -> list[str]:
+        data = self.get(f"/{self.api_version}/sloprovisioning/symmetrix")
+        return [clean_item(item) for item in json_list(data.get("symmetrixId"), "symmetrixId")]
 
-    def get_host(self):
-        """
-        Get the host of the Unisphere instance
-        :return: Hostname/IP-Address of the Unisphere instance
-        """
-        return self.host
+    def ensure_symmetrix_info(self) -> None:
+        if self.symmetrix_info:
+            return
+        for symm_id in self.get_symmetrix():
+            endpoint = (
+                f"/{self.api_version}/sloprovisioning/symmetrix/"
+                f"{quote(symm_id, safe='')}"
+            )
+            self.symmetrix_info[symm_id] = self.get(endpoint)
 
-    def get_version(self):
-        """
-        Get the version of the Unisphere instance
-        :return: Version of the Unisphere instance
-        """
-        try:
-            return_value = self.get('/version')
-            return_data = return_value.json().get('version')
-            return return_data
-        except Exception as e:
-            raise UnisphereConnectionError(e) from e
+    def get_symmetrix_name(self, symmetrix_id: str) -> str:
+        self.ensure_symmetrix_info()
+        return clean_item(
+            self.symmetrix_info.get(symmetrix_id, {}).get(
+                "display_name", symmetrix_id
+            )
+        )
 
-    def get_debug_stats(self):
-        """
-        Get debug statistics about HTTP requests made
-        :return: Dictionary with debug statistics
-        """
-        return {
-            'total_requests': self.request_count,
-            'base_url': self.base_url,
-            'ssl_verify': self.ssl_verify,
-            'timeout': self.timeout,
-            'debug_enabled': self.debug
-        }
+    def is_symmetrix_local(self, symmetrix_id: str) -> bool:
+        self.ensure_symmetrix_info()
+        return self.symmetrix_info.get(symmetrix_id, {}).get("local") is True
 
-    def print_debug_summary(self):
-        """
-        Print a debug summary of all HTTP requests made
-        """
-        if self.debug:
-            stats = self.get_debug_stats()
-            print("DEBUG: === HTTP Request Summary ===", file=sys.stderr)
-            print(f"DEBUG: Total Requests Made: {stats['total_requests']}", file=sys.stderr)
-            print(f"DEBUG: Base URL: {stats['base_url']}", file=sys.stderr)
-            print(f"DEBUG: SSL Verification: {stats['ssl_verify']}", file=sys.stderr)
-            print(f"DEBUG: Request Timeout: {stats['timeout']}s", file=sys.stderr)
-            print("DEBUG: ============================", file=sys.stderr)
 
-def gather_ids(connector, url, key):
-    """
-    Gather IDs from a given URL using the connector.
-    :param connector: PmaxConnector instance
-    :param url: URL to fetch data from
-    :param key: Key to extract IDs from the response
-    :return: List of IDs
-    """
-    return_value = connector.get(url)
-    return_data = return_value.json()
-    ids = return_data[key]
-    return ids
+def selected_symmetrix(connector: PmaxConnector, include_remote: bool) -> list[str]:
+    result: list[str] = []
+    for symm_id in connector.get_symmetrix():
+        if include_remote or connector.is_symmetrix_local(symm_id):
+            result.append(symm_id)
+    return result
 
-def slurp_queue(work_queue):
-    """
-    Slurp all items from a queue and return them as a list.
-    :param work_queue: Queue to slurp from
-    :return: List of items from the queue
-    """
-    result_list = []
-    while not work_queue.empty():
-        result_list.append(work_queue.get())
 
-    return result_list
+def section(name: str, lines: list[str]) -> list[str]:
+    return [f"<<<{name}:sep(124)>>>", *lines]
 
-class QueryWorker(threading.Thread):
-    """
-    Worker thread to handle queries to the Unisphere API.
-    """
 
-    def __init__(self, worker_id, connector, work_queue, result_queue):
-        """
-        Initialize the QueryWorker thread.
-        :param worker_id: Worker ID for identification
-        :param connector: PmaxConnector instance for API calls
-        :param work_queue: Queue containing work items to process
-        :param result_queue: Queue to put results into
-        """
-        self.worker_id = worker_id
-        self.connector = connector
-        self.work_queue = work_queue
-        self.result_queue = result_queue
-        super(QueryWorker, self).__init__(None, None, None, (), {} )
+def collect_srp(connector: PmaxConnector, args: argparse.Namespace) -> list[str]:
+    lines: list[str] = []
+    for symm_id in selected_symmetrix(connector, args.enable_remote_sym_checks):
+        base = (
+            f"/{connector.api_version}/sloprovisioning/symmetrix/"
+            f"{quote(symm_id, safe='')}/srp"
+        )
+        for srp_id in json_list(connector.get(base).get("srpId", []), "srpId"):
+            srp = clean_item(srp_id)
+            detail = connector.get(f"{base}/{quote(srp, safe='')}")
+            name = connector.get_symmetrix_name(symm_id)
+            lines.append(
+                f"SYMMETRIX_{name}_{srp}|{json.dumps(detail, separators=(',', ':'))}"
+            )
+    return section("unisphere_powermax_srp", lines)
 
-    def run(self):
-        """
-        Run the worker thread to process queries from the work queue.
-        Continuously processes queue items until empty, making API calls
-        and putting results in the result queue.
-        """
-        try:
-            while True:
-                q = self.work_queue.get(block=False)
-                if self.connector.debug:
-                    print(f"DEBUG: Worker {self.worker_id} processing: {q[0]}", file=sys.stderr)
-                a = self.connector.get(q[1]).json()
-                self.result_queue.put((q[0], q[2], a))
-        except queue.Empty:
-            if self.connector.debug:
-                print(f"DEBUG: Worker {self.worker_id} finished (queue empty)", file=sys.stderr)
 
-def get_cached_data(name, max_age):
-    """
-    Get cached data for a given name and max age.
-    :param name: Name of the cache file
-    :param max_age: Maximum age of the cache in minutes
-    :return: Cached data if available, None otherwise
-    """
-    script_name = sys.argv[0].split('/')[-1]
-    cache_file = f"{getenv('OMD_ROOT', '')}/tmp/{script_name}_{name}.cache"
-    if os.path.isfile(cache_file):
-        age = os.stat(cache_file).st_mtime
-        if time.time() - age < max_age * 60:
-            with open(cache_file, 'r', encoding='utf-8') as f:
-                return f.read()
-    return None
+def collect_directors(connector: PmaxConnector, args: argparse.Namespace) -> list[str]:
+    lines: list[str] = []
+    for symm_id in selected_symmetrix(connector, args.enable_remote_sym_checks):
+        base = f"/{connector.api_version}/system/symmetrix/{quote(symm_id, safe='')}/director"
+        for director_id in json_list(
+            connector.get(base).get("directorId", []), "directorId"
+        ):
+            director = clean_item(director_id)
+            detail = connector.get(f"{base}/{quote(director, safe='')}")
+            name = connector.get_symmetrix_name(symm_id)
+            lines.append(
+                f"SYMMETRIX_{name}_{director}|{json.dumps(detail, separators=(',', ':'))}"
+            )
+    return section("unisphere_powermax_director", lines)
 
-def write_to_cache(name, data):
-    """
-    Write data to cache file for a given name.
-    :param name: Name identifier for the cache file
-    :param data: String data to write to the cache
-    """
-    script_name = sys.argv[0].split('/')[-1]
-    cache_file = f"{getenv('OMD_ROOT', '')}/tmp/{script_name}_{name}.cache"
-    with open(cache_file, 'w', encoding='utf-8') as f:
-        f.write(data)
 
-def get_srp_info(connector, config):
-    """
-    Get SRP (Storage Resource Pool) information from the Unisphere API.
-    :param connector: PmaxConnector instance for API communication
-    :param config: Arguments containing configuration options
-    """
-    print('<<<unisphere_powermax_srp:sep(124)>>>')
-    symmetrix  = connector.get_symmetrix()
-    for sym_id in symmetrix.keys():
-        if not config.enable_remote_sym_checks and not connector.is_symentrix_local(sym_id):
-            continue
-
-        srp_url = f'/{connector.API_VERSION}/sloprovisioning/symmetrix/{sym_id}/srp'
-        srp_ids = connector.get(srp_url).json().get('srpId', [])
-        for srp_id in srp_ids:
-            srp_detail_url = f'/{connector.API_VERSION}/sloprovisioning/symmetrix/{sym_id}/srp/{srp_id}'
-            srp_data = connector.get(srp_detail_url).json()
-            symmetrix_name = connector.get_symmetrix_name(sym_id)
-            output_line = f"SYMMETRIX_{symmetrix_name}_{srp_id}|{json.dumps(srp_data)}"
-            print(output_line)
-
-def get_director_info(connector, config):
-    """
-    Get Director information from the Unisphere API.
-    :param connector: PmaxConnector instance for API communication
-    :param config: Arguments containing configuration options
-    """
-    print('<<<unisphere_powermax_director:sep(124)>>>')
-    symmetrix  = connector.get_symmetrix()
-    for sym_id in symmetrix.keys():
-        if not config.enable_remote_sym_checks and not connector.is_symentrix_local(sym_id):
-            continue
-        director_ids = connector.get(f'/{connector.API_VERSION}/system/symmetrix/{sym_id}/director')\
-                              .json().get('directorId', [])
-        for director_id in director_ids:
-            director_url = f'/{connector.API_VERSION}/system/symmetrix/{sym_id}/director/{director_id}'
-            director_data = connector.get(director_url).json()
-            symmetrix_name = connector.get_symmetrix_name(sym_id)
-            output_line = f"SYMMETRIX_{symmetrix_name}_{director_id}|{json.dumps(director_data)}"
-            print(output_line)
-
-def get_health_score_info(connector, config):
-    """
-    Get health score information from the Unisphere API.
-    :param connector: PmaxConnector instance for API communication
-    :param config: Arguments containing configuration options
-    """
-    print('<<<unisphere_powermax_health_score:sep(124)>>>')
-    symmetrix  = connector.get_symmetrix()
-    for sym_id in symmetrix.keys():
-        if not config.enable_remote_sym_checks and not connector.is_symentrix_local(sym_id):
-            continue
-        health_score_data = connector.get(f'/{connector.API_VERSION}/system/symmetrix/{sym_id}/health').json()
-        for metric in health_score_data.get('health_score_metric', []):
-            if metric.get('metric', None) is None:
+def collect_health_score(connector: PmaxConnector, args: argparse.Namespace) -> list[str]:
+    lines: list[str] = []
+    for symm_id in selected_symmetrix(connector, args.enable_remote_sym_checks):
+        endpoint = f"/{connector.api_version}/system/symmetrix/{quote(symm_id, safe='')}/health"
+        metrics = json_list(
+            connector.get(endpoint).get("health_score_metric", []),
+            "health_score_metric",
+        )
+        for metric in metrics:
+            item = json_object(metric, "health score metric")
+            if item.get("metric") is None:
                 continue
-            symmetrix_name = connector.get_symmetrix_name(sym_id)
-            metric_name = metric.get('metric')
-            output_line = f"SYMMETRIX_{symmetrix_name}_{metric_name}|{json.dumps(metric)}"
-            print(output_line)
-
-def get_health_check_info(connector, config):
-    """
-    Get health check information from the Unisphere API.
-    :param connector: PmaxConnector instance for API communication
-    :param config: Arguments containing configuration options
-    """
-    print('<<<unisphere_powermax_health_check:sep(124)>>>')
-    # Performance-based approach commented out:
-    # symmetrix = [x.get('symmetrixId') for x in
-    #             connector.get('/performance/Array/keys').json().get('arrayInfo')]
-    symmetrix  = connector.get_symmetrix()
-    for sym_id in symmetrix.keys():
-        if not config.enable_remote_sym_checks and not connector.is_symentrix_local(sym_id):
-            continue
-        try:
-            health_check_url = f'/{connector.API_VERSION}/system/symmetrix/{sym_id}/health/health_check'
-            health_checks = connector.get(health_check_url).json()
-        except: #pylint: disable=bare-except
-            continue
-        for health_check_id in health_checks.get('health_check_id', []):
-            detail_url = (
-                f'/{connector.API_VERSION}/system/symmetrix/{sym_id}/health/health_check/'
-                f'{health_check_id}'
+            name = connector.get_symmetrix_name(symm_id)
+            metric_name = clean_item(item["metric"])
+            lines.append(
+                f"SYMMETRIX_{name}_{metric_name}|{json.dumps(item, separators=(',', ':'))}"
             )
-            health_check = connector.get(detail_url).json()
-            for test_result in health_check.get('testResult', []):
-                if test_result.get('item_name', None) is None:
+    return section("unisphere_powermax_health_score", lines)
+
+
+def collect_health_checks(connector: PmaxConnector, args: argparse.Namespace) -> list[str]:
+    lines: list[str] = []
+    for symm_id in selected_symmetrix(connector, args.enable_remote_sym_checks):
+        base = (
+            f"/{connector.api_version}/system/symmetrix/"
+            f"{quote(symm_id, safe='')}/health/health_check"
+        )
+        identifiers = json_list(
+            connector.get(base).get("health_check_id", []), "health_check_id"
+        )
+        for identifier in identifiers:
+            detail = connector.get(f"{base}/{quote(clean_item(identifier), safe='')}")
+            date = detail.get("date", 0)
+            for raw_result in json_list(detail.get("testResult", []), "testResult"):
+                result = json_object(raw_result, "health check result").copy()
+                if result.get("item_name") is None:
                     continue
-                test_result['date'] = health_check.get('date', 0)
-                item_name = test_result.get('item_name').strip().replace(' ', '_')
-                symmetrix_name = connector.get_symmetrix_name(sym_id)
-                output_line = f"SYMMETRIX_{symmetrix_name}_{item_name}|{json.dumps(test_result)}"
-                print(output_line)
+                result["date"] = date
+                item_name = clean_item(result["item_name"]).replace(" ", "_")
+                name = connector.get_symmetrix_name(symm_id)
+                lines.append(
+                    f"SYMMETRIX_{name}_{item_name}|"
+                    f"{json.dumps(result, separators=(',', ':'))}"
+                )
+    return section("unisphere_powermax_health_check", lines)
 
-def get_array_performance_info(connector, config):
-    """
-    Get array performance information from the Unisphere API.
-    Retrieves performance metrics for arrays including IO statistics,
-    response times, and cache information.
-    :param connector: PmaxConnector instance for API communication
-    :param config: Arguments containing configuration options
-    """
-    now = int(time.time()*1000)
-    print('<<<unisphere_powermax_array_performance:sep(124)>>>')
-    array_info = connector.get('/performance/Array/keys').json().get('arrayInfo')
-    symmetrix = [x.get('symmetrixId') for x in array_info]
-    for sym_id in symmetrix:
-        if not config.enable_remote_sym_checks and not connector.is_symentrix_local(sym_id):
+
+def collect_array_performance(connector: PmaxConnector, args: argparse.Namespace) -> list[str]:
+    now = int(time.time() * 1000)
+    keys = json_list(
+        connector.get("/performance/Array/keys").get("arrayInfo"), "arrayInfo"
+    )
+    lines: list[str] = []
+    metrics = [
+        "BEIOs", "BEReadReqs", "BEWriteReqs", "DeviceWPEvents",
+        "FEReadReqs", "FEWriteReqs", "HostMBs", "FEHitReqs", "HostIOs",
+        "FEReadHitReqs", "FEReadMissReqs", "FEReqs", "ReadResponseTime",
+        "WriteResponseTime", "SystemWPEvents", "BEReqs", "PercentCacheWP",
+        "WPCount", "SystemMaxWPLimit", "FEWriteHitReqs", "FEWriteMissReqs",
+    ]
+    for raw in keys:
+        key = json_object(raw, "arrayInfo item")
+        symm_id = clean_item(key.get("symmetrixId"))
+        if not symm_id:
+            raise UnisphereError("arrayInfo item has no symmetrixId")
+        if not args.enable_remote_sym_checks and not connector.is_symmetrix_local(symm_id):
             continue
-
-        perf_data = {}
-        payload = {
-            "startDate": now - 5*60*1000,
-            "endDate": now,
-            "symmetrixId": sym_id,
-            "dataFormat": "Maximum",
-            "metrics": [
-                "BEIOs",
-                "BEReadReqs",
-                "BEWriteReqs",
-                "DeviceWPEvents",
-                "FEReadReqs",
-                "FEWriteReqs",
-                "HostMBs",
-                "FEHitReqs",
-                "HostIOs",
-                "FEReadHitReqs",
-                "FEReadMissReqs",
-                "FEReqs",
-                "ReadResponseTime",
-                "WriteResponseTime",
-                "SystemWPEvents",
-                "BEReqs",
-                "PercentCacheWP",
-                "WPCount",
-                "SystemMaxWPLimit",
-                "FEWriteHitReqs",
-                "FEWriteMissReqs"
-            ]
-        }
-        for f in ['Maximum', 'Average']:
-            payload['dataFormat'] = f
-            perf_response = connector.post('/performance/Array/metrics', payload).json()
-            perf_info = perf_response.get('resultList', {}).get('result', [])[-1]
-            perf_data[f] = perf_info
-
-        symmetrix_name = connector.get_symmetrix_name(sym_id)
-        print(f"SYMMETRIX_{symmetrix_name}|{json.dumps(perf_data)}")
-
-def get_port_group_info(connector, config):
-    """
-    Get port group information from the Unisphere API.
-    Retrieves information about port groups including port status
-    and configuration details.
-    :param connector: PmaxConnector instance for API communication
-    :param config: Arguments containing configuration options
-    """
-    print('<<<unisphere_powermax_port_group:sep(124)>>>')
-    symmetrix  = connector.get_symmetrix()
-    for sym_id in symmetrix.keys():
-        if not config.enable_remote_sym_checks and not connector.is_symentrix_local(sym_id):
-            continue
-        port_group_url = f'/{connector.API_VERSION}/sloprovisioning/symmetrix/{sym_id}/portgroup'
-        port_groups = connector.get(port_group_url).json().get('portGroupId', [])
-        for port_group in port_groups:
-            ports_info = []
-            ports_url = (f'/{connector.API_VERSION}/sloprovisioning/symmetrix/'
-                        f'{sym_id}/portgroup/{port_group}')
-            ports = connector.get(ports_url).json().get('symmetrixPortKey', [])
-            for port in ports:
-                port_status_url = (f'/{connector.API_VERSION}/system/symmetrix/{sym_id}/'
-                                 f'director/{port["directorId"]}/port/{port["portId"]}')
-                port_status_info = connector.get(port_status_url).json()
-                if config.randomFailures:
-                    if randint(0,1000) % 3 == 0:
-                        port_status_info['symmetrixPort']['port_status'] = 'OFF'
-                ports_info.append(port_status_info)
-
-            symmetrix_name = connector.get_symmetrix_name(sym_id)
-            output_line = f"SYMMETRIX_{symmetrix_name}_{port_group}|{json.dumps(ports_info)}"
-            print(output_line)
-
-def get_alert_info(connector, config):
-    """
-    Get alert information from the Unisphere API.
-    Retrieves server and symmetrix alert summaries.
-    :param connector: PmaxConnector instance for API communication
-    :param config: Arguments containing configuration options
-    """
-    print('<<<unisphere_powermax_alerts:sep(124)>>>')
-    alert_info = connector.get(f'/{connector.API_VERSION}/system/alert_summary').json()
-    if alert_info.get('serverAlertSummary', None) is not None:
-        server_summary = json.dumps(alert_info.get('serverAlertSummary'))
-        print(f"Server Alert Summary|{server_summary}")
-    for sym_summary in alert_info.get('symmAlertSummary', []):
-        sym_id = sym_summary.get('symmId', None)
-        if sym_id is None:
-            continue
-
-        if not config.enable_remote_sym_checks and not connector.is_symentrix_local(sym_id):
-            continue
-
-        for key in sym_summary:
-            if 'summary' in key.lower():
-                symmetrix_name = connector.get_symmetrix_name(sym_id)
-                snake_key = camel_to_snake(key)
-                summary_data = json.dumps(sym_summary.get(key))
-                print(f"SYMMETRIX_{symmetrix_name}_{snake_key}|{summary_data}")
-
-def get_masking_view_info(connector, config):
-    """
-    Get masking view information from the Unisphere API.
-    Retrieves detailed information about masking views including
-    associated volumes and ports. Uses caching to improve performance.
-    :param connector: PmaxConnector instance for API communication
-    :param config: Arguments containing configuration options including cache settings
-    """
-    function_name = inspect.currentframe().f_code.co_name
-    cache_name = f"{function_name}_{connector.get_host()}"
-
-    cached_data = get_cached_data(cache_name, config.cache)
-
-    if cached_data is not None:
-        print(cached_data)
-        return
-
-    query_queue = Queue()
-    result_queue = Queue()
-    symmetrix  = connector.get_symmetrix()
-
-
-    mv_map = {}
-    port_map = {}
-    for sym_id in symmetrix.keys():
-        masking_view_url = f'/{connector.API_VERSION}/sloprovisioning/symmetrix/{sym_id}/maskingview'
-        masking_views = connector.get(masking_view_url).json().get('maskingViewId', [])
-        if not config.enable_remote_sym_checks and not connector.is_symentrix_local(sym_id):
-            continue
-        for masking_view in masking_views:
-            mv_connection_url = (f'/{connector.API_VERSION}/sloprovisioning/symmetrix/'
-                               f'{sym_id}/maskingview/{masking_view}/connections')
-            mv_connection_resp = connector.get(mv_connection_url)
-            mv_connection_info = mv_connection_resp.json().get(
-                'maskingViewConnection', []
+        performance: dict[str, Any] = {}
+        for data_format in ("Maximum", "Average"):
+            payload = {
+                "startDate": now - 5 * 60 * 1000,
+                "endDate": now,
+                "symmetrixId": symm_id,
+                "dataFormat": data_format,
+                "metrics": metrics,
+            }
+            result_list = json_object(
+                connector.post("/performance/Array/metrics", payload).get("resultList"),
+                "resultList",
             )
-            volumes=set([x.get('volumeId') for x in mv_connection_info])
-            ports=set([x.get('dir_port') for x in mv_connection_info])
+            results = json_list(result_list.get("result"), "performance result")
+            if not results:
+                raise UnisphereError(f"no {data_format} performance result for {symm_id}")
+            performance[data_format] = results[-1]
+        name = connector.get_symmetrix_name(symm_id)
+        lines.append(
+            f"SYMMETRIX_{name}|{json.dumps(performance, separators=(',', ':'))}"
+        )
+    return section("unisphere_powermax_array_performance", lines)
 
-            for volume in volumes:
-                if mv_map.get(volume, None) is not None:
-                    continue
-                symmetrix_name = connector.get_symmetrix_name(sym_id)
-                volume_key = f'SYMMETRIX_{symmetrix_name}_{volume}'
-                volume_url = f'/{connector.API_VERSION}/sloprovisioning/symmetrix/{sym_id}/volume/{volume}'
-                query_queue.put((volume_key, volume_url, masking_view))
-                mv_map[volume] = True
 
-            for port in ports:
-                if port_map.get(port, None) is not None:
-                    continue
-                director = port.split(':')[0]
-                port_id = port.split(':')[1]
-                port_url = (f'/{connector.API_VERSION}/system/symmetrix/{sym_id}/'
-                          f'director/{director}/port/{port_id}')
-                symmetrix_name = connector.get_symmetrix_name(sym_id)
-                port_key = f'SYMMETRIX_{symmetrix_name}_{port}'
-                query_queue.put((port_key, port_url, masking_view))
-                port_map[port] = True
+def collect_port_groups(connector: PmaxConnector, args: argparse.Namespace) -> list[str]:
+    lines: list[str] = []
+    for symm_id in selected_symmetrix(connector, args.enable_remote_sym_checks):
+        base = (
+            f"/{connector.api_version}/sloprovisioning/symmetrix/"
+            f"{quote(symm_id, safe='')}/portgroup"
+        )
+        groups = json_list(connector.get(base).get("portGroupId", []), "portGroupId")
+        for raw_group in groups:
+            group = clean_item(raw_group)
+            detail = connector.get(f"{base}/{quote(group, safe='')}")
+            ports = json_list(detail.get("symmetrixPortKey", []), "symmetrixPortKey")
+            port_info: list[dict[str, Any]] = []
+            for raw_port in ports:
+                port = json_object(raw_port, "symmetrixPortKey item")
+                director = quote(clean_item(port.get("directorId")), safe="")
+                port_id = quote(clean_item(port.get("portId")), safe="")
+                endpoint = (
+                    f"/{connector.api_version}/system/symmetrix/"
+                    f"{quote(symm_id, safe='')}/director/{director}/port/{port_id}"
+                )
+                port_info.append(connector.get(endpoint))
+            name = connector.get_symmetrix_name(symm_id)
+            lines.append(
+                f"SYMMETRIX_{name}_{group}|"
+                f"{json.dumps(port_info, separators=(',', ':'))}"
+            )
+    return section("unisphere_powermax_port_group", lines)
 
-    threads = []
-    for t in range(0, 4):
-        threads.append(QueryWorker(t, connector, query_queue, result_queue))
-        threads[t].daemon = True
-        threads[t].start()
 
-    for t in threads:
-        t.join()
-
-    results = slurp_queue(result_queue)
-
-    agent_data = ''
-    agent_data += '<<<unisphere_powermax_volume:sep(124)>>>\n'
-    for info in results:
-        if info[2].get('allocated_percent', None) is None:
+def collect_alerts(connector: PmaxConnector, args: argparse.Namespace) -> list[str]:
+    data = connector.get(f"/{connector.api_version}/system/alert_summary")
+    lines: list[str] = []
+    if data.get("serverAlertSummary") is not None:
+        lines.append(
+            "Server Alert Summary|"
+            + json.dumps(data["serverAlertSummary"], separators=(",", ":"))
+        )
+    for raw_summary in json_list(data.get("symmAlertSummary", []), "symmAlertSummary"):
+        summary = json_object(raw_summary, "symm alert summary")
+        symm_id = clean_item(summary.get("symmId"))
+        if not symm_id:
             continue
-        info[2]['maskingView'] = info[1]
-        if config.randomFailures:
-            if randint(0,1000) % 3 == 0:
-                info[2]['status'] = 'Not Ready'
-        agent_data += f"{info[0]}|{json.dumps(info[2])}\n"
-
-    agent_data += ('<<<unisphere_powermax_port:sep(124)>>>\n')
-    for info in results:
-        if info[2].get('symmetrixPort', None) is None:
+        if not args.enable_remote_sym_checks and not connector.is_symmetrix_local(symm_id):
             continue
-        if config.randomFailures:
-            if randint(0,1000) % 3 == 0:
-                info[2]['symmetrixPort']['port_status'] = 'OFF'
-        agent_data += f"{info[0]}|{json.dumps(info[2]['symmetrixPort'])}\n"
+        name = connector.get_symmetrix_name(symm_id)
+        for key, value in summary.items():
+            if "summary" in key.lower():
+                lines.append(
+                    f"SYMMETRIX_{name}_{camel_to_snake(key)}|"
+                    f"{json.dumps(value, separators=(',', ':'))}"
+                )
+    return section("unisphere_powermax_alerts", lines)
 
-    write_to_cache(cache_name, agent_data)
-    print(agent_data)
 
-data_sources = [ get_srp_info,
-                get_director_info,
-                get_health_score_info,
-                get_health_check_info,
-                get_array_performance_info,
-                get_port_group_info,
-                get_alert_info,
-                get_masking_view_info ]
+def cache_path(connector: PmaxConnector) -> Path:
+    root = Path(os.environ["OMD_ROOT"]) / "tmp"
+    digest = hashlib.sha256(connector.host.encode()).hexdigest()[:16]
+    return root / f"agent_unisphere_powermax_masking_{digest}.json"
 
-def usage():
-    """
-    Print usage information for the script.
-    """
-    script_name = os.path.basename(__file__)
-    print(f"usage: {script_name} <address> <username> <password>")
 
-if __name__ == '__main__':
+def read_cache(path: Path, max_age_minutes: int) -> dict[str, list[str]] | None:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return None
+    if path.is_symlink() or not path.is_file() or metadata.st_size > MAX_CACHE_BYTES:
+        raise UnisphereError("masking-view cache is not a valid regular file")
+    if time.time() - metadata.st_mtime >= max_age_minutes * 60:
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise UnisphereError("masking-view cache is invalid") from exc
+    payload = json_object(data, "masking-view cache")
+    volumes = json_list(payload.get("volumes"), "cached volumes")
+    ports = json_list(payload.get("ports"), "cached ports")
+    if not all(isinstance(item, str) for item in [*volumes, *ports]):
+        raise UnisphereError("masking-view cache contains non-string lines")
+    return {"volumes": volumes, "ports": ports}
 
-    parser = argparse.ArgumentParser(description='Unisphere Powermax check_mk special agent.')
-    parser.add_argument('--user', dest='user', required=True, help='Unisphere API username')
-    parser.add_argument('--password', dest='password', required=True, help='Unisphere API password')
-    parser.add_argument('--port', default='8443', dest='port',
-        help='Unisphere API port (default: 8443)')
-    parser.add_argument('--cache_time', default=30, type=int, dest='cache',
-        help='Use cache for long running queries like masking view info.(default: 30 minutes)')
-    parser.add_argument('--hostname', help='Hostname or IP of the Unisphere API Server')
-    parser.add_argument('--api_version', default=100, type=int, dest='api_version',
-        help='Unisphere REST API version (default: 100)')
-    parser.add_argument('--enable_remote_sym_checks',
-        help='gather information from remote Symmetrix', action='store_true')
-    parser.add_argument('--no_cert_check',
-        help='do not verify ssl certificates', action='store_true')
-    parser.add_argument('--randomFailures',
-        help='simulate failures ... e.g. port_status Off', action='store_true')
-    parser.add_argument('--debug',
-        help='enable debug output for HTTP requests', action='store_true')
-    for source in data_sources:
-        disable_arg = f'--disable_{source.__name__}'
-        help_text = f'disable {source.__name__} metrics'
-        parser.add_argument(disable_arg, help=help_text, action='store_true')
 
-    args = parser.parse_args()
-
-    api_version = args.api_version
-
-    print("<<<check_mk>>>")
-    print("Version: agent_unisphere_powermax-3.6")
-
-    if args.debug:
-        print("DEBUG: Debug mode enabled", file=sys.stderr)
-        print(f"DEBUG: Arguments: {vars(args)}", file=sys.stderr)
-
-    pmax = PmaxConnector(args.user, args.password,
-                f"{args.hostname}:{args.port}", not args.no_cert_check, api_version, args.debug)
-
-    pmax.get_version()
-    pmax.get_symmetrix_name('test')
-    for ds in data_sources:
-        disable_attr = f'disable_{ds.__name__}'
-        if getattr(args, disable_attr):
-            continue
+def atomic_write_cache(path: Path, data: dict[str, list[str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, separators=(",", ":"))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
         try:
-            if args.debug:
-                print(f"DEBUG: Starting data source: {ds.__name__}", file=sys.stderr)
-            ds(pmax, args)
-            if args.debug:
-                print(f"DEBUG: Completed data source: {ds.__name__}", file=sys.stderr)
-        except (UnisphereConnectionError, ConnectionError) as connection_error:
-            print(f"Connection error in {ds.__name__}: {connection_error}")
-        except (KeyError, ValueError, TypeError) as data_error:
-            print(f"Data processing error in {ds.__name__}: {data_error}")
-        except OSError as io_error:
-            print(f"I/O error in {ds.__name__}: {io_error}")
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+        raise
 
-    # Print debug summary at the end
-    pmax.print_debug_summary()
+
+def collect_masking_views(connector: PmaxConnector, args: argparse.Namespace) -> list[str]:
+    path = cache_path(connector)
+    cached = read_cache(path, args.cache)
+    if cached is not None:
+        return section("unisphere_powermax_volume", cached["volumes"]) + section(
+            "unisphere_powermax_port", cached["ports"]
+        )
+
+    volumes_seen: set[tuple[str, str]] = set()
+    ports_seen: set[tuple[str, str]] = set()
+    volume_lines: list[str] = []
+    port_lines: list[str] = []
+    for symm_id in selected_symmetrix(connector, args.enable_remote_sym_checks):
+        name = connector.get_symmetrix_name(symm_id)
+        base = (
+            f"/{connector.api_version}/sloprovisioning/symmetrix/"
+            f"{quote(symm_id, safe='')}/maskingview"
+        )
+        views = json_list(connector.get(base).get("maskingViewId", []), "maskingViewId")
+        for raw_view in views:
+            view = clean_item(raw_view)
+            connections = json_list(
+                connector.get(f"{base}/{quote(view, safe='')}/connections").get(
+                    "maskingViewConnection", []
+                ),
+                "maskingViewConnection",
+            )
+            for raw_connection in connections:
+                connection = json_object(raw_connection, "masking view connection")
+                volume = clean_item(connection.get("volumeId"))
+                if volume and (symm_id, volume) not in volumes_seen:
+                    volumes_seen.add((symm_id, volume))
+                    detail = connector.get(
+                        f"/{connector.api_version}/sloprovisioning/symmetrix/"
+                        f"{quote(symm_id, safe='')}/volume/{quote(volume, safe='')}"
+                    ).copy()
+                    if detail.get("allocated_percent") is not None:
+                        detail["maskingView"] = view
+                        volume_lines.append(
+                            f"SYMMETRIX_{name}_{volume}|"
+                            f"{json.dumps(detail, separators=(',', ':'))}"
+                        )
+                dir_port = clean_item(connection.get("dir_port"))
+                if dir_port and (symm_id, dir_port) not in ports_seen:
+                    parts = dir_port.split(":", 1)
+                    if len(parts) != 2:
+                        raise UnisphereError(f"invalid dir_port {dir_port!r}")
+                    ports_seen.add((symm_id, dir_port))
+                    detail = connector.get(
+                        f"/{connector.api_version}/system/symmetrix/"
+                        f"{quote(symm_id, safe='')}/director/"
+                        f"{quote(parts[0], safe='')}/port/{quote(parts[1], safe='')}"
+                    )
+                    port = json_object(detail.get("symmetrixPort"), "symmetrixPort")
+                    port_lines.append(
+                        f"SYMMETRIX_{name}_{clean_item(dir_port)}|"
+                        f"{json.dumps(port, separators=(',', ':'))}"
+                    )
+    atomic_write_cache(path, {"volumes": volume_lines, "ports": port_lines})
+    return section("unisphere_powermax_volume", volume_lines) + section(
+        "unisphere_powermax_port", port_lines
+    )
+
+
+DATA_SOURCES: tuple[tuple[str, Callable[[PmaxConnector, argparse.Namespace], list[str]]], ...] = (
+    ("get_srp_info", collect_srp),
+    ("get_director_info", collect_directors),
+    ("get_health_score_info", collect_health_score),
+    ("get_health_check_info", collect_health_checks),
+    ("get_array_performance_info", collect_array_performance),
+    ("get_port_group_info", collect_port_groups),
+    ("get_alert_info", collect_alerts),
+    ("get_masking_view_info", collect_masking_views),
+)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--user", required=True)
+    parser.add_argument("--password", required=True)
+    parser.add_argument("--port", default=8443, type=int)
+    parser.add_argument("--cache_time", default=30, type=int, dest="cache")
+    parser.add_argument("--hostname", required=True)
+    parser.add_argument("--api_version", default=100, type=int, dest="api_version")
+    parser.add_argument("--enable_remote_sym_checks", action="store_true")
+    parser.add_argument("--no_cert_check", action="store_true")
+    for legacy_name, _ in DATA_SOURCES:
+        parser.add_argument(f"--disable_{legacy_name}", action="store_true")
+    args = parser.parse_args(argv)
+    if not 1 <= args.port <= 65535:
+        parser.error("--port must be between 1 and 65535")
+    if not 1 <= args.api_version <= 999:
+        parser.error("--api_version must be between 1 and 999")
+    if not 1 <= args.cache <= 1440:
+        parser.error("--cache_time must be between 1 and 1440 minutes")
+    return args
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    connector = PmaxConnector(
+        args.user,
+        args.password,
+        f"{args.hostname}:{args.port}",
+        ssl_verify=not args.no_cert_check,
+        api_version=args.api_version,
+    )
+    try:
+        version = connector.get("/version").get("version")
+        if not isinstance(version, str) or not version:
+            raise UnisphereError("version endpoint returned no version")
+        connector.ensure_symmetrix_info()
+        output = ["<<<check_mk>>>", "Version: agent_unisphere_powermax-3.1"]
+        for legacy_name, collector in DATA_SOURCES:
+            if getattr(args, f"disable_{legacy_name}"):
+                continue
+            output.extend(collector(connector, args))
+    except (UnisphereError, OSError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    sys.stdout.write("\n".join(output) + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -4,79 +4,67 @@
 ![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.3.0p2-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.4.0p7-blue)
 <!-- compatibility-badges:end -->
 
-Special agent for Dell EMC Unisphere for PowerMax. Queries the Unisphere REST API at `https://<host>:<port>/univmax/restapi` and emits multiple Checkmk sections covering Storage Resource Pools, directors, port groups, masking views, volumes/ports, array performance, alert summaries, health scores and health checks.
+Special agent for Dell EMC Unisphere for PowerMax. It collects SRPs, directors, health scores and checks, array performance, port groups, alerts, masking-view volumes, and masking-view ports.
 
-## How it works
+## Deterministic collection model
 
-The special agent `agent_unisphere_powermax` authenticates with HTTP basic auth against the Unisphere REST API (default API version 100) and iterates over all Symmetrix systems returned by `/sloprovisioning/symmetrix`. By default it only queries systems flagged as `local`; remote Symmetrix systems can be enabled via a rule option. Results are printed as pipe-separated key/JSON lines under several section headers, with a 4-thread worker pool for masking-view detail queries and an on-disk cache under `$OMD_ROOT/tmp` for expensive masking view calls.
+- Synthetic `--randomFailures` behavior was removed completely.
+- Debug output never prints parsed command-line arguments, credentials, request payloads, response bodies, or response headers.
+- Selected data sources run deterministically and sequentially. A transport, API, schema, cache, or data-source error fails the complete run.
+- Agent output is accumulated in memory and written only after all selected data sources succeed, preventing partial sections.
+- Requests use a dedicated session with proxy-environment handling disabled, timeouts, redirect rejection, response-size limits, and JSON-object validation.
+- Pipe and physical newline characters are normalized in item identifiers used by `sep(124)` sections.
 
-| Section | Data source / API |
-| --- | --- |
-| `unisphere_powermax_srp` | `/<v>/sloprovisioning/symmetrix/<id>/srp/<srp>` |
-| `unisphere_powermax_director` | `/<v>/system/symmetrix/<id>/director/<dir>` |
-| `unisphere_powermax_health_score` | `/<v>/system/symmetrix/<id>/health` |
-| `unisphere_powermax_health_check` | `/<v>/system/symmetrix/<id>/health/health_check/<id>` |
-| `unisphere_powermax_array_performance` | POST `/performance/Array/metrics` (Maximum + Average, 5 min window) |
-| `unisphere_powermax_port_group` | `/<v>/sloprovisioning/symmetrix/<id>/portgroup` + port status |
-| `unisphere_powermax_alerts` | `/<v>/system/alert_summary` |
-| `unisphere_powermax_volume`, `unisphere_powermax_port` | masking view walk (cached) |
+## Masking-view cache
 
-Each data source can be disabled individually through the WATO rule.
+The expensive masking-view walk is cached below `$OMD_ROOT/tmp` using a filename derived from a SHA-256 digest of the target host.
+
+- Cache content is structured JSON, not executable or raw agent output.
+- Cache files must be regular files and may not be symlinks.
+- Cache size is bounded.
+- Writes use a same-directory temporary file, `fsync`, mode `0600`, and atomic `os.replace`.
+- Invalid caches fail visibly instead of silently returning partial or corrupt data.
+- There is no worker pool; individual request failures can no longer disappear inside a thread while incomplete results are cached.
+
+## Configuration
+
+Rule: **Setup → Agents → Other integrations → Unisphere PowerMax**
+
+| Parameter | Default | Meaning |
+| --- | --- | --- |
+| `username` / `password` | required | Unisphere API credentials; the password remains a Checkmk secret. |
+| `port` | `8443` | HTTPS port. |
+| `api_version` | `100` | Unisphere REST API namespace. |
+| `use_ip` | off | Use the Checkmk host's primary IP instead of its name. |
+| `cache_time` | `30 min` | Masking-view cache lifetime, constrained by the runtime. |
+| `no_cert_check` | off | Disable certificate validation for legacy installations. Use only during migration. |
+| `enable_remote_sym_checks` | off | Include remote Symmetrix systems. |
+| `disable_get_*` | off | Disable individual data sources. |
+
+## Sections
+
+The existing section names and JSON payload shapes remain available:
+
+- `unisphere_powermax_srp`
+- `unisphere_powermax_director`
+- `unisphere_powermax_health_score`
+- `unisphere_powermax_health_check`
+- `unisphere_powermax_array_performance`
+- `unisphere_powermax_port_group`
+- `unisphere_powermax_alerts`
+- `unisphere_powermax_volume`
+- `unisphere_powermax_port`
+
+## Failure behavior
+
+A selected data source is no longer skipped after an exception. Any failed selected source returns a non-zero agent result with no partial stdout. Operators can disable a source explicitly in the rule when a target Unisphere version does not implement it.
 
 ## Package contents
 
 | Path | Purpose |
 | --- | --- |
-| `src/unisphere_powermax/libexec/agent_unisphere_powermax` | Special agent (Python, uses `requests`). |
-| `src/unisphere_powermax/server_side_calls/unisphere_powermax.py` | Builds the agent command line from rule parameters. |
-| `src/unisphere_powermax/rulesets/rulesets.py` | Special-agent rule plus check-parameter rules for SRP / WP cache / health score / masking view / port group. |
-| `src/unisphere_powermax/agent_based/unisphere_powermax_srp.py` | SRP effective/physical usage, data reduction ratio. |
-| `src/unisphere_powermax/agent_based/unisphere_powermax_director.py` | Director status checks. |
-| `src/unisphere_powermax/agent_based/unisphere_powermax_health_score.py` | Per-metric health score (lower levels). |
-| `src/unisphere_powermax/agent_based/unisphere_powermax_health_check.py` | Symmetrix health check results. |
-| `src/unisphere_powermax/agent_based/unisphere_powermax_array_performance.py` | Array performance + WP cache levels (Average / Maximum). |
-| `src/unisphere_powermax/agent_based/unisphere_powermax_port_group.py` | Port-group / port state. |
-| `src/unisphere_powermax/agent_based/unisphere_powermax_masking_view.py` | Masking view volume and port summaries. |
-| `src/unisphere_powermax/agent_based/unisphere_powermax_alert.py` | Alert summaries (server + Symmetrix). |
-| `src/unisphere_powermax/agent_based/utils.py` | Shared section parser. |
-
-## Installation
-
-1. Install the MKP on the Checkmk site.
-2. Create a monitoring user on the Unisphere appliance with read access to the REST API.
-3. Add the Unisphere host in Checkmk and configure the special agent rule (see below).
-
-## Configuration
-
-WATO rule: *Setup > Agents > Other integrations > Unisphere Powermax* (topic *Storage*).
-
-| Parameter | Type | Meaning |
-| --- | --- | --- |
-| `username` | String (required) | Unisphere REST API user. |
-| `password` | Password (required) | API password. |
-| `port` | Integer (default 8443) | HTTPS port of Unisphere. |
-| `api_version` | Integer (default 100) | REST API version prefix. |
-| `use_ip` | Bool | Use the host's primary IP instead of its name for the HTTPS request. |
-| `cache_time` | Integer (minutes, default 30) | Cache lifetime for masking view data. |
-| `no_cert_check` | Bool | Disable SSL certificate verification. |
-| `enable_remote_sym_checks` | Bool | Also query remote (non-local) Symmetrix systems. |
-| `disable_get_srp_info` / `..._director_info` / `..._health_score_info` / `..._health_check_info` / `..._array_performance_info` / `..._port_group_info` / `..._alert_info` / `..._masking_view_info` | Bool | Disable individual data sources. |
-
-A `_migrate` function silently upgrades older rule keys (`cache-time`, `useIP`, camelCase `disablegetXInfo`) to the new snake_case names.
-
-Check parameter rules (topic *Storage*):
-
-- *PowerMax SRP Effective usage* — upper % levels, default 80 / 90.
-- *PowerMax SRP physical usage* — upper % levels, default 80 / 90.
-- *PowerMax SRP Data Reduction Ratio* — lower levels on ratio, default 3.0 / 2.0.
-- *PowerMax WP Cache usage* — upper % levels on Average and Maximum, default 80 / 90.
-- *PowerMax Health Score* — lower % levels, default 90 / 80.
-- *PowerMax Masking View Port Summary* — upper % levels.
-- *PowerMax Masking View Volume Summary* — upper % levels.
-- *PowerMax Port Group state* — upper % levels.
-
-## Known limitations
-
-- The agent uses a `--randomFailures` debug flag that can randomly flip port/volume status in the agent output — do not enable in production.
-- The masking view section is refreshed only every `cache_time` minutes; shorter check intervals will see stale data.
-- HTTP basic auth only; no OAuth / token support.
+| `src/unisphere_powermax/libexec/agent_unisphere_powermax` | Deterministic API collector and atomic cache implementation. |
+| `src/unisphere_powermax/server_side_calls/unisphere_powermax.py` | Secret-aware command wiring. |
+| `src/unisphere_powermax/rulesets/rulesets.py` | Special-agent and check-parameter rules. |
+| `src/unisphere_powermax/agent_based/` | Existing section parsers and checks. |
+| `tests/test_runtime_safety.py` | Synthetic-failure, cache and failure-propagation regression tests. |
