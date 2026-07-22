@@ -1,125 +1,248 @@
 #!/usr/bin/env python3
+"""Fetch validated HTTPS health JSON and emit safe Checkmk local checks."""
 
-"""
-Kuhn & Rueß GmbH
-Consulting and Development
-https://kuhn-ruess.de
-"""
+from __future__ import annotations
 
-from sys import argv
-from requests import get, post
+import json
+import re
+import sys
+from dataclasses import dataclass
+from typing import Any, Iterable
+from urllib.parse import urlsplit
+
+import requests
 from requests.auth import HTTPBasicAuth
-from json import JSONDecodeError
+
+REQUEST_TIMEOUT = 15.0
+MAX_RESPONSE_BYTES = 1024 * 1024
+MAX_CHECKS_PER_ENDPOINT = 1000
+MAX_SERVICE_NAME_LENGTH = 256
+MAX_OUTPUT_LENGTH = 8192
+CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
-class AgentJson():
-    """
-    Agent Json
-    """
+class EndpointError(RuntimeError):
+    """Raised when an endpoint cannot be converted into trusted local checks."""
 
+
+@dataclass(frozen=True)
+class Endpoint:
+    url: str
+    username: str
+    password: str
+    method: str
+
+
+class AgentJson:
     map_states = {
-        'OK': 0,
-        'UP': 0,
-        'WARN': 1,
-        'WARNING': 1,
-        'CRIT': 2,
-        'CRITICAL': 2,
-        'DOWN': 2,
-        'UNKN': 3,
-        'UNKNOWN': 3,
+        "OK": 0,
+        "UP": 0,
+        "WARN": 1,
+        "WARNING": 1,
+        "CRIT": 2,
+        "CRITICAL": 2,
+        "DOWN": 2,
+        "UNKN": 3,
+        "UNKNOWN": 3,
     }
 
-    methods = {
-        'GET': get,
-        'POST': post,
-    }
+    def __init__(self, endpoints: Iterable[Endpoint]):
+        self.endpoints = list(endpoints)
+        self.session = requests.Session()
+        self.session.trust_env = False
 
-    def __init__(self, endpoints):
-        """
-        Init
+    @staticmethod
+    def validate_url(value: str) -> str:
+        parsed = urlsplit(value.strip())
+        if parsed.scheme != "https" or not parsed.hostname:
+            raise EndpointError("endpoint must be an absolute HTTPS URL")
+        if parsed.username or parsed.password:
+            raise EndpointError("endpoint URL must not contain embedded credentials")
+        if parsed.fragment:
+            raise EndpointError("endpoint URL must not contain a fragment")
+        return value.strip()
 
-        endpoints: list of (api_host, user, password, method) tuples. Every
-        endpoint is queried with its own credentials and HTTP method.
-        """
-        self.endpoints = endpoints
+    @staticmethod
+    def endpoint_label(url: str) -> str:
+        parsed = urlsplit(url)
+        return parsed.hostname or "invalid endpoint"
 
-    def fetch_checks(self, api_host, user, password, method):
-        """
-        Query one endpoint and return its list of checks.
+    @staticmethod
+    def read_bounded_response(response: requests.Response) -> bytes:
+        declared = response.headers.get("Content-Length")
+        if declared:
+            try:
+                if int(declared) > MAX_RESPONSE_BYTES:
+                    raise EndpointError("response exceeds the size limit")
+            except ValueError:
+                pass
+        body = bytearray()
+        for chunk in response.iter_content(chunk_size=65536):
+            body.extend(chunk)
+            if len(body) > MAX_RESPONSE_BYTES:
+                raise EndpointError("response exceeds the size limit")
+        return bytes(body)
 
-        On a parse error a single UNKNOWN local check is returned so the
-        failing endpoint stays visible in the monitoring instead of silently
-        dropping out.
-        """
-        method = (method or 'POST').upper()
-        auth = HTTPBasicAuth(user, password) if user else None
-        requester = self.methods.get(method, post)
-        response = requester(api_host, auth=auth, timeout=30)
+    def fetch_checks(self, endpoint: Endpoint) -> list[dict[str, Any]]:
+        url = self.validate_url(endpoint.url)
+        method = endpoint.method.upper()
+        if method not in {"GET", "POST"}:
+            raise EndpointError(f"unsupported HTTP method {method!r}")
+        auth = (
+            HTTPBasicAuth(endpoint.username, endpoint.password)
+            if endpoint.username
+            else None
+        )
         try:
-            return response.json()['checks']
-        except JSONDecodeError as error:
-            # Surface what actually came back so a wrong method/auth/path is
-            # obvious instead of a bare "cannot parse".
-            snippet = response.text[:200].replace('\n', ' ').strip()
-            return [{
-                'name': f"JSON agent {api_host}",
-                'status': 'UNKNOWN',
-                'summary': (f"Cannot parse API response ({method}, "
-                            f"HTTP {response.status_code}): {error}; "
-                            f"body: {snippet!r}"),
-            }]
+            response = self.session.request(
+                method,
+                url,
+                auth=auth,
+                timeout=REQUEST_TIMEOUT,
+                verify=True,
+                allow_redirects=False,
+                stream=True,
+            )
+        except requests.RequestException as exc:
+            raise EndpointError(f"request failed: {exc}") from exc
+        if response.is_redirect:
+            raise EndpointError("endpoint returned an unexpected redirect")
+        body = self.read_bounded_response(response)
+        if not 200 <= response.status_code < 300:
+            raise EndpointError(f"endpoint returned HTTP {response.status_code}")
+        try:
+            payload = json.loads(body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise EndpointError("endpoint returned invalid JSON") from exc
+        if not isinstance(payload, dict):
+            raise EndpointError("JSON root must be an object")
+        checks = payload.get("checks")
+        if not isinstance(checks, list):
+            raise EndpointError("JSON object must contain a checks list")
+        if len(checks) > MAX_CHECKS_PER_ENDPOINT:
+            raise EndpointError(
+                f"checks list exceeds the {MAX_CHECKS_PER_ENDPOINT}-item limit"
+            )
+        normalized: list[dict[str, Any]] = []
+        for index, check in enumerate(checks):
+            if not isinstance(check, dict):
+                raise EndpointError(f"check {index} must be an object")
+            name = check.get("name")
+            status = check.get("status")
+            if not isinstance(name, str) or not name.strip():
+                raise EndpointError(f"check {index} has no valid name")
+            if len(name) > MAX_SERVICE_NAME_LENGTH:
+                raise EndpointError(f"check {index} name is too long")
+            if not isinstance(status, str):
+                raise EndpointError(f"check {index} has no string status")
+            summary = check.get("summary")
+            if summary is not None and not isinstance(summary, (str, int, float, bool)):
+                raise EndpointError(f"check {index} summary has an unsupported type")
+            data = check.get("data", {})
+            if data is None:
+                data = {}
+            if not isinstance(data, dict):
+                raise EndpointError(f"check {index} data must be an object")
+            if len(data) > 100:
+                raise EndpointError(f"check {index} data has too many fields")
+            normalized.append(
+                {
+                    "name": name.strip(),
+                    "status": status,
+                    "summary": summary,
+                    "data": data,
+                }
+            )
+        return normalized
 
-    def get_json(self):
-        """
-        Query all endpoints and emit the local check section.
-        """
+    @staticmethod
+    def safe_text(value: Any, *, limit: int) -> str:
+        text = CONTROL_CHAR_RE.sub(" ", str(value))
+        text = " ".join(text.split())
+        if len(text) > limit:
+            text = text[: limit - 3] + "..."
+        return text
+
+    @classmethod
+    def safe_service_name(cls, value: Any) -> str:
+        name = cls.safe_text(value, limit=MAX_SERVICE_NAME_LENGTH)
+        name = name.replace("\\", "\\\\").replace('"', '\\"')
+        return name or "Unnamed check"
+
+    @classmethod
+    def check_output(cls, check: dict[str, Any]) -> str:
+        parts: list[str] = []
+        if check.get("summary") not in (None, ""):
+            parts.append(cls.safe_text(check["summary"], limit=MAX_OUTPUT_LENGTH))
+        for key, value in check.get("data", {}).items():
+            key_text = cls.safe_text(key, limit=256)
+            value_text = cls.safe_text(value, limit=2048)
+            parts.append(f"{key_text}: {value_text}")
+        output = "; ".join(part for part in parts if part) or "No further data"
+        return cls.safe_text(output, limit=MAX_OUTPUT_LENGTH)
+
+    @classmethod
+    def unknown_line(cls, endpoint: Endpoint, message: str) -> str:
+        label = cls.safe_service_name(
+            f"JSON agent {cls.endpoint_label(endpoint.url)}"
+        )
+        output = cls.safe_text(message, limit=MAX_OUTPUT_LENGTH)
+        return f'3 "{label}" - {output}'
+
+    def get_json(self) -> int:
         print("<<<local>>>")
-        seen_names = {}
-        for api_host, user, password, method in self.endpoints:
-            for check in self.fetch_checks(api_host, user, password, method):
-                # Map the status string to a Checkmk state; everything we do not
-                # know maps to UNKNOWN(3) instead of silently claiming CRIT.
-                state = self.map_states.get(str(check.get('status', '')).upper(), 3)
-
-                # Number repeated service names so duplicate keys stay
-                # discoverable (first stays as is, the next ones become
-                # "<name> 2", "<name> 3"). Dedupe spans all endpoints.
-                name = check.get('name', 'Unnamed check')
-                seen_names[name] = seen_names.get(name, 0) + 1
-                service_name = name if seen_names[name] == 1 else f"{name} {seen_names[name]}"
-
-                # summary is expected on the top level of the check, next to data.
-                summary = check.get('summary')
-                data = check.get('data') or {}
-                detail_lines = [f"{key}: {value}" for key, value in data.items()]
-
-                if summary:
-                    # Show the summary on the first line and put the data fields
-                    # below it as multi-line details (\n separated).
-                    output = "\\n".join([str(summary)] + detail_lines)
-                elif detail_lines:
-                    output = ", ".join(detail_lines)
-                else:
-                    # Never emit an empty plugin output: Checkmk reports a local
-                    # check without any text as crashed.
-                    output = "No further data"
-
-                print(f'{state} "{service_name}" - {output}')
+        seen_names: dict[str, int] = {}
+        failures = 0
+        for endpoint in self.endpoints:
+            try:
+                checks = self.fetch_checks(endpoint)
+            except EndpointError as exc:
+                failures += 1
+                print(self.unknown_line(endpoint, str(exc)))
+                continue
+            for check in checks:
+                state = self.map_states.get(check["status"].upper(), 3)
+                base_name = check["name"]
+                seen_names[base_name] = seen_names.get(base_name, 0) + 1
+                service_name = (
+                    base_name
+                    if seen_names[base_name] == 1
+                    else f"{base_name} {seen_names[base_name]}"
+                )
+                safe_name = self.safe_service_name(service_name)
+                print(f'{state} "{safe_name}" - {self.check_output(check)}')
+        return 1 if failures else 0
 
 
-def parse_endpoints(args):
-    """
-    Read the flat argument list in chunks of four
-    (api_host, user, password, method) into a list of endpoints.
-    """
-    endpoints = []
+def parse_endpoints(args: list[str]) -> list[Endpoint]:
+    if not args or len(args) % 4 != 0:
+        raise EndpointError(
+            "arguments must be complete URL, username, password, method groups"
+        )
+    endpoints: list[Endpoint] = []
     for index in range(0, len(args), 4):
-        chunk = list(args[index:index + 4])
-        chunk += [''] * (4 - len(chunk))
-        endpoints.append(tuple(chunk))
+        url, username, password, method = args[index : index + 4]
+        endpoints.append(
+            Endpoint(
+                url=url,
+                username=username,
+                password=password,
+                method=method or "POST",
+            )
+        )
     return endpoints
 
 
+def main(argv: list[str] | None = None) -> int:
+    arguments = sys.argv[1:] if argv is None else argv
+    try:
+        endpoints = parse_endpoints(arguments)
+    except EndpointError as exc:
+        print("<<<local>>>")
+        print(f'3 "JSON agent configuration" - {AgentJson.safe_text(exc, limit=1024)}')
+        return 1
+    return AgentJson(endpoints).get_json()
+
+
 if __name__ == "__main__":
-    aj = AgentJson(parse_endpoints(argv[1:]))
-    aj.get_json()
+    raise SystemExit(main())
