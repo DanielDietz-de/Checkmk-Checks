@@ -1,10 +1,12 @@
 # AudioCode Gateway
 
 <!-- compatibility-badges:start -->
-![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.4.0b1-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.5.0p9-blue) ![usable until](https://img.shields.io/badge/usable%20until-2.5.99-green)
+![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.4.0p5-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.5.0p9-blue) ![usable until](https://img.shields.io/badge/usable%20until-2.5.99-green)
 <!-- compatibility-badges:end -->
 
 SNMP checks for AudioCodes SIP gateways and SBCs. Adds services for active alarms, SBC call and user statistics, retained call peaks, SBC license headroom, HA health, SIP TLS connections and certificate alarms, SIP interface and IP group configuration, and Tel2IP / IP2Tel performance counters. Based on earlier work by Robert Sander.
+
+The current package version is **2.0.6**. It reuses Checkmk's built-in global `active_sessions` metric instead of registering a conflicting duplicate metric definition.
 
 ## How it works
 
@@ -46,7 +48,7 @@ All sections detect the device via `sysObjectID` containing `.1.3.6.1.4.1.5003.8
 3. Ensure the SNMP credentials have read access to the AudioCodes enterprise tree `.1.3.6.1.4.1.5003`.
 4. Run a full service discovery.
 
-The package uses the Checkmk agent-based v2 and graphing v1 APIs. CI loads and validates the source on Checkmk 2.4.0p34 and 2.5.0p9, and the repository MKP is built by Checkmk 2.5.0p9 with `version.usable_until` set to `2.5.99` only after both validation jobs pass.
+The package uses the Checkmk agent-based v2 and graphing v1 APIs. CI loads and validates the source on Checkmk 2.4.0p5, 2.4.0p34 and 2.5.0p9. The repository MKP is built and inspected by Checkmk 2.5.0p9 and declares `version.usable_until: 2.5.99` only after every compatibility job passes.
 
 ## AudioCodes prerequisites
 
@@ -133,7 +135,7 @@ The service reports both the current idle percentage and the minimum idle percen
 | --- | --- |
 | `SIP Alarms` | State driven by active alarm severity. Metrics: `active_alarms`, `archived_alarms`. |
 | `SBC Calls` | Existing metrics: `active_calls`, `calls_per_sec`, `average_success_ratio`, `average_call_duration`. |
-| `SBC Call Capacity` | `active_calls_in`, `active_calls_out`, `active_sessions`, `active_calls_in_max`, `active_calls_out_max`, `active_sessions_max`. |
+| `SBC Call Capacity` | `active_calls_in`, `active_calls_out`, `active_sessions`, `active_calls_in_max`, `active_calls_out_max`, `active_sessions_max`. The global `active_sessions` metric definition comes from Checkmk. |
 | `SBC License Usage` | `sbc_media_license_usage`, `sbc_signaling_license_usage`, retained maxima, current idle capacity and retained minimum idle capacity. |
 | `SBC HA Health` | Aggregate module HA status, synchronization/fault alarms, current and retained active/redundant keepalive packet loss. |
 | `SBC TLS Health` | Active and retained-maximum SIP TLS connections, attempt/rejection rates and retained interval values, certificate-expiry and socket-limit alarms. |
