@@ -1,0 +1,85 @@
+name: Temporary permanent-validator log
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/tmp-permanent-validator-log.yml"
+
+permissions:
+  contents: read
+
+env:
+  DIST_DIR: dist/repository-mkps
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build package set
+        run: |
+          set -euo pipefail
+          python .github/scripts/prepare_repository_mkp_release.py --repository .
+          python .github/scripts/build_repository_mkps.py \
+            --repository . \
+            --output "$DIST_DIR" \
+            --packaged-version 2.5.0p9 \
+            --usable-until 2.5.99
+
+      - name: Start Checkmk
+        run: |
+          set -euo pipefail
+          docker run --detach \
+            --name checkmk-validator-log \
+            --env CMK_PASSWORD='validator-log-password' \
+            --env CMK_SITE_ID='cmk' \
+            --volume "$GITHUB_WORKSPACE:/work:ro" \
+            checkmk/check-mk-community:2.5.0p9
+          for _ in $(seq 1 120); do
+            if docker logs checkmk-validator-log 2>&1 | grep -q '### CONTAINER STARTED'; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs checkmk-validator-log
+          exit 1
+
+      - name: Capture permanent validator output
+        id: validation
+        continue-on-error: true
+        run: |
+          docker exec --user cmk checkmk-validator-log bash -lc \
+            "python3 /work/.github/scripts/validate_repository_mkps.py \
+              --dist /work/${DIST_DIR} \
+              --checkmk-version 2.5.0p9" \
+            > permanent-validator-2.5.0p9.log 2>&1
+
+      - name: Upload permanent validator output
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: permanent-validator-2.5.0p9
+          path: permanent-validator-2.5.0p9.log
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Report validator failure
+        if: steps.validation.outcome == 'failure'
+        run: |
+          tail -n 300 permanent-validator-2.5.0p9.log
+          exit 1
+
+      - name: Remove Checkmk
+        if: always()
+        run: docker rm --force checkmk-validator-log || true
