@@ -1,21 +1,42 @@
 #!/usr/bin/env python3
-import glob, ast, json
-output = []
-for infofile in glob.glob('./*/src/info'):
-    with open(infofile, 'r') as f:
-        try:
-            data = ast.literal_eval(f.read().strip())
-        except ValueError:
-            continue
-        output.append({
-            'title': data['title'],
-            'name': data['name'],
-            'description': data['description'],
-            'version': data['version'],
-            'version_required': data['version.min_required'],
-            'mkp': f"{data['name']}/{data['name']}-{data['version']}.mkp"
-        })
-        print(f"{data['title']}, {data['version']}")
+"""Generate the active repository MKP index from canonical top-level manifests."""
 
-with open('mkp_index.json', 'w') as outfile:
-    json.dump(output, outfile)
+from __future__ import annotations
+
+import ast
+import json
+from pathlib import Path
+
+
+REPOSITORY = Path(__file__).resolve().parent
+
+
+def main() -> None:
+    output: list[dict[str, str]] = []
+    for info_path in sorted(REPOSITORY.glob("*/src/info")):
+        package_dir = info_path.parent.parent
+        data = ast.literal_eval(info_path.read_text(encoding="utf-8"))
+        name = str(data["name"])
+        version = str(data["version"])
+        output.append(
+            {
+                "title": str(data["title"]),
+                "name": name,
+                "description": str(data.get("description", "")),
+                "version": version,
+                "version_required": str(data["version.min_required"]),
+                "mkp": f"{package_dir.name}/{name}-{version}.mkp",
+            }
+        )
+        print(f"{package_dir.name}: {data['title']}, {version}")
+
+    output.sort(key=lambda item: (item["name"].casefold(), item["mkp"]))
+    (REPOSITORY / "mkp_index.json").write_text(
+        json.dumps(output, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    print(f"Indexed {len(output)} active packages")
+
+
+if __name__ == "__main__":
+    main()

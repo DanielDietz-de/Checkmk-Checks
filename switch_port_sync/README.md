@@ -1,10 +1,10 @@
 # switch_port_sync
 
 <!-- compatibility-badges:start -->
-![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.4.0b1-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.4.0p34-blue)
+![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.4.0p5-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.5.0p9-blue) ![usable until](https://img.shields.io/badge/usable%20until-2.5.99-green)
 <!-- compatibility-badges:end -->
 
-Checkmk 2.4 extension for monitoring one-to-one interface synchronization across a pair of switches. The repository folder, technical package, and plug-in name are all `switch_port_sync`.
+Checkmk 2.4 and 2.5 extension for monitoring one-to-one interface synchronization across a pair of switches. The repository folder, technical package, and plug-in name are all `switch_port_sync`.
 
 The extension contains **no preconfigured switch pair and no prefilled rule values**. Installing the package alone does not start the special agent. A rule must be created explicitly with a pair name, both exact Checkmk host names, an interface-service regular expression, and conditions limited to those two hosts.
 
@@ -73,10 +73,12 @@ No environment-specific sample configuration file is shipped. The values below a
 Command-line equivalent as the site user:
 
 ```bash
-mkp add /path/to/switch_port_sync-1.0.1.mkp
-mkp enable switch_port_sync 1.0.1
+mkp add /path/to/switch_port_sync-1.0.2.mkp
+mkp enable switch_port_sync 1.0.2
 cmk -R
 ```
+
+The workflow loads the source on Checkmk 2.4.0p5, 2.4.0p34 and 2.5.0p9. It also runs the packaged special agent's `--help` smoke test. The MKP itself is generated, inspected and archive-verified by Checkmk 2.5.0p9 and declares `version.usable_until: 2.5.99` only after all compatibility jobs pass.
 
 ### Source installation
 
@@ -165,8 +167,8 @@ The extension contains no device credentials and does not contact the switches d
 ## Removal
 
 ```bash
-mkp disable switch_port_sync 1.0.1
-mkp remove switch_port_sync 1.0.1
+mkp disable switch_port_sync 1.0.2
+mkp remove switch_port_sync 1.0.2
 cmk -R
 ```
 

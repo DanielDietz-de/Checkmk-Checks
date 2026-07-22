@@ -1,0 +1,12 @@
+{'author': 'Daniel Dietz',
+ 'description': 'Verifies Oxidized inventory, collection freshness, local Git backup artifacts, repository integrity, and remote Git synchronization.',
+ 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/oxidized_backup',
+ 'files': {'agents': ['plugins/oxidized_backup'],
+           'cmk_addons_plugins': ['oxidized_backup/agent_based/oxidized_backup.py',
+                                  'oxidized_backup/checkman/oxidized_backup']},
+ 'name': 'oxidized_backup',
+ 'title': 'Oxidized Backup Verification',
+ 'version': '1.0.0',
+ 'version.min_required': '2.4.0p5',
+ 'version.packaged': '2.5.0p9',
+ 'version.usable_until': '2.5.99'}
