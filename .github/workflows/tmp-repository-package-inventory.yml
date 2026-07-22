@@ -37,10 +37,19 @@ jobs:
           }
 
           manifests = []
+          parse_errors = []
           component_keys = Counter()
           for info_path in sorted(root.glob('**/src/info')):
               package_dir = str(info_path.parent.parent)
-              info = ast.literal_eval(info_path.read_text(encoding='utf-8'))
+              try:
+                  info = ast.literal_eval(info_path.read_text(encoding='utf-8'))
+              except Exception as exc:
+                  parse_errors.append({
+                      'package_dir': package_dir,
+                      'info_path': str(info_path),
+                      'error': f'{type(exc).__name__}: {exc}',
+                  })
+                  continue
               files = info.get('files', {})
               component_keys.update(files)
               manifests.append({
@@ -53,7 +62,10 @@ jobs:
                   'min_required': str(info.get('version.min_required', '')),
                   'packaged': str(info.get('version.packaged', '')),
                   'usable_until': str(info.get('version.usable_until', '')),
-                  'components': {key: sorted(value) for key, value in files.items()},
+                  'components': {
+                      key: sorted(value) if isinstance(value, list) else value
+                      for key, value in files.items()
+                  },
                   'source_files': sorted(
                       str(path.relative_to(info_path.parent))
                       for path in info_path.parent.rglob('*')
@@ -82,6 +94,7 @@ jobs:
               'indexed_count': len(indexed),
               'manifest_count': len(manifests),
               'active_manifest_count': sum(item['active_in_index'] for item in manifests),
+              'parse_errors': parse_errors,
               'component_keys': dict(sorted(component_keys.items())),
               'indexed_package_dirs': sorted(indexed_by_dir),
               'manifests': manifests,
@@ -98,6 +111,7 @@ jobs:
               'indexed_count': catalog['indexed_count'],
               'manifest_count': catalog['manifest_count'],
               'active_manifest_count': catalog['active_manifest_count'],
+              'parse_errors': catalog['parse_errors'],
               'component_keys': catalog['component_keys'],
               'generated_without_info': [
                   item['package_dir'] for item in generated_without_info
@@ -106,6 +120,7 @@ jobs:
           PY
 
       - name: Upload inventory
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: repository-package-catalog
