@@ -1,5 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Server-side command wiring for Dell EMC PowerMax."""
+
+from collections.abc import Iterator
 
 from pydantic import BaseModel
 
@@ -16,10 +18,10 @@ class AgentDellPowermaxParams(BaseModel):
     password: Secret
 
 
-def generate_powermanx_command(
-    params: AgentDellPowermaxParams, host_config: HostConfig
-):
-    print(host_config)
+def generate_powermax_command(
+    params: AgentDellPowermaxParams,
+    host_config: HostConfig,
+) -> Iterator[SpecialAgentCommand]:
     args: list[str | Secret] = [
         "-u",
         params.username,
@@ -31,8 +33,8 @@ def generate_powermanx_command(
     yield SpecialAgentCommand(command_arguments=args)
 
 
-special_agent_semu = SpecialAgentConfig(
+special_agent_dellpmax = SpecialAgentConfig(
     name="dellpmax",
     parameter_parser=AgentDellPowermaxParams.model_validate,
-    commands_function=generate_powermanx_command,
+    commands_function=generate_powermax_command,
 )
