@@ -36,7 +36,8 @@ jobs:
       package_description: >-
         Compares one-to-one Checkmk interface services on a switch pair through
         Livestatus and reports asymmetric or failed links.
-      min_required: 2.4.0b1
+      min_required: 2.4.0p5
       test_dir: switch_port_sync/tests
+      caller_workflow: .github/workflows/switch_port_sync-ci.yml
       manual_checks: switch_port_sync
       executable_relpath: libexec/agent_switch_port_sync
