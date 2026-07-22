@@ -50,6 +50,6 @@ check_plugin_service_metric_counter = CheckPlugin(
     service_name="Service %s",
     discovery_function=discover_service,
     check_function=check_service,
-    check_default_parameters={"levels": ("no_levels", None)},
+    check_default_parameters={},
     check_ruleset_name="service_metric_counter",
 )
