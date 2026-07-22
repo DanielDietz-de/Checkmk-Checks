@@ -15,6 +15,18 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 
+_PACKAGE_COMMAND_TIMEOUT = 180
+_MANUAL_COMMAND_TIMEOUT = 60
+_GLOBAL_COMMAND_TIMEOUT = 300
+_TIMEOUT_EXIT_CODE = 124
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    returncode: int
+    output: str
+
+
 @dataclass(frozen=True)
 class CommandFailure:
     package_dir: str
@@ -47,18 +59,40 @@ def _supports_target(min_required: str, target: str) -> bool:
     return _version_key(min_required) <= _version_key(target)
 
 
-def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
-    print("+", " ".join(command), flush=True)
-    completed = subprocess.run(
-        command,
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    if completed.stdout:
-        print(completed.stdout, end="" if completed.stdout.endswith("\n") else "\n", flush=True)
-    return completed
+def _timeout_output(exc: subprocess.TimeoutExpired) -> str:
+    chunks: list[str] = []
+    for value in (exc.stdout, exc.stderr):
+        if value is None:
+            continue
+        if isinstance(value, bytes):
+            chunks.append(value.decode("utf-8", errors="replace"))
+        else:
+            chunks.append(value)
+    chunks.append(f"Command timed out after {exc.timeout} seconds")
+    return "\n".join(chunk.rstrip() for chunk in chunks if chunk).strip()
+
+
+def _run(command: list[str], *, timeout: int) -> CommandResult:
+    print(f"+ {' '.join(command)} [timeout={timeout}s]", flush=True)
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return CommandResult(
+            returncode=_TIMEOUT_EXIT_CODE,
+            output=_timeout_output(exc),
+        )
+
+    output = completed.stdout or ""
+    if completed.returncode != 0 and output:
+        print(output, end="" if output.endswith("\n") else "\n", flush=True)
+    return CommandResult(returncode=completed.returncode, output=output)
 
 
 def _manifest(package_path: Path) -> dict[str, Any]:
@@ -94,7 +128,7 @@ def _record_failure(
     failures: list[CommandFailure],
     package: dict[str, str],
     command: list[str],
-    completed: subprocess.CompletedProcess[str],
+    result: CommandResult,
 ) -> None:
     failures.append(
         CommandFailure(
@@ -102,8 +136,8 @@ def _record_failure(
             package_name=package["name"],
             package_version=package["version"],
             command=tuple(command),
-            returncode=completed.returncode,
-            output=completed.stdout or "",
+            returncode=result.returncode,
+            output=result.output,
         )
     )
 
@@ -153,18 +187,15 @@ def main() -> None:
             f"Installing {package['name']} {package['version']} from {package['package_dir']}",
             flush=True,
         )
-        # The deterministic builder has already inspected the outer archive,
-        # every component inventory, and the SHA-256 checksum. The clean-site
-        # phase therefore concentrates on Checkmk's own add/enable semantics.
         commands = [
             ["mkp", "add", str(package_path)],
             ["mkp", "enable", package["name"], package["version"]],
         ]
         package_succeeded = True
         for command in commands:
-            completed = _run(command)
-            if completed.returncode != 0:
-                _record_failure(failures, package, command, completed)
+            result = _run(command, timeout=_PACKAGE_COMMAND_TIMEOUT)
+            if result.returncode != 0:
+                _record_failure(failures, package, command, result)
                 package_succeeded = False
                 break
 
@@ -183,20 +214,27 @@ def main() -> None:
         "name": "<repository>",
         "version": args.checkmk_version,
     }
-    global_commands = [["cmk-validate-plugins"]]
-    global_commands.extend(["cmk", "-M", manual] for manual in sorted(manuals))
-    global_commands.append(["cmk", "-R"])
-    for command in global_commands:
-        completed = _run(command)
-        if completed.returncode != 0:
-            _record_failure(failures, global_package, command, completed)
+    global_commands: list[tuple[list[str], int]] = [
+        (["cmk-validate-plugins"], _GLOBAL_COMMAND_TIMEOUT),
+    ]
+    global_commands.extend(
+        (["cmk", "-M", manual], _MANUAL_COMMAND_TIMEOUT)
+        for manual in sorted(manuals)
+    )
+    global_commands.append((["cmk", "-R"], _GLOBAL_COMMAND_TIMEOUT))
+
+    for command, timeout in global_commands:
+        result = _run(command, timeout=timeout)
+        if result.returncode != 0:
+            _record_failure(failures, global_package, command, result)
 
     if failures:
         _print_failures(failures, args.checkmk_version)
         raise SystemExit(1)
 
     print(
-        f"Validated {len(installed)} packages on Checkmk {args.checkmk_version}",
+        f"Validated {len(installed)} packages and {len(manuals)} manuals "
+        f"on Checkmk {args.checkmk_version}",
         flush=True,
     )
 
