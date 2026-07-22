@@ -21,109 +21,110 @@ jobs:
 
       - name: Export repository package catalog
         run: |
-          set -euo pipefail
-          python - <<'PY'
+          set -u
+          python - <<'PY' > repository-package-catalog.log 2>&1
           import ast
           import json
+          import traceback
           from collections import Counter
           from pathlib import Path
 
-          root = Path('.')
-          indexed = json.loads((root / 'mkp_index.json').read_text(encoding='utf-8'))
-          indexed_by_dir = {
-              str(Path(entry['mkp']).parent): entry
-              for entry in indexed
-              if entry.get('mkp')
-          }
+          output = Path('repository-package-catalog.json')
+          try:
+              root = Path('.')
+              indexed = json.loads((root / 'mkp_index.json').read_text(encoding='utf-8'))
+              indexed_by_dir = {
+                  str(Path(entry['mkp']).parent): entry
+                  for entry in indexed
+                  if entry.get('mkp')
+              }
 
-          manifests = []
-          parse_errors = []
-          component_keys = Counter()
-          for info_path in sorted(root.glob('**/src/info')):
-              package_dir = str(info_path.parent.parent)
-              try:
-                  info = ast.literal_eval(info_path.read_text(encoding='utf-8'))
-              except Exception as exc:
-                  parse_errors.append({
+              manifests = []
+              parse_errors = []
+              component_keys = Counter()
+              for info_path in sorted(root.glob('**/src/info')):
+                  package_dir = str(info_path.parent.parent)
+                  try:
+                      info = ast.literal_eval(info_path.read_text(encoding='utf-8'))
+                  except Exception as exc:
+                      parse_errors.append({
+                          'package_dir': package_dir,
+                          'info_path': str(info_path),
+                          'error': f'{type(exc).__name__}: {exc}',
+                      })
+                      continue
+                  files = info.get('files', {})
+                  if isinstance(files, dict):
+                      component_keys.update(files.keys())
+                  manifests.append({
                       'package_dir': package_dir,
-                      'info_path': str(info_path),
-                      'error': f'{type(exc).__name__}: {exc}',
-                  })
-                  continue
-              files = info.get('files', {})
-              component_keys.update(files)
-              manifests.append({
-                  'package_dir': package_dir,
-                  'active_in_index': package_dir in indexed_by_dir,
-                  'index_entry': indexed_by_dir.get(package_dir),
-                  'name': info.get('name'),
-                  'title': info.get('title'),
-                  'version': str(info.get('version', '')),
-                  'min_required': str(info.get('version.min_required', '')),
-                  'packaged': str(info.get('version.packaged', '')),
-                  'usable_until': str(info.get('version.usable_until', '')),
-                  'components': {
-                      key: sorted(value) if isinstance(value, list) else value
-                      for key, value in files.items()
-                  },
-                  'source_files': sorted(
-                      str(path.relative_to(info_path.parent))
-                      for path in info_path.parent.rglob('*')
-                      if path.is_file()
-                  ),
-                  'mkp_files': sorted(path.name for path in info_path.parent.parent.glob('*.mkp')),
-              })
-
-          manifest_dirs = {entry['package_dir'] for entry in manifests}
-          generated_without_info = []
-          for top in sorted(path for path in root.iterdir() if path.is_dir()):
-              if str(top) in manifest_dirs or top.name.startswith('.'):
-                  continue
-              if list(top.glob('*.mkp')) or (top / 'src').exists():
-                  generated_without_info.append({
-                      'package_dir': str(top),
-                      'mkp_files': sorted(path.name for path in top.glob('*.mkp')),
-                      'files': sorted(
-                          str(path.relative_to(top))
-                          for path in top.rglob('*')
+                      'active_in_index': package_dir in indexed_by_dir,
+                      'index_entry': indexed_by_dir.get(package_dir),
+                      'name': info.get('name'),
+                      'title': info.get('title'),
+                      'version': str(info.get('version', '')),
+                      'min_required': str(info.get('version.min_required', '')),
+                      'packaged': str(info.get('version.packaged', '')),
+                      'usable_until': str(info.get('version.usable_until', '')),
+                      'components': files,
+                      'source_files': sorted(
+                          str(path.relative_to(info_path.parent))
+                          for path in info_path.parent.rglob('*')
                           if path.is_file()
                       ),
+                      'mkp_files': sorted(path.name for path in info_path.parent.parent.glob('*.mkp')),
                   })
 
-          catalog = {
-              'indexed_count': len(indexed),
-              'manifest_count': len(manifests),
-              'active_manifest_count': sum(item['active_in_index'] for item in manifests),
-              'parse_errors': parse_errors,
-              'component_keys': dict(sorted(component_keys.items())),
-              'indexed_package_dirs': sorted(indexed_by_dir),
-              'manifests': manifests,
-              'generated_without_info': generated_without_info,
-              'workflow_files': sorted(
-                  path.name for path in (root / '.github' / 'workflows').glob('*.yml')
-              ),
-          }
-          Path('repository-package-catalog.json').write_text(
-              json.dumps(catalog, indent=2, sort_keys=True) + '\n',
+              manifest_dirs = {entry['package_dir'] for entry in manifests}
+              generated_without_info = []
+              for top in sorted(path for path in root.iterdir() if path.is_dir()):
+                  if str(top) in manifest_dirs or top.name.startswith('.'):
+                      continue
+                  if list(top.glob('*.mkp')) or (top / 'src').exists():
+                      generated_without_info.append({
+                          'package_dir': str(top),
+                          'mkp_files': sorted(path.name for path in top.glob('*.mkp')),
+                          'files': sorted(
+                              str(path.relative_to(top))
+                              for path in top.rglob('*')
+                              if path.is_file()
+                          ),
+                      })
+
+              catalog = {
+                  'indexed_count': len(indexed),
+                  'manifest_count': len(manifests),
+                  'active_manifest_count': sum(item['active_in_index'] for item in manifests),
+                  'parse_errors': parse_errors,
+                  'component_keys': dict(sorted(component_keys.items())),
+                  'indexed_package_dirs': sorted(indexed_by_dir),
+                  'manifests': manifests,
+                  'generated_without_info': generated_without_info,
+                  'workflow_files': sorted(
+                      path.name for path in (root / '.github' / 'workflows').glob('*.yml')
+                  ),
+              }
+          except Exception as exc:
+              catalog = {
+                  'fatal_error': f'{type(exc).__name__}: {exc}',
+                  'traceback': traceback.format_exc(),
+              }
+          output.write_text(
+              json.dumps(catalog, indent=2, sort_keys=True, default=str) + '\n',
               encoding='utf-8',
           )
-          print(json.dumps({
-              'indexed_count': catalog['indexed_count'],
-              'manifest_count': catalog['manifest_count'],
-              'active_manifest_count': catalog['active_manifest_count'],
-              'parse_errors': catalog['parse_errors'],
-              'component_keys': catalog['component_keys'],
-              'generated_without_info': [
-                  item['package_dir'] for item in generated_without_info
-              ],
-          }, indent=2, sort_keys=True))
+          print(json.dumps(catalog, indent=2, sort_keys=True, default=str))
           PY
+          cat repository-package-catalog.log
+          test -f repository-package-catalog.json
 
       - name: Upload inventory
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: repository-package-catalog
-          path: repository-package-catalog.json
+          path: |
+            repository-package-catalog.json
+            repository-package-catalog.log
           if-no-files-found: error
           retention-days: 1
