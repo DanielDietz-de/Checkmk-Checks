@@ -1,62 +1,63 @@
-# DELL EMC PowerMax
+# Dell EMC PowerMax
 
 <!-- compatibility-badges:start -->
 ![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.3.0-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.4.0-blue)
 <!-- compatibility-badges:end -->
 
-Special agent for Dell EMC PowerMax (VMAX) arrays. It talks to the Unisphere for PowerMax REST API and produces services for Unisphere version, JVM/CPU/memory stats of the Unisphere server, server- and array-level alerts, and storage resource pool usage. This is a modernised port of the `dellpmax-agent` plugin originally published on the Checkmk Exchange by Mario Schwab and Achim Geisler.
+Special agent for Dell EMC PowerMax arrays through the Unisphere REST API.
 
-## How it works
+## Collection safety
 
-The special agent `agent_dellpmax` authenticates via HTTP basic auth against `https://<address>:<port>/univmax/restapi/` (default port 8443) and emits sections with `sep(124)`:
+- HTTPS certificate verification is mandatory.
+- A private CA bundle may be configured; disabling verification is not supported.
+- Every request has a configurable timeout and rejects redirects.
+- Proxy environment variables are ignored.
+- Responses are streamed and capped at 10 MiB.
+- Every response must be a successful JSON object with the expected fields.
+- The complete output is built in memory and written only after all collection and validation steps succeed. Failed collections therefore cannot leave a partial Checkmk agent stream.
+- API responses and host configuration are never printed for debugging.
+- Values used in `sep(124)` sections have pipes and physical newlines normalized.
+- The Unisphere REST API namespace is configurable rather than fixed to version `92`.
 
-- `version` -> `<<<dellpmax_systeminfo>>>` — Unisphere version string.
-- `management/RuntimeUsage/read` -> `<<<dellpmax_systemstats>>>` — heap (max/used), cpu usage, memory total/used. Split into three services (`Heap`, `CPU`, `Memory`) reusing `cmk.plugins.lib.memory` and `cpu_util`.
-- `92/vvol/symmetrix` + `92/vvol/symmetrix/<id>` — discovers the local array id.
-- `92/system/alert_summary` -> `<<<dellpmax_server_alerts>>>` and `<<<dellpmax_symm_alerts>>>` — unacknowledged warning/critical/fatal counts.
-- `92/sloprovisioning/symmetrix/<id>/srp/...` -> `<<<dellpmax_storage_pools>>>` — per-SRP subscribed, snapshot, usable and effective used capacities.
+## API requests
 
-Each SRP produces three services (`Subscribed Capacity <srp>`, `Snapshot Capacity <srp>`, `Usable Capacity <srp>`) with hardcoded 80/90 WARN/CRIT thresholds on the percentage values.
+The agent collects:
+
+- `version`;
+- `management/RuntimeUsage/read`;
+- `<api_version>/vvol/symmetrix` and local-array details;
+- `<api_version>/system/alert_summary`;
+- `<api_version>/sloprovisioning/symmetrix/<id>/srp` and pool details.
+
+The configured account should have only the read-only monitoring role.
+
+## Configuration
+
+Rule: **Setup → Agents → Other integrations → Dell PowerMax**
+
+| Parameter | Default | Meaning |
+| --- | --- | --- |
+| `username` | required | Read-only Unisphere monitoring user. |
+| `password` | required | Checkmk-managed secret. |
+| `port` | `8443` | Unisphere HTTPS port. |
+| `api_version` | `100` | REST namespace supported by the target Unisphere release. |
+| `timeout` | `15s` | Per-request timeout, constrained to 0.5–120 seconds. |
+| `ca_bundle` | system trust | Optional absolute private CA bundle. |
+
+## Services
+
+The existing services remain unchanged: version, JVM/CPU/memory statistics, server and array alerts, and storage resource pool capacity services.
+
+## Failure behavior
+
+Transport errors, non-2xx responses, redirects, oversized responses, invalid JSON, missing required fields, a missing local array, or incomplete alert data cause a non-zero special-agent result without publishing partial sections.
 
 ## Package contents
 
 | Path | Purpose |
 | --- | --- |
-| `src/dell_pmax/libexec/agent_dellpmax` | Special agent (Unisphere REST client). |
-| `src/dell_pmax/agent_based/dellpmax_info.py` | `Version Info` service. |
-| `src/dell_pmax/agent_based/dellpmax_system_stats.py` | `Heap`, `CPU`, `Memory` services from Unisphere runtime usage. |
-| `src/dell_pmax/agent_based/dellpmax_alerts_server.py` | `Server alerts` service. |
-| `src/dell_pmax/agent_based/dellpmax_alerts_symm.py` | `Array alerts` and `Performance alerts` services. |
-| `src/dell_pmax/agent_based/dellpmax_storage_pools.py` | `Subscribed Capacity`, `Snapshot Capacity`, `Usable Capacity` per SRP. |
-| `src/dell_pmax/rulesets/agent_dellpmax.py` | Special agent rule (username, password). |
-| `src/dell_pmax/server_side_calls/agent_pmax.py` | Command line generation. |
-
-## Installation
-
-1. Install the MKP on the Checkmk site.
-2. Create a host for the Unisphere appliance and configure the special agent rule below.
-3. The API user only needs read-only monitoring role.
-4. Run service discovery.
-
-## Configuration
-
-Rule: **Setup -> Agents -> Other integrations -> Dell Powermax**
-
-| Parameter | Type | Meaning |
-| --- | --- | --- |
-| `username` | String | Unisphere user with monitoring role. |
-| `password` | Password | Password for the user. |
-
-## Services & metrics
-
-- **Services:** `Version Info`, `Heap`, `CPU`, `Memory`, `Server alerts`, `Array alerts`, `Performance alerts`, `Subscribed Capacity <srp>`, `Snapshot Capacity <srp>`, `Usable Capacity <srp>`.
-- **State logic:**
-  - Alerts: OK at 0, WARN/CRIT when warning/critical/fatal counters are non-zero.
-  - Subscribed/Usable capacity: WARN at 80%, CRIT at 90%.
-  - Snapshot capacity: always OK.
-
-## Known limitations
-
-- TLS certificate verification is hardcoded to off in the special agent.
-- The WARN/CRIT thresholds for storage pools are hardcoded in the check plugin and not exposed via WATO.
-- `port` cannot be configured through the ruleset; the special agent defaults to 8443.
+| `src/dell_pmax/libexec/agent_dellpmax` | Verified HTTPS client and atomic output builder. |
+| `src/dell_pmax/server_side_calls/agent_pmax.py` | Secret-aware command generation and secure parameters. |
+| `src/dell_pmax/rulesets/agent_dellpmax.py` | Setup rule. |
+| `src/dell_pmax/agent_based/` | Existing check plug-ins. |
+| `tests/test_agent_dellpmax.py` | TLS, timeout, API-version and output regression tests. |

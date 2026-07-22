@@ -1,6 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Special Agent EMC PMAX storage pools\n',
- 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
+ 'description': 'Secure Dell EMC PowerMax monitoring through the verified Unisphere REST API.\n',
+ 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/dell_pmax',
  'files': {'cmk_addons_plugins': ['dell_pmax/agent_based/dellpmax_alerts_server.py',
                                   'dell_pmax/agent_based/dellpmax_alerts_symm.py',
                                   'dell_pmax/agent_based/dellpmax_info.py',
@@ -11,6 +11,6 @@
                                   'dell_pmax/server_side_calls/agent_pmax.py']},
  'name': 'dell_pmax',
  'title': 'DELL EMC PowerMax',
- 'version': '2.0.4',
+ 'version': '2.1.0',
  'version.min_required': '2.3.0',
  'version.packaged': '2.4.0'}
