@@ -1,3 +1,4 @@
+import sys
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
@@ -6,6 +7,7 @@ import pytest
 MODULE_PATH = Path(__file__).parents[1] / "src" / "bin" / "sync_ec_events.py"
 spec = spec_from_file_location("sync_ec_events", MODULE_PATH)
 module = module_from_spec(spec)
+sys.modules[spec.name] = module
 assert spec.loader is not None
 spec.loader.exec_module(module)
 
