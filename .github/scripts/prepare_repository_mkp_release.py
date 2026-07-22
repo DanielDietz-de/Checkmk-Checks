@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare canonical manifests for a repository-wide MKP release."""
+"""Prepare canonical manifests and source migrations for a repository-wide MKP release."""
 
 from __future__ import annotations
 
@@ -15,6 +15,25 @@ _VERSION_RE = re.compile(r"(\d+)\.(\d+)\.(\d+)(?:-dev(\d+))?")
 _BAKERY_IMPORT = "from cmk.base.cee.plugins.bakery.bakery_api.v1 import"
 _BAKERY_RELATIVE_IMPORT = "from .bakery_api.v1 import"
 _BAKERY_LIBRARY_ROOT = Path("lib/python3/cmk/base/cee/plugins/bakery")
+_ALERTMANAGER_PACKAGE = "alertmanager_extended"
+_ALERTMANAGER_PLUGIN = Path("src/cmk_plugins/collection/agent_based/alertmanager.py")
+_ALERTMANAGER_RULESET = Path("src/kr_alertmanager/rulesets/alertmanager.py")
+_ALERTMANAGER_RULESET_REFERENCES = {
+    'check_ruleset_name="alertmanager_rule_state_custom"':
+        'check_ruleset_name="alertmanager_rule_state"',
+    'check_ruleset_name="alertmanager_rule_state_summary_custom"':
+        'check_ruleset_name="alertmanager_rule_state_summary"',
+}
+_ALERTMANAGER_RULESET_DECLARATIONS = (
+    'name="alertmanager_rule_state_custom"',
+    'name="alertmanager_rule_state_summary_custom"',
+)
+_ALERTMANAGER_DEBUG_PRINTS = (
+    '                print("got severity: %s" % severity)\n',
+    '                                print("set status to CRIT")\n',
+    '                                print("set status to WARN")\n',
+    '                                print("set status to OK")\n',
+)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -107,6 +126,60 @@ def _normalize_bakery_module(package_dir: Path, manifest: dict[str, Any]) -> lis
     return [f"{legacy_entry} -> lib/{library_path}"]
 
 
+def _normalize_alertmanager_ruleset_references(package_dir: Path) -> list[str]:
+    """Align custom Alertmanager overrides with Checkmk's normalized rule names.
+
+    ``CheckParameters`` declarations ending in ``_custom`` intentionally override
+    the built-in rule specs. Checkmk exposes those declarations under the base
+    name, so check plug-ins must reference the normalized name without the suffix.
+    """
+
+    if package_dir.name != _ALERTMANAGER_PACKAGE:
+        return []
+
+    plugin_path = package_dir / _ALERTMANAGER_PLUGIN
+    ruleset_path = package_dir / _ALERTMANAGER_RULESET
+    if not plugin_path.is_file() or not ruleset_path.is_file():
+        raise FileNotFoundError(
+            f"{package_dir}: Alertmanager plug-in or ruleset source is missing"
+        )
+
+    ruleset_content = ruleset_path.read_text(encoding="utf-8")
+    missing_declarations = [
+        declaration
+        for declaration in _ALERTMANAGER_RULESET_DECLARATIONS
+        if declaration not in ruleset_content
+    ]
+    if missing_declarations:
+        raise ValueError(
+            f"{ruleset_path}: missing custom override declarations {missing_declarations}"
+        )
+
+    content = plugin_path.read_text(encoding="utf-8")
+    original = content
+    migrations: list[str] = []
+    for legacy, normalized in _ALERTMANAGER_RULESET_REFERENCES.items():
+        if legacy in content:
+            content = content.replace(legacy, normalized)
+            migrations.append(f"{legacy} -> {normalized}")
+        elif normalized not in content:
+            raise ValueError(
+                f"{plugin_path}: neither legacy nor normalized rule reference was found"
+            )
+
+    removed_debug = 0
+    for debug_line in _ALERTMANAGER_DEBUG_PRINTS:
+        if debug_line in content:
+            content = content.replace(debug_line, "")
+            removed_debug += 1
+    if removed_debug:
+        migrations.append(f"removed {removed_debug} debug print statements")
+
+    if content != original:
+        plugin_path.write_text(content, encoding="utf-8")
+    return migrations
+
+
 def main() -> None:
     args = _parse_args()
     repository = args.repository.resolve()
@@ -136,6 +209,10 @@ def main() -> None:
             f"{package_dir.name}: {entry}"
             for entry in _normalize_bakery_module(package_dir, manifest)
         )
+        migrations.extend(
+            f"{package_dir.name}: {entry}"
+            for entry in _normalize_alertmanager_ruleset_references(package_dir)
+        )
 
         old_version = str(manifest["version"])
         if bump_versions and package_dir.name not in preserved:
@@ -164,7 +241,7 @@ def main() -> None:
 
     print(f"Prepared {len(info_paths)} active package manifests")
     for entry in migrations:
-        print(f"Migrated Bakery module: {entry}")
+        print(f"Applied source migration: {entry}")
     for entry in changed:
         print(entry)
 
