@@ -393,6 +393,7 @@ jobs:
           plugin_base = Path(os.environ["PLUGIN_BASE"])
           package_name = os.environ["PACKAGE_NAME"]
           package_dir = os.environ["PACKAGE_DIR"]
+          repository = os.environ["GITHUB_REPOSITORY"]
           source_info = Path("/work") / package_dir / "src" / "info"
           if source_info.is_file():
               manifest = ast.literal_eval(source_info.read_text(encoding="utf-8"))
@@ -417,10 +418,7 @@ jobs:
                   "version": os.environ["PACKAGE_VERSION"],
                   "version.packaged": os.environ["PACKAGED_VERSION"],
                   "version.usable_until": os.environ["USABLE_UNTIL"],
-                  "download_url": (
-                      f"https://github.com/{os.environ['GITHUB_REPOSITORY']}"
-                      f"/tree/master/{package_dir}"
-                  ),
+                  "download_url": f"https://github.com/{repository}/tree/master/{package_dir}",
                   "files": {"cmk_addons_plugins": files},
               }
           )
