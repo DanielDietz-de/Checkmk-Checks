@@ -23,12 +23,8 @@ metric_active_calls_out = Metric(
     unit=_COUNT,
     color=Color.GREEN,
 )
-metric_active_sessions = Metric(
-    name="active_sessions",
-    title=Title("Active Sessions"),
-    unit=_COUNT,
-    color=Color.ORANGE,
-)
+# Checkmk already provides the global "active_sessions" metric. Reuse that
+# definition instead of registering a second metric with the same global name.
 metric_active_calls_in_max = Metric(
     name="active_calls_in_max",
     title=Title("Active Calls In Max"),
