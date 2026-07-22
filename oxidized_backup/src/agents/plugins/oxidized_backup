@@ -1,0 +1,1441 @@
+#!/usr/bin/env python3
+"""Collect Oxidized backup health for Checkmk.
+
+The script has two modes:
+
+* default: run as a Checkmk Linux agent plug-in on the Oxidized host and emit
+  one central section plus piggyback sections for all hosts exported to
+  Oxidized by Checkmk;
+* --record-hook: run from an Oxidized exec hook and persist node success/fail
+  information across Oxidized process restarts.
+
+Only Python's standard library is required. External commands are invoked via
+argument arrays, never through a shell.
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import contextlib
+import datetime as dt
+import fcntl
+import json
+import os
+import pwd
+import re
+import shlex
+import shutil
+import ssl
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
+from typing import Any
+
+SCHEMA_VERSION = 1
+DEFAULT_CONFIG = Path("/etc/check_mk/oxidized_backup.json")
+MAX_CONFIG_BYTES = 1024 * 1024
+DEFAULT_HTTP_TIMEOUT = 10.0
+DEFAULT_MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+DEFAULT_GIT_TIMEOUT = 30.0
+DEFAULT_FSCK_TIMEOUT = 120.0
+MAX_ERROR_TEXT = 1024
+MAX_HOSTNAME_LENGTH = 255
+ALLOWED_HOOK_EVENTS = frozenset({"node_success", "node_fail", "post_store"})
+SENSITIVE_PATTERN = re.compile(
+    r"(?i)(authorization\s*:\s*|password=|token=|private[_-]?token=)([^\s&]+)"
+)
+URL_USERINFO_PATTERN = re.compile(r"(?P<scheme>[a-z][a-z0-9+.-]*://)[^/@\s]+@", re.I)
+
+
+class CollectorError(RuntimeError):
+    """A safe, user-facing collection error."""
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+class SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Allow redirects only within the same origin and never HTTPS to HTTP."""
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Mapping[str, str],
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        source = urllib.parse.urlsplit(req.full_url)
+        target = urllib.parse.urlsplit(newurl)
+        source_port = source.port or (443 if source.scheme == "https" else 80)
+        target_port = target.port or (443 if target.scheme == "https" else 80)
+        if (source.hostname, source_port) != (target.hostname, target_port):
+            raise CollectorError("HTTP redirect to a different origin was refused")
+        if source.scheme == "https" and target.scheme != "https":
+            raise CollectorError("HTTPS downgrade redirect was refused")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _redact(value: object) -> str:
+    text = str(value).replace("\x00", "")
+    text = URL_USERINFO_PATTERN.sub(r"\g<scheme><redacted>@", text)
+    text = SENSITIVE_PATTERN.sub(r"\1<redacted>", text)
+    return text[:MAX_ERROR_TEXT]
+
+
+def _require_mapping(value: object, label: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise CollectorError(f"{label} must be a JSON object")
+    return value
+
+
+def _require_sequence(value: object, label: str) -> Sequence[Any]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        raise CollectorError(f"{label} must be a JSON array")
+    return value
+
+
+def _required_string(mapping: Mapping[str, Any], key: str, label: str) -> str:
+    value = mapping.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise CollectorError(f"{label}.{key} must be a non-empty string")
+    if "\x00" in value or "\r" in value or "\n" in value:
+        raise CollectorError(f"{label}.{key} contains forbidden control characters")
+    return value.strip()
+
+
+def _optional_string(mapping: Mapping[str, Any], key: str) -> str | None:
+    value = mapping.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise CollectorError(f"{key} must be a non-empty string when configured")
+    if "\x00" in value or "\r" in value or "\n" in value:
+        raise CollectorError(f"{key} contains forbidden control characters")
+    return value.strip()
+
+
+def _required_int(
+    mapping: Mapping[str, Any], key: str, label: str, *, minimum: int = 0
+) -> int:
+    value = mapping.get(key)
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise CollectorError(f"{label}.{key} must be an integer >= {minimum}")
+    return value
+
+
+def _bounded_number(
+    mapping: Mapping[str, Any],
+    key: str,
+    *,
+    default: float,
+    minimum: float,
+    maximum: float,
+) -> float:
+    value = mapping.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise CollectorError(f"{key} must be a number")
+    result = float(value)
+    if result < minimum or result > maximum:
+        raise CollectorError(f"{key} must be between {minimum} and {maximum}")
+    return result
+
+
+def _absolute_path(value: str, label: str) -> Path:
+    path = Path(value)
+    if not path.is_absolute():
+        raise CollectorError(f"{label} must be an absolute path")
+    return path
+
+
+def _safe_open_read(path: Path, *, max_bytes: int) -> bytes:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(path, flags)
+    except OSError as exc:
+        raise CollectorError(f"Cannot open {path}: {_redact(exc)}") from exc
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise CollectorError(f"{path} is not a regular file")
+        if info.st_size > max_bytes:
+            raise CollectorError(
+                f"{path} exceeds the allowed size of {max_bytes} bytes"
+            )
+        data = b""
+        while len(data) <= max_bytes:
+            chunk = os.read(fd, min(65536, max_bytes + 1 - len(data)))
+            if not chunk:
+                break
+            data += chunk
+        if len(data) > max_bytes:
+            raise CollectorError(
+                f"{path} exceeds the allowed size of {max_bytes} bytes"
+            )
+        return data
+    finally:
+        os.close(fd)
+
+
+def load_config(path: Path) -> dict[str, Any]:
+    raw = _safe_open_read(path, max_bytes=MAX_CONFIG_BYTES)
+    try:
+        parsed = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CollectorError(
+            f"Invalid JSON configuration in {path}: {_redact(exc)}"
+        ) from exc
+    config = dict(_require_mapping(parsed, "configuration"))
+    validate_config(config)
+    return config
+
+
+def validate_config(config: Mapping[str, Any]) -> None:
+    inventory = _require_mapping(config.get("inventory"), "inventory")
+    oxidized = _require_mapping(config.get("oxidized"), "oxidized")
+    state_cfg = _require_mapping(config.get("state"), "state")
+    git_cfg = _require_mapping(config.get("git"), "git")
+    policy = _require_mapping(config.get("policy"), "policy")
+
+    _validate_endpoint(inventory, "inventory", allow_file=True)
+    _validate_endpoint(oxidized, "oxidized", allow_file=False)
+
+    _absolute_path(
+        _required_string(state_cfg, "hook_state_file", "state"), "state.hook_state_file"
+    )
+    _absolute_path(
+        _required_string(state_cfg, "monitor_state_file", "state"),
+        "state.monitor_state_file",
+    )
+
+    run_as_user = _required_string(git_cfg, "run_as_user", "git")
+    if run_as_user == "root":
+        raise CollectorError("git.run_as_user must be an unprivileged account")
+    try:
+        pwd.getpwnam(run_as_user)
+    except KeyError as exc:
+        raise CollectorError(
+            f"Configured git user {run_as_user!r} does not exist"
+        ) from exc
+
+    repositories = _require_sequence(git_cfg.get("repositories"), "git.repositories")
+    if not repositories:
+        raise CollectorError("git.repositories must contain at least one repository")
+    seen_ids: set[str] = set()
+    wildcard_count = 0
+    for index, raw_repo in enumerate(repositories):
+        repo = _require_mapping(raw_repo, f"git.repositories[{index}]")
+        repo_id = _required_string(repo, "id", f"git.repositories[{index}]")
+        if repo_id in seen_ids:
+            raise CollectorError(f"Duplicate Git repository id: {repo_id}")
+        seen_ids.add(repo_id)
+        _absolute_path(
+            _required_string(repo, "path", f"git.repositories[{index}]"),
+            f"git.repositories[{index}].path",
+        )
+        groups = _require_sequence(
+            repo.get("groups"), f"git.repositories[{index}].groups"
+        )
+        if not groups:
+            raise CollectorError(f"git.repositories[{index}].groups must not be empty")
+        normalized_groups: set[str] = set()
+        for group in groups:
+            if group is None:
+                normalized = ""
+            elif isinstance(group, str) and group.strip():
+                normalized = group.strip()
+            else:
+                raise CollectorError(
+                    f"git.repositories[{index}].groups entries must be strings or null"
+                )
+            if normalized in normalized_groups:
+                raise CollectorError(
+                    f"Duplicate group mapping {normalized!r} in repository {repo_id}"
+                )
+            normalized_groups.add(normalized)
+            if normalized == "*":
+                wildcard_count += 1
+        if not isinstance(repo.get("single_repo"), bool):
+            raise CollectorError(
+                f"git.repositories[{index}].single_repo must be true or false"
+            )
+        _optional_string(repo, "remote")
+        _optional_string(repo, "branch")
+        _bounded_number(
+            repo,
+            "command_timeout_seconds",
+            default=DEFAULT_GIT_TIMEOUT,
+            minimum=1.0,
+            maximum=300.0,
+        )
+        _bounded_number(
+            repo,
+            "fsck_timeout_seconds",
+            default=DEFAULT_FSCK_TIMEOUT,
+            minimum=1.0,
+            maximum=3600.0,
+        )
+    if wildcard_count > 1:
+        raise CollectorError(
+            "Only one Git repository may use the wildcard group mapping '*'"
+        )
+
+    warn = _required_int(policy, "collection_warning_age_seconds", "policy", minimum=1)
+    crit = _required_int(policy, "collection_critical_age_seconds", "policy", minimum=1)
+    if crit <= warn:
+        raise CollectorError(
+            "policy.collection_critical_age_seconds must be greater than the warning age"
+        )
+    _required_int(policy, "remote_sync_grace_seconds", "policy", minimum=0)
+    _required_int(policy, "remote_verification_max_age_seconds", "policy", minimum=1)
+    _required_int(policy, "fsck_interval_seconds", "policy", minimum=300)
+    orphan_state = _required_int(policy, "orphan_state", "policy", minimum=0)
+    if orphan_state not in {0, 1, 2}:
+        raise CollectorError("policy.orphan_state must be 0, 1, or 2")
+
+
+def _validate_endpoint(
+    endpoint: Mapping[str, Any], label: str, *, allow_file: bool
+) -> None:
+    source = _required_string(endpoint, "url", label)
+    parsed = urllib.parse.urlsplit(source)
+    allowed_schemes = {"http", "https"}
+    if allow_file:
+        allowed_schemes.add("file")
+    if parsed.scheme not in allowed_schemes:
+        raise CollectorError(
+            f"{label}.url must use one of: {', '.join(sorted(allowed_schemes))}"
+        )
+    if parsed.scheme == "file":
+        if parsed.netloc not in {"", "localhost"}:
+            raise CollectorError(f"{label}.url file URI must not contain a remote host")
+        _absolute_path(urllib.request.url2pathname(parsed.path), f"{label}.url")
+    else:
+        if not parsed.hostname:
+            raise CollectorError(f"{label}.url must contain a host name")
+        if parsed.username or parsed.password:
+            raise CollectorError(f"{label}.url must not embed credentials")
+        if parsed.scheme == "http" and not _is_loopback_host(parsed.hostname):
+            if endpoint.get("allow_insecure_http") is not True:
+                raise CollectorError(
+                    f"{label}.url uses cleartext HTTP; set allow_insecure_http=true explicitly"
+                )
+    ca_file = _optional_string(endpoint, "ca_file")
+    if ca_file:
+        _absolute_path(ca_file, f"{label}.ca_file")
+    _bounded_number(
+        endpoint,
+        "timeout_seconds",
+        default=DEFAULT_HTTP_TIMEOUT,
+        minimum=0.1,
+        maximum=120.0,
+    )
+    max_bytes = endpoint.get("max_response_bytes", DEFAULT_MAX_RESPONSE_BYTES)
+    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int):
+        raise CollectorError(f"{label}.max_response_bytes must be an integer")
+    if not 1024 <= max_bytes <= 64 * 1024 * 1024:
+        raise CollectorError(
+            f"{label}.max_response_bytes must be between 1024 and 67108864"
+        )
+    auth = endpoint.get("auth")
+    if auth is not None:
+        auth_map = _require_mapping(auth, f"{label}.auth")
+        auth_type = _required_string(auth_map, "type", f"{label}.auth")
+        if auth_type == "bearer":
+            _absolute_path(
+                _required_string(auth_map, "token_file", f"{label}.auth"),
+                f"{label}.auth.token_file",
+            )
+        elif auth_type == "basic":
+            _required_string(auth_map, "username", f"{label}.auth")
+            _absolute_path(
+                _required_string(auth_map, "password_file", f"{label}.auth"),
+                f"{label}.auth.password_file",
+            )
+        else:
+            raise CollectorError(f"{label}.auth.type must be 'bearer' or 'basic'")
+
+
+def _is_loopback_host(host: str) -> bool:
+    normalized = host.strip("[]").lower()
+    return normalized in {"localhost", "127.0.0.1", "::1"}
+
+
+def _read_secret(path_value: str) -> str:
+    path = _absolute_path(path_value, "secret file")
+    raw = _safe_open_read(path, max_bytes=64 * 1024)
+    info = path.stat()
+    if stat.S_IMODE(info.st_mode) & 0o077:
+        raise CollectorError(
+            f"Secret file {path} must not be readable by group or others"
+        )
+    try:
+        secret = raw.decode("utf-8").strip()
+    except UnicodeDecodeError as exc:
+        raise CollectorError(f"Secret file {path} is not valid UTF-8") from exc
+    if not secret or "\r" in secret or "\n" in secret:
+        raise CollectorError(
+            f"Secret file {path} must contain exactly one non-empty line"
+        )
+    return secret
+
+
+def _endpoint_headers(endpoint: Mapping[str, Any]) -> dict[str, str]:
+    headers = {"Accept": "application/json", "User-Agent": "checkmk-oxidized-backup/1"}
+    auth = endpoint.get("auth")
+    if auth is None:
+        return headers
+    auth_map = _require_mapping(auth, "auth")
+    auth_type = _required_string(auth_map, "type", "auth")
+    if auth_type == "bearer":
+        token = _read_secret(_required_string(auth_map, "token_file", "auth"))
+        headers["Authorization"] = f"Bearer {token}"
+    else:
+        username = _required_string(auth_map, "username", "auth")
+        password = _read_secret(_required_string(auth_map, "password_file", "auth"))
+        encoded = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
+        headers["Authorization"] = f"Basic {encoded}"
+    return headers
+
+
+def fetch_json(endpoint: Mapping[str, Any], label: str) -> Any:
+    source = _required_string(endpoint, "url", label)
+    parsed = urllib.parse.urlsplit(source)
+    max_bytes = int(endpoint.get("max_response_bytes", DEFAULT_MAX_RESPONSE_BYTES))
+    if parsed.scheme == "file":
+        path = Path(urllib.request.url2pathname(parsed.path))
+        raw = _safe_open_read(path, max_bytes=max_bytes)
+    else:
+        timeout = _bounded_number(
+            endpoint,
+            "timeout_seconds",
+            default=DEFAULT_HTTP_TIMEOUT,
+            minimum=0.1,
+            maximum=120.0,
+        )
+        context: ssl.SSLContext | None = None
+        if parsed.scheme == "https":
+            context = ssl.create_default_context(
+                cafile=_optional_string(endpoint, "ca_file")
+            )
+        request = urllib.request.Request(
+            source, headers=_endpoint_headers(endpoint), method="GET"
+        )
+        opener = urllib.request.build_opener(
+            SameOriginRedirectHandler(), urllib.request.HTTPSHandler(context=context)
+        )
+        try:
+            with opener.open(request, timeout=timeout) as response:
+                content_length = response.headers.get("Content-Length")
+                if content_length:
+                    try:
+                        declared_length = int(content_length)
+                    except ValueError as exc:
+                        raise CollectorError(
+                            f"{label} response has an invalid Content-Length header"
+                        ) from exc
+                    if declared_length < 0 or declared_length > max_bytes:
+                        raise CollectorError(
+                            f"{label} response exceeds the allowed size of {max_bytes} bytes"
+                        )
+                raw = response.read(max_bytes + 1)
+        except (
+            urllib.error.URLError,
+            urllib.error.HTTPError,
+            TimeoutError,
+            OSError,
+        ) as exc:
+            raise CollectorError(f"Unable to retrieve {label}: {_redact(exc)}") from exc
+        if len(raw) > max_bytes:
+            raise CollectorError(
+                f"{label} response exceeds the allowed size of {max_bytes} bytes"
+            )
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CollectorError(f"Invalid JSON from {label}: {_redact(exc)}") from exc
+
+
+def _validate_host_name(value: object, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise CollectorError(f"{label} must be a non-empty string")
+    hostname = value.strip()
+    if len(hostname) > MAX_HOSTNAME_LENGTH:
+        raise CollectorError(f"{label} exceeds {MAX_HOSTNAME_LENGTH} characters")
+    if any(token in hostname for token in ("\x00", "\r", "\n", "<<<<", ">>>>")):
+        raise CollectorError(f"{label} contains forbidden output delimiters")
+    return hostname
+
+
+def parse_inventory(payload: Any) -> tuple[list[dict[str, Any]], list[str]]:
+    rows = _require_sequence(payload, "inventory response")
+    by_hostname: dict[str, dict[str, Any]] = {}
+    errors: list[str] = []
+    counts: dict[str, int] = {}
+    for index, raw in enumerate(rows):
+        try:
+            row = _require_mapping(raw, f"inventory[{index}]")
+            hostname = _validate_host_name(
+                row.get("hostname"), f"inventory[{index}].hostname"
+            )
+            os_name = row.get("os")
+            if os_name is not None and not isinstance(os_name, str):
+                raise CollectorError(f"inventory[{index}].os must be a string or null")
+            counts[hostname] = counts.get(hostname, 0) + 1
+            by_hostname.setdefault(hostname, {"hostname": hostname, "os": os_name})
+        except CollectorError as exc:
+            errors.append(str(exc))
+    duplicates = {name for name, count in counts.items() if count > 1}
+    records = list(by_hostname.values())
+    for record in records:
+        record["duplicate"] = record["hostname"] in duplicates
+    if duplicates:
+        errors.append(
+            "Duplicate inventory host names: " + ", ".join(sorted(duplicates))
+        )
+    return records, errors
+
+
+def _parse_timestamp(value: object) -> int | None:
+    if value in (None, "", "never"):
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text or text.lower() == "never":
+        return None
+    try:
+        return int(float(text))
+    except ValueError:
+        pass
+    normalized = text.replace("Z", "+00:00")
+    try:
+        parsed = dt.datetime.fromisoformat(normalized)
+    except ValueError:
+        formats = (
+            "%Y-%m-%d %H:%M:%S %z",
+            "%Y-%m-%d %H:%M:%S UTC",
+            "%Y-%m-%dT%H:%M:%S%z",
+        )
+        for fmt in formats:
+            try:
+                parsed = dt.datetime.strptime(text, fmt)
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=dt.timezone.utc)
+                break
+            except ValueError:
+                continue
+        else:
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.timezone.utc)
+    return int(parsed.timestamp())
+
+
+def parse_oxidized_nodes(payload: Any) -> tuple[list[dict[str, Any]], list[str]]:
+    rows = _require_sequence(payload, "Oxidized nodes response")
+    records: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for index, raw in enumerate(rows):
+        try:
+            row = _require_mapping(raw, f"oxidized[{index}]")
+            name = _validate_host_name(row.get("name"), f"oxidized[{index}].name")
+            group_raw = row.get("group")
+            group = None
+            if group_raw not in (None, "", "default"):
+                group = _validate_host_name(group_raw, f"oxidized[{index}].group")
+            status = row.get("status")
+            when = row.get("time")
+            last = row.get("last")
+            if isinstance(last, Mapping):
+                status = last.get("status", status)
+                when = last.get("end", when)
+            normalized_status = str(status or "never").strip().lower().lstrip(":")
+            records.append(
+                {
+                    "name": name,
+                    "group": group,
+                    "full_name": str(
+                        row.get("full_name") or (f"{group}/{name}" if group else name)
+                    ),
+                    "model": str(row.get("model") or ""),
+                    "status": normalized_status,
+                    "last_attempt_at": _parse_timestamp(when),
+                }
+            )
+        except CollectorError as exc:
+            errors.append(str(exc))
+    return records, errors
+
+
+def _node_key(group: str | None, name: str) -> str:
+    return f"{group or ''}\x1f{name}"
+
+
+def _safe_state_path(config: Mapping[str, Any], key: str) -> Path:
+    state_cfg = _require_mapping(config.get("state"), "state")
+    return _absolute_path(_required_string(state_cfg, key, "state"), f"state.{key}")
+
+
+def _load_state(path: Path, *, max_bytes: int = 8 * 1024 * 1024) -> dict[str, Any]:
+    if not path.exists():
+        return {"schema_version": SCHEMA_VERSION, "nodes": {}, "repositories": {}}
+    raw = _safe_open_read(path, max_bytes=max_bytes)
+    try:
+        state_data = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CollectorError(f"Invalid state file {path}: {_redact(exc)}") from exc
+    state_map = dict(_require_mapping(state_data, f"state file {path}"))
+    if state_map.get("schema_version") != SCHEMA_VERSION:
+        raise CollectorError(f"Unsupported state schema in {path}")
+    if not isinstance(state_map.get("nodes", {}), Mapping):
+        raise CollectorError(f"State file {path} has invalid nodes data")
+    if not isinstance(state_map.get("repositories", {}), Mapping):
+        raise CollectorError(f"State file {path} has invalid repositories data")
+    state_map.setdefault("nodes", {})
+    state_map.setdefault("repositories", {})
+    return state_map
+
+
+def _atomic_write_json(
+    path: Path, payload: Mapping[str, Any], *, mode: int = 0o600
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if path.exists() and path.is_symlink():
+        raise CollectorError(f"Refusing to replace symlink state file {path}")
+    encoded = (
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        os.fchmod(fd, mode)
+        with os.fdopen(fd, "wb", closefd=True) as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            temporary.unlink()
+
+
+@contextlib.contextmanager
+def _locked_state(path: Path) -> Iterable[None]:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    lock_path = path.with_name(path.name + ".lock")
+    flags = os.O_RDWR | os.O_CREAT
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(lock_path, flags, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+def record_hook(config: Mapping[str, Any], environ: Mapping[str, str]) -> None:
+    event = environ.get("OX_EVENT", "").strip()
+    if event not in ALLOWED_HOOK_EVENTS:
+        raise CollectorError(
+            f"Unsupported or missing OX_EVENT; expected one of {sorted(ALLOWED_HOOK_EVENTS)}"
+        )
+    name = _validate_host_name(environ.get("OX_NODE_NAME"), "OX_NODE_NAME")
+    group_raw = environ.get("OX_NODE_GROUP", "").strip()
+    group = group_raw or None
+    if group:
+        group = _validate_host_name(group, "OX_NODE_GROUP")
+    state_path = _safe_state_path(config, "hook_state_file")
+    now = int(time.time())
+    key = _node_key(group, name)
+
+    with _locked_state(state_path):
+        state_data = _load_state(state_path)
+        nodes = dict(state_data.get("nodes", {}))
+        record = dict(nodes.get(key, {}))
+        record.update(
+            {
+                "name": name,
+                "group": group,
+                "model": _redact(environ.get("OX_NODE_MODEL", "")),
+                "updated_at": now,
+            }
+        )
+        if event == "node_success":
+            record.update(
+                {
+                    "last_attempt_at": now,
+                    "last_attempt_status": "success",
+                    "last_success_at": now,
+                    "last_error_type": None,
+                    "last_error_reason": None,
+                }
+            )
+        elif event == "node_fail":
+            status = (
+                environ.get("OX_JOB_STATUS", "fail").strip().lower().lstrip(":")
+                or "fail"
+            )
+            record.update(
+                {
+                    "last_attempt_at": now,
+                    "last_attempt_status": status,
+                    "last_failure_at": now,
+                    "last_error_type": _redact(environ.get("OX_ERR_TYPE", "")) or None,
+                    "last_error_reason": _redact(environ.get("OX_ERR_REASON", ""))
+                    or None,
+                }
+            )
+        else:
+            record.update(
+                {
+                    "last_store_at": now,
+                    "last_store_commit": _redact(environ.get("OX_REPO_COMMITREF", ""))
+                    or None,
+                    "ever_stored": True,
+                }
+            )
+        nodes[key] = record
+        state_data["schema_version"] = SCHEMA_VERSION
+        state_data["nodes"] = nodes
+        _atomic_write_json(state_path, state_data)
+
+
+def _git_prefix(repo_path: Path) -> list[str]:
+    return ["-C", str(repo_path)]
+
+
+def _run_as_user_prefix(user: str) -> tuple[list[str], dict[str, str]]:
+    user_info = pwd.getpwnam(user)
+    env = {
+        "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "HOME": user_info.pw_dir,
+        "USER": user,
+        "LOGNAME": user,
+        "GIT_TERMINAL_PROMPT": "0",
+        "LC_ALL": "C",
+    }
+    current_user = pwd.getpwuid(os.geteuid()).pw_name
+    if current_user == user:
+        return [], env
+    if os.geteuid() != 0:
+        raise CollectorError(
+            f"Git commands must run as {user}, but the agent plug-in is not root"
+        )
+    runuser = shutil.which("runuser")
+    if not runuser:
+        raise CollectorError(
+            "runuser is required to execute Git as the Oxidized account"
+        )
+    env_args = [f"{key}={value}" for key, value in env.items()]
+    return [runuser, "-u", user, "--", "/usr/bin/env", *env_args], env
+
+
+def run_git(
+    *,
+    git_binary: str,
+    repo_path: Path,
+    run_as_user: str,
+    arguments: Sequence[str],
+    timeout: float,
+) -> CommandResult:
+    prefix, env = _run_as_user_prefix(run_as_user)
+    command = [*prefix, git_binary, *_git_prefix(repo_path), *arguments]
+    try:
+        completed = subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            check=False,
+            env=env,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise CollectorError(
+            f"Git command timed out after {timeout:g}s: {_redact(shlex.join(command))}"
+        ) from exc
+    except OSError as exc:
+        raise CollectorError(f"Unable to execute Git: {_redact(exc)}") from exc
+    return CommandResult(
+        returncode=completed.returncode,
+        stdout=completed.stdout.strip(),
+        stderr=_redact(completed.stderr.strip()),
+    )
+
+
+def _git_required(result: CommandResult, action: str) -> str:
+    if result.returncode != 0:
+        raise CollectorError(
+            f"{action} failed: {result.stderr or 'Git returned an error'}"
+        )
+    return result.stdout
+
+
+def _safe_git_tree_path(group: str | None, name: str, *, single_repo: bool) -> str:
+    values = [name]
+    if single_repo and group:
+        values.insert(0, group)
+    components: list[str] = []
+    for value in values:
+        candidate = PurePosixPath(value)
+        if candidate.is_absolute():
+            raise CollectorError("Oxidized node resolves to an absolute Git tree path")
+        components.extend(candidate.parts)
+    if not components or any(part in {"", ".", "..", "/"} for part in components):
+        raise CollectorError("Oxidized node resolves to an unsafe Git tree path")
+    if any("\x00" in part or "\n" in part or "\r" in part for part in components):
+        raise CollectorError("Oxidized node resolves to an unsafe Git tree path")
+    return str(PurePosixPath(*components))
+
+
+def _repository_for_group(
+    repositories: Sequence[Mapping[str, Any]], group: str | None
+) -> Mapping[str, Any] | None:
+    normalized = group or ""
+    exact: list[Mapping[str, Any]] = []
+    wildcard: list[Mapping[str, Any]] = []
+    for repo in repositories:
+        groups = [
+            "" if value is None else str(value).strip() for value in repo["groups"]
+        ]
+        if normalized in groups:
+            exact.append(repo)
+        if "*" in groups:
+            wildcard.append(repo)
+    matches = exact or wildcard
+    return matches[0] if len(matches) == 1 else None
+
+
+def _classify_remote_error(stderr: str) -> str:
+    text = stderr.lower()
+    authentication = (
+        "authentication failed",
+        "permission denied",
+        "publickey",
+        "could not read username",
+        "access denied",
+        "repository not found",
+        "host key verification failed",
+        "ssl certificate problem",
+        "certificate verify failed",
+    )
+    network = (
+        "could not resolve host",
+        "connection timed out",
+        "connection refused",
+        "network is unreachable",
+        "no route to host",
+        "temporary failure",
+        "operation timed out",
+    )
+    if any(token in text for token in authentication):
+        return "authentication"
+    if any(token in text for token in network):
+        return "network"
+    if "does not appear to be a git repository" in text or "no such remote" in text:
+        return "remote_missing"
+    return "command"
+
+
+def inspect_repository(
+    repo_cfg: Mapping[str, Any],
+    *,
+    git_binary: str,
+    run_as_user: str,
+    expected_paths: Sequence[str],
+    monitor_record: Mapping[str, Any],
+    policy: Mapping[str, Any],
+    now: int,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    repo_id = str(repo_cfg["id"])
+    repo_path_configured = _absolute_path(
+        str(repo_cfg["path"]), f"repository {repo_id} path"
+    )
+    result: dict[str, Any] = {
+        "id": repo_id,
+        "configured_path": str(repo_path_configured),
+        "valid": False,
+        "expected_files": len(expected_paths),
+        "missing_files": [],
+        "empty_files": [],
+        "artifacts": {},
+        "fsck": {"status": "unknown"},
+        "remote": {"status": "unknown", "state_hint": 3},
+    }
+    updated_monitor = dict(monitor_record)
+    try:
+        repo_path = repo_path_configured.resolve(strict=True)
+        if not repo_path.is_dir():
+            raise CollectorError(f"Git repository path {repo_path} is not a directory")
+        timeout = float(repo_cfg.get("command_timeout_seconds", DEFAULT_GIT_TIMEOUT))
+        if not 1 <= timeout <= 300:
+            raise CollectorError("command_timeout_seconds must be between 1 and 300")
+        is_repo = run_git(
+            git_binary=git_binary,
+            repo_path=repo_path,
+            run_as_user=run_as_user,
+            arguments=["rev-parse", "--is-inside-git-dir"],
+            timeout=timeout,
+        )
+        _git_required(is_repo, f"Opening repository {repo_id}")
+        head = _git_required(
+            run_git(
+                git_binary=git_binary,
+                repo_path=repo_path,
+                run_as_user=run_as_user,
+                arguments=["rev-parse", "--verify", "HEAD"],
+                timeout=timeout,
+            ),
+            f"Resolving HEAD for repository {repo_id}",
+        ).splitlines()[0]
+        configured_branch = _optional_string(repo_cfg, "branch")
+        if configured_branch:
+            branch = configured_branch
+        else:
+            branch = _git_required(
+                run_git(
+                    git_binary=git_binary,
+                    repo_path=repo_path,
+                    run_as_user=run_as_user,
+                    arguments=["symbolic-ref", "--quiet", "--short", "HEAD"],
+                    timeout=timeout,
+                ),
+                f"Resolving current branch for repository {repo_id}",
+            ).splitlines()[0]
+        result.update(
+            {
+                "valid": True,
+                "path": str(repo_path),
+                "head": head,
+                "branch": branch,
+            }
+        )
+
+        artifacts: dict[str, Any] = {}
+        missing: list[str] = []
+        empty: list[str] = []
+        for git_path in sorted(set(expected_paths)):
+            spec = f"{head}:{git_path}"
+            type_result = run_git(
+                git_binary=git_binary,
+                repo_path=repo_path,
+                run_as_user=run_as_user,
+                arguments=["cat-file", "-t", spec],
+                timeout=timeout,
+            )
+            if type_result.returncode != 0:
+                missing.append(git_path)
+                artifacts[git_path] = {"exists": False}
+                continue
+            object_type = type_result.stdout.strip()
+            if object_type != "blob":
+                missing.append(git_path)
+                artifacts[git_path] = {"exists": False, "object_type": object_type}
+                continue
+            size_text = _git_required(
+                run_git(
+                    git_binary=git_binary,
+                    repo_path=repo_path,
+                    run_as_user=run_as_user,
+                    arguments=["cat-file", "-s", spec],
+                    timeout=timeout,
+                ),
+                f"Reading backup size for {git_path}",
+            )
+            oid = _git_required(
+                run_git(
+                    git_binary=git_binary,
+                    repo_path=repo_path,
+                    run_as_user=run_as_user,
+                    arguments=["rev-parse", spec],
+                    timeout=timeout,
+                ),
+                f"Reading backup object for {git_path}",
+            ).splitlines()[0]
+            size = int(size_text.splitlines()[0])
+            if size == 0:
+                empty.append(git_path)
+            artifacts[git_path] = {
+                "exists": True,
+                "size": size,
+                "oid": oid,
+                "object_type": object_type,
+            }
+        result["artifacts"] = artifacts
+        result["missing_files"] = missing
+        result["empty_files"] = empty
+
+        fsck_interval = int(policy["fsck_interval_seconds"])
+        last_fsck_at = int(updated_monitor.get("last_fsck_at") or 0)
+        if now - last_fsck_at >= fsck_interval:
+            fsck_timeout = float(
+                repo_cfg.get("fsck_timeout_seconds", DEFAULT_FSCK_TIMEOUT)
+            )
+            fsck_result = run_git(
+                git_binary=git_binary,
+                repo_path=repo_path,
+                run_as_user=run_as_user,
+                arguments=["fsck", "--connectivity-only", "--no-dangling"],
+                timeout=fsck_timeout,
+            )
+            updated_monitor["last_fsck_at"] = now
+            updated_monitor["last_fsck_status"] = (
+                "ok" if fsck_result.returncode == 0 else "failed"
+            )
+            updated_monitor["last_fsck_error"] = fsck_result.stderr or None
+        result["fsck"] = {
+            "status": updated_monitor.get("last_fsck_status", "unknown"),
+            "checked_at": updated_monitor.get("last_fsck_at"),
+            "error": updated_monitor.get("last_fsck_error"),
+        }
+
+        remote_name = _optional_string(repo_cfg, "remote") or "origin"
+        remote_result = run_git(
+            git_binary=git_binary,
+            repo_path=repo_path,
+            run_as_user=run_as_user,
+            arguments=["ls-remote", "--exit-code", remote_name, f"refs/heads/{branch}"],
+            timeout=timeout,
+        )
+        remote_data: dict[str, Any]
+        if remote_result.returncode == 0 and remote_result.stdout:
+            remote_head = remote_result.stdout.split()[0]
+            updated_monitor["last_remote_contact_at"] = now
+            updated_monitor["last_remote_error"] = None
+            updated_monitor["last_remote_error_kind"] = None
+            if remote_head == head:
+                updated_monitor["last_synced_at"] = now
+                updated_monitor["mismatch_since"] = None
+                remote_data = {
+                    "status": "synced",
+                    "state_hint": 0,
+                    "verified_at": now,
+                    "local_head": head,
+                    "remote_head": remote_head,
+                    "branch": branch,
+                }
+            else:
+                mismatch_since = int(updated_monitor.get("mismatch_since") or now)
+                updated_monitor["mismatch_since"] = mismatch_since
+                grace = int(policy["remote_sync_grace_seconds"])
+                state_hint = 1 if now - mismatch_since <= grace else 2
+                remote_data = {
+                    "status": "mismatch",
+                    "state_hint": state_hint,
+                    "verified_at": now,
+                    "mismatch_since": mismatch_since,
+                    "local_head": head,
+                    "remote_head": remote_head,
+                    "branch": branch,
+                }
+        else:
+            error = remote_result.stderr or "Remote branch was not returned"
+            kind = (
+                "branch_missing"
+                if remote_result.returncode == 2
+                else _classify_remote_error(error)
+            )
+            updated_monitor["last_remote_error"] = error
+            updated_monitor["last_remote_error_kind"] = kind
+            updated_monitor["last_remote_error_at"] = now
+            last_synced_at = int(updated_monitor.get("last_synced_at") or 0)
+            max_age = int(policy["remote_verification_max_age_seconds"])
+            if kind in {"authentication", "branch_missing", "remote_missing"}:
+                state_hint = 2
+            elif kind == "network" and last_synced_at:
+                state_hint = 1 if now - last_synced_at <= max_age else 2
+            else:
+                state_hint = 3
+            remote_data = {
+                "status": "unreachable" if kind == "network" else kind,
+                "state_hint": state_hint,
+                "error": error,
+                "last_synced_at": last_synced_at or None,
+                "branch": branch,
+            }
+        result["remote"] = remote_data
+    except (CollectorError, OSError, ValueError) as exc:
+        result["error"] = _redact(exc)
+        # A configured local backup repository that cannot be opened or read is
+        # a confirmed break in the backup chain. Global executable/configuration
+        # failures are handled before repository inspection.
+        result["state_hint"] = 2
+    return result, updated_monitor
+
+
+def _merge_node_status(
+    api_node: Mapping[str, Any] | None,
+    hook_node: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    if api_node is None and hook_node is None:
+        return {
+            "present": False,
+            "status": "missing",
+            "last_attempt_at": None,
+            "last_success_at": None,
+        }
+    api_time = int(api_node.get("last_attempt_at") or 0) if api_node else 0
+    hook_time = int(hook_node.get("last_attempt_at") or 0) if hook_node else 0
+    if hook_time > api_time:
+        source = "hook"
+        status = str(hook_node.get("last_attempt_status") or "unknown")
+        last_attempt = hook_time
+    else:
+        source = "api"
+        status = str(api_node.get("status") or "never") if api_node else "unknown"
+        last_attempt = api_time or None
+    hook_success = int(hook_node.get("last_success_at") or 0) if hook_node else 0
+    api_success = (
+        api_time if api_node and str(api_node.get("status")) == "success" else 0
+    )
+    result = {
+        "present": api_node is not None,
+        "source": source,
+        "status": status.lower().lstrip(":"),
+        "last_attempt_at": last_attempt,
+        "last_success_at": max(hook_success, api_success) or None,
+        "persistent_state": hook_node is not None,
+    }
+    if hook_node:
+        result.update(
+            {
+                "last_error_type": hook_node.get("last_error_type"),
+                "last_error_reason": hook_node.get("last_error_reason"),
+                "last_store_at": hook_node.get("last_store_at"),
+                "ever_stored": bool(hook_node.get("ever_stored")),
+            }
+        )
+    return result
+
+
+def collect(config: Mapping[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    now = int(time.time())
+    policy = dict(_require_mapping(config["policy"], "policy"))
+    central: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "kind": "central",
+        "generated_at": now,
+        "policy": policy,
+        "inventory": {},
+        "repositories": [],
+    }
+
+    try:
+        inventory_payload = fetch_json(
+            _require_mapping(config["inventory"], "inventory"), "inventory"
+        )
+        inventory, inventory_errors = parse_inventory(inventory_payload)
+    except CollectorError as exc:
+        central["error"] = str(exc)
+        central["inventory"] = {"error": str(exc), "expected": 0}
+        return central, []
+
+    central["inventory"]["expected"] = len(inventory)
+    central["inventory"]["errors"] = inventory_errors
+
+    try:
+        oxidized_payload = fetch_json(
+            _require_mapping(config["oxidized"], "oxidized"), "Oxidized API"
+        )
+        oxidized_nodes, oxidized_errors = parse_oxidized_nodes(oxidized_payload)
+        api_error = None
+    except CollectorError as exc:
+        oxidized_nodes = []
+        oxidized_errors = []
+        api_error = str(exc)
+
+    hook_path = _safe_state_path(config, "hook_state_file")
+    try:
+        hook_state = _load_state(hook_path)
+        hook_error = None
+    except CollectorError as exc:
+        hook_state = {"nodes": {}}
+        hook_error = str(exc)
+    hook_nodes = _require_mapping(hook_state.get("nodes", {}), "hook state nodes")
+
+    api_by_name: dict[str, list[dict[str, Any]]] = {}
+    for node in oxidized_nodes:
+        api_by_name.setdefault(str(node["name"]), []).append(node)
+
+    expected_names = {str(record["hostname"]) for record in inventory}
+    orphan_nodes = sorted(
+        node["full_name"]
+        for node in oxidized_nodes
+        if str(node["name"]) not in expected_names
+    )
+    duplicate_api_names = sorted(
+        name for name, rows in api_by_name.items() if len(rows) > 1
+    )
+    missing_names = sorted(name for name in expected_names if name not in api_by_name)
+    central["inventory"].update(
+        {
+            "loaded": len(oxidized_nodes),
+            "matched": len(expected_names) - len(missing_names),
+            "missing": missing_names,
+            "orphans": orphan_nodes,
+            "duplicate_oxidized_names": duplicate_api_names,
+            "oxidized_errors": oxidized_errors,
+            "api_error": api_error,
+            "hook_state_available": hook_path.exists() and hook_error is None,
+            "hook_state_error": hook_error,
+        }
+    )
+
+    git_cfg = _require_mapping(config["git"], "git")
+    run_as_user = _required_string(git_cfg, "run_as_user", "git")
+    git_binary = str(git_cfg.get("git_binary", "/usr/bin/git"))
+    git_path = _absolute_path(git_binary, "git.git_binary")
+    if not git_path.exists() or not os.access(git_path, os.X_OK):
+        central["git_error"] = f"Configured Git executable is unavailable: {git_path}"
+    repositories = [
+        dict(_require_mapping(repo, "repository"))
+        for repo in _require_sequence(git_cfg["repositories"], "git.repositories")
+    ]
+
+    device_work: list[dict[str, Any]] = []
+    paths_by_repo: dict[str, list[str]] = {str(repo["id"]): [] for repo in repositories}
+    for item in inventory:
+        hostname = str(item["hostname"])
+        candidates = api_by_name.get(hostname, [])
+        api_node = candidates[0] if len(candidates) == 1 else None
+        group = api_node.get("group") if api_node else None
+        repo_cfg = _repository_for_group(repositories, group)
+        mapping_error = None
+        git_path_value = None
+        repo_id = None
+        if repo_cfg is None:
+            mapping_error = (
+                f"No unique Git repository mapping for group {group or 'default'}"
+            )
+        else:
+            repo_id = str(repo_cfg["id"])
+            try:
+                git_path_value = _safe_git_tree_path(
+                    group, hostname, single_repo=bool(repo_cfg["single_repo"])
+                )
+                paths_by_repo[repo_id].append(git_path_value)
+            except CollectorError as exc:
+                mapping_error = str(exc)
+        hook_node = hook_nodes.get(_node_key(group, hostname))
+        if not isinstance(hook_node, Mapping):
+            hook_node = None
+        device_work.append(
+            {
+                "inventory": item,
+                "api_node": api_node,
+                "api_ambiguous": len(candidates) > 1,
+                "hook_node": hook_node,
+                "repository_id": repo_id,
+                "git_path": git_path_value,
+                "mapping_error": mapping_error,
+            }
+        )
+
+    monitor_path = _safe_state_path(config, "monitor_state_file")
+    try:
+        monitor_state = _load_state(monitor_path)
+        monitor_error = None
+    except CollectorError as exc:
+        monitor_state = {
+            "schema_version": SCHEMA_VERSION,
+            "nodes": {},
+            "repositories": {},
+        }
+        monitor_error = str(exc)
+    monitor_repos = dict(monitor_state.get("repositories", {}))
+    inspected_by_id: dict[str, dict[str, Any]] = {}
+    new_monitor_repos: dict[str, Any] = {}
+    if "git_error" not in central:
+        for repo_cfg in repositories:
+            repo_id = str(repo_cfg["id"])
+            inspected, updated = inspect_repository(
+                repo_cfg,
+                git_binary=str(git_path),
+                run_as_user=run_as_user,
+                expected_paths=paths_by_repo.get(repo_id, []),
+                monitor_record=_require_mapping(
+                    monitor_repos.get(repo_id, {}), "monitor repository"
+                ),
+                policy=policy,
+                now=now,
+            )
+            inspected_by_id[repo_id] = inspected
+            new_monitor_repos[repo_id] = updated
+            central["repositories"].append(inspected)
+        monitor_state["schema_version"] = SCHEMA_VERSION
+        monitor_state["repositories"] = new_monitor_repos
+        try:
+            with _locked_state(monitor_path):
+                _atomic_write_json(monitor_path, monitor_state)
+        except CollectorError as exc:
+            monitor_error = str(exc)
+    central["monitor_state_error"] = monitor_error
+
+    devices: list[dict[str, Any]] = []
+    for work in device_work:
+        item = work["inventory"]
+        hostname = str(item["hostname"])
+        repo_id = work["repository_id"]
+        git_path_value = work["git_path"]
+        repo_data = inspected_by_id.get(str(repo_id)) if repo_id else None
+        artifact: dict[str, Any]
+        remote: dict[str, Any]
+        if repo_data and git_path_value:
+            artifact = dict(
+                repo_data.get("artifacts", {}).get(git_path_value, {"exists": False})
+            )
+            artifact.update(
+                {
+                    "repository_id": repo_id,
+                    "path": git_path_value,
+                    "repository_head": repo_data.get("head"),
+                }
+            )
+            remote = dict(repo_data.get("remote", {}))
+        else:
+            artifact = {
+                "exists": False,
+                "repository_id": repo_id,
+                "path": git_path_value,
+                "error": work["mapping_error"] or (repo_data or {}).get("error"),
+            }
+            remote = {"status": "unknown", "state_hint": 3}
+        devices.append(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "kind": "device",
+                "generated_at": now,
+                "host_name": hostname,
+                "os": item.get("os"),
+                "policy": policy,
+                "inventory_duplicate": bool(item.get("duplicate")),
+                "api_error": api_error,
+                "api_ambiguous": bool(work["api_ambiguous"]),
+                "oxidized": _merge_node_status(work["api_node"], work["hook_node"]),
+                "git": artifact,
+                "remote": remote,
+                "mapping_error": work["mapping_error"],
+            }
+        )
+    return central, devices
+
+
+def emit_section(payload: Mapping[str, Any]) -> None:
+    print("<<<oxidized_backup:sep(0)>>>")
+    print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+
+
+def emit_agent_output(
+    central: Mapping[str, Any], devices: Sequence[Mapping[str, Any]]
+) -> None:
+    emit_section(central)
+    for device in sorted(
+        devices, key=lambda item: str(item.get("host_name", "")).casefold()
+    ):
+        hostname = _validate_host_name(device.get("host_name"), "piggyback host name")
+        print(f"<<<<{hostname}>>>>")
+        emit_section(device)
+        print("<<<<>>>>")
+
+
+def parse_args(argv: Sequence[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Monitor Oxidized backups and Git replication"
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=Path(os.environ.get("OXIDIZED_BACKUP_CONFIG", DEFAULT_CONFIG)),
+        help=f"JSON configuration file (default: {DEFAULT_CONFIG})",
+    )
+    parser.add_argument(
+        "--record-hook",
+        action="store_true",
+        help="record the current Oxidized exec-hook event and exit",
+    )
+    parser.add_argument(
+        "--check-config",
+        action="store_true",
+        help="validate the configuration and exit",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(list(argv) if argv is not None else sys.argv[1:])
+    try:
+        config = load_config(args.config)
+        if args.check_config:
+            print(f"Configuration valid: {args.config}")
+            return 0
+        if args.record_hook:
+            record_hook(config, os.environ)
+            return 0
+        central, devices = collect(config)
+        emit_agent_output(central, devices)
+        return 0
+    except CollectorError as exc:
+        if args.record_hook or args.check_config:
+            print(f"oxidized_backup: {_redact(exc)}", file=sys.stderr)
+            return 1
+        emit_section(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "kind": "central",
+                "generated_at": int(time.time()),
+                "error": _redact(exc),
+                "inventory": {},
+                "repositories": [],
+            }
+        )
+        return 0
+    except Exception as exc:  # Defensive boundary: never break the Checkmk agent.
+        if args.record_hook or args.check_config:
+            print(f"oxidized_backup: unexpected error: {_redact(exc)}", file=sys.stderr)
+            return 1
+        emit_section(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "kind": "central",
+                "generated_at": int(time.time()),
+                "error": f"Unexpected collector error: {_redact(exc)}",
+                "inventory": {},
+                "repositories": [],
+            }
+        )
+        return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

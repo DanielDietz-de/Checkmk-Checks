@@ -1,124 +1,414 @@
 #!/usr/bin/env python3
+"""Export a validated Checkmk host inventory for Oxidized."""
 
-"""
-Kuhn & Rueß GmbH
-Consulting and Development
-https://kuhn-ruess.de
-"""
+from __future__ import annotations
 
-from logging import getLogger, basicConfig, INFO, DEBUG
-from os import getenv
-from os.path import isfile
-from json import dumps
-from re import search
-from requests import Session
-from subprocess import run
-from sys import argv
-from urllib3 import disable_warnings
+import argparse
+import ipaddress
+import json
+import os
+import re
+import shlex
+import stat
+import subprocess
+import sys
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
-disable_warnings()
+import requests
+
+MAX_RESPONSE_BYTES = 10 * 1024 * 1024
+OS_TAG_RE = re.compile(r"\[([A-Za-z0-9_.-]+)\]")
 
 
-def export(log=None, verify=True):
-    log.debug("Run export ...")
-    username = "oxidized"
-    secret = None
-    url = "https://016-mon-001/mon"
-    session = None
-    data = {}
+class ExportError(RuntimeError):
+    """Raised when an Oxidized export cannot be produced safely."""
 
-    log.debug("Read secret from automation user ...")
-    if not secret:
-        with open(
-            f"{getenv('OMD_ROOT', '')}/var/check_mk/web/{username}/automation.secret"
-        ) as passwd:
-            secret = passwd.read().strip()
 
-    headers = {
-        "Authorization": f"Bearer {username} {secret}",
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-    }
+def is_loopback_host(hostname: str | None) -> bool:
+    if hostname is None:
+        return False
+    if hostname.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
 
-    if not session:
-        session = Session()
 
-    log.debug("Read hosts from Checkmk ...")
-    response = session.request(
-        method="GET",
-        url=f"{url}/check_mk/view.py?view_name=oxidized_hosts&output_format=json",
-        headers=headers,
-        verify=verify,
+def validate_local_site_url(value: str, site: str) -> str:
+    parsed = urlsplit(value.strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ExportError("site URL must be an absolute HTTP or HTTPS URL")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ExportError("site URL must not contain credentials, query, or fragment")
+    if not is_loopback_host(parsed.hostname):
+        raise ExportError(
+            "the local automation secret may only be sent to a loopback address"
+        )
+    if parsed.path.rstrip("/") != f"/{site}":
+        raise ExportError(f"site URL path must be /{site}")
+    return urlunsplit((parsed.scheme, parsed.netloc, f"/{site}", "", ""))
+
+
+def validate_ca_bundle(value: Path | None) -> bool | str:
+    if value is None:
+        return True
+    if not value.is_absolute() or not value.is_file() or value.is_symlink():
+        raise ExportError("CA bundle must be an absolute regular file")
+    return str(value)
+
+
+def validate_secret_file(path: Path) -> Path:
+    if not path.is_absolute() or not path.is_file() or path.is_symlink():
+        raise ExportError("automation secret must be an absolute regular file")
+    mode = stat.S_IMODE(path.stat().st_mode)
+    if mode & 0o077:
+        raise ExportError("automation secret must not be accessible by group or others")
+    return path
+
+
+def ensure_managed_path(path: Path, omd_root: Path, label: str) -> Path:
+    if not path.is_absolute():
+        raise ExportError(f"{label} must be an absolute path")
+    resolved_parent = path.parent.resolve()
+    root = omd_root.resolve()
+    try:
+        resolved_parent.relative_to(root)
+    except ValueError as exc:
+        raise ExportError(f"{label} must be below OMD_ROOT") from exc
+    if path.exists() and path.is_symlink():
+        raise ExportError(f"{label} must not be a symlink")
+    return path
+
+
+def read_bounded_response(response: requests.Response) -> bytes:
+    content_length = response.headers.get("Content-Length")
+    if content_length:
+        try:
+            if int(content_length) > MAX_RESPONSE_BYTES:
+                raise ExportError("Checkmk response exceeds the size limit")
+        except ValueError:
+            pass
+    body = bytearray()
+    for chunk in response.iter_content(chunk_size=65536):
+        body.extend(chunk)
+        if len(body) > MAX_RESPONSE_BYTES:
+            raise ExportError("Checkmk response exceeds the size limit")
+    return bytes(body)
+
+
+def fetch_view(
+    *,
+    site_url: str,
+    username: str,
+    secret: str,
+    timeout: float,
+    verify: bool | str,
+) -> Any:
+    session = requests.Session()
+    session.trust_env = False
+    url = (
+        f"{site_url}/check_mk/view.py"
+        "?view_name=oxidized_hosts&output_format=json"
+    )
+    try:
+        response = session.get(
+            url,
+            headers={
+                "Authorization": f"Bearer {username} {secret}",
+                "Accept": "application/json",
+            },
+            timeout=timeout,
+            verify=verify,
+            allow_redirects=False,
+            stream=True,
+        )
+    except requests.RequestException as exc:
+        raise ExportError(f"Checkmk request failed: {exc}") from exc
+    if response.is_redirect:
+        raise ExportError("Checkmk returned an unexpected redirect")
+    body = read_bounded_response(response)
+    if not 200 <= response.status_code < 300:
+        detail = body.decode("utf-8", errors="replace").strip()
+        raise ExportError(
+            f"Checkmk returned HTTP {response.status_code}: "
+            f"{detail[:500] or 'no response body'}"
+        )
+    try:
+        return json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ExportError("Checkmk returned invalid JSON") from exc
+
+
+def parse_oxidized_view(data: Any) -> list[dict[str, str]]:
+    if not isinstance(data, list) or not data:
+        raise ExportError("view response must be a non-empty table")
+    rows = data[1:]
+    inventory: dict[str, str] = {}
+    for index, row in enumerate(rows, start=2):
+        if not isinstance(row, list) or len(row) < 2:
+            raise ExportError(f"view row {index} has fewer than two columns")
+        hostname, model_text = row[0], row[1]
+        if not isinstance(hostname, str) or not hostname.strip():
+            raise ExportError(f"view row {index} has no hostname")
+        if not isinstance(model_text, str):
+            raise ExportError(f"view row {index} has no OS tag column")
+        match = OS_TAG_RE.search(model_text)
+        if match is None:
+            raise ExportError(f"view row {index} has no valid [os] tag")
+        normalized_host = hostname.strip()
+        os_name = match.group(1)
+        previous = inventory.get(normalized_host)
+        if previous is not None and previous != os_name:
+            raise ExportError(
+                f"host {normalized_host!r} has conflicting OS tags "
+                f"{previous!r} and {os_name!r}"
+            )
+        inventory[normalized_host] = os_name
+    return [
+        {"hostname": hostname, "os": inventory[hostname]}
+        for hostname in sorted(inventory)
+    ]
+
+
+def atomic_write_json(path: Path, data: list[dict[str, str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o750)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        dir=path.parent,
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        os.fchmod(descriptor, 0o640)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+        directory_fd = os.open(path.parent, os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    except BaseException:
+        try:
+            temporary_path.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def invalidate_output(path: Path) -> Path | None:
+    if not path.exists():
+        return None
+    if path.is_symlink() or not path.is_file():
+        raise ExportError("existing output is not a regular file")
+    suffix = datetime.now(timezone.utc).strftime(".stale.%Y%m%dT%H%M%SZ")
+    stale_path = path.with_name(path.name + suffix)
+    os.replace(path, stale_path)
+    return stale_path
+
+
+def export_inventory(args: argparse.Namespace) -> int:
+    omd_root = Path(os.environ["OMD_ROOT"])
+    site = os.environ["OMD_SITE"]
+    output = ensure_managed_path(args.output, omd_root, "output")
+    site_url = validate_local_site_url(args.site_url, site)
+    secret_file = validate_secret_file(args.secret_file)
+    verify = validate_ca_bundle(args.ca_bundle)
+
+    try:
+        secret = secret_file.read_text(encoding="utf-8").strip()
+        if not secret:
+            raise ExportError("automation secret is empty")
+        raw = fetch_view(
+            site_url=site_url,
+            username=args.automation_user,
+            secret=secret,
+            timeout=args.timeout,
+            verify=verify,
+        )
+        inventory = parse_oxidized_view(raw)
+        atomic_write_json(output, inventory)
+    except (ExportError, OSError) as exc:
+        stale_path = invalidate_output(output)
+        if stale_path is not None:
+            print(f"Moved stale output to {stale_path}", file=sys.stderr)
+        raise ExportError(str(exc)) from exc
+
+    if args.stdout:
+        print(json.dumps(inventory, indent=2, sort_keys=True))
+    print(f"Wrote {len(inventory)} Oxidized host(s) to {output}", file=sys.stderr)
+    return 0
+
+
+def atomic_write_text(path: Path, content: str, mode: int = 0o640) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        dir=path.parent,
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        os.fchmod(descriptor, mode)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    except BaseException:
+        try:
+            temporary_path.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def install_schedule(args: argparse.Namespace) -> int:
+    omd_root = Path(os.environ["OMD_ROOT"]).resolve()
+    site = os.environ["OMD_SITE"]
+    if not 1 <= args.interval_minutes <= 59:
+        raise ExportError("interval must be between 1 and 59 minutes")
+
+    script = omd_root / "bin/export_oxidized"
+    output = ensure_managed_path(args.output, omd_root, "output")
+    lock_path = omd_root / "tmp/export_oxidized.lock"
+    log_path = omd_root / "var/log/export_oxidized.log"
+    cron_path = omd_root / "etc/cron.d/export_oxidized"
+    logrotate_path = omd_root / "etc/logrotate.d/export_oxidized"
+
+    command = [
+        str(script),
+        "export",
+        "--site-url",
+        validate_local_site_url(args.site_url, site),
+        "--automation-user",
+        args.automation_user,
+        "--secret-file",
+        str(validate_secret_file(args.secret_file)),
+        "--output",
+        str(output),
+        "--timeout",
+        str(args.timeout),
+    ]
+    if args.ca_bundle is not None:
+        command.extend(("--ca-bundle", str(validate_ca_bundle(args.ca_bundle))))
+    cron_command = " ".join(shlex.quote(part) for part in command)
+    cron = (
+        "# Managed by export_oxidized install-schedule\n"
+        f"*/{args.interval_minutes} * * * * "
+        f"flock -n {shlex.quote(str(lock_path))} {cron_command} "
+        f">> {shlex.quote(str(log_path))} 2>&1\n"
+    )
+    logrotate = (
+        f"{log_path} {{\n"
+        "    missingok\n"
+        "    rotate 7\n"
+        "    compress\n"
+        "    delaycompress\n"
+        "    notifempty\n"
+        "    copytruncate\n"
+        "}\n"
+    )
+    atomic_write_text(cron_path, cron)
+    atomic_write_text(logrotate_path, logrotate)
+    subprocess.run(
+        ["omd", "restart", "crontab"],
+        check=True,
+        timeout=30,
+        capture_output=True,
+        text=True,
+    )
+    print(f"Updated {cron_path} and {logrotate_path}")
+    return 0
+
+
+def remove_schedule() -> int:
+    omd_root = Path(os.environ["OMD_ROOT"])
+    for path in (
+        omd_root / "etc/cron.d/export_oxidized",
+        omd_root / "etc/logrotate.d/export_oxidized",
+    ):
+        try:
+            path.unlink()
+            print(f"Removed {path}")
+        except FileNotFoundError:
+            pass
+    subprocess.run(
+        ["omd", "restart", "crontab"],
+        check=True,
+        timeout=30,
+        capture_output=True,
+        text=True,
+    )
+    return 0
+
+
+def common_arguments(parser: argparse.ArgumentParser) -> None:
+    omd_root = Path(os.environ.get("OMD_ROOT", "/omd/sites/unknown"))
+    site = os.environ.get("OMD_SITE", "unknown")
+    parser.add_argument(
+        "--site-url",
+        default=f"http://localhost/{site}",
+        help="local Checkmk site URL; loopback and current site only",
+    )
+    parser.add_argument("--automation-user", default="oxidized")
+    parser.add_argument(
+        "--secret-file",
+        type=Path,
+        default=omd_root / "var/check_mk/web/oxidized/automation.secret",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=omd_root / "var/oxidized/oxidized.json",
+    )
+    parser.add_argument("--timeout", type=float, default=15.0)
+    parser.add_argument("--ca-bundle", type=Path)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    export_parser = subparsers.add_parser("export", help="generate the inventory")
+    common_arguments(export_parser)
+    export_parser.add_argument(
+        "--stdout",
+        action="store_true",
+        help="also print the generated JSON to stdout",
     )
 
-    if response.status_code >= 300 or "ERROR" in response.text:
-        log.error(f"Request failed: {response.text}")
+    install_parser = subparsers.add_parser(
+        "install-schedule", help="idempotently install cron and logrotate files"
+    )
+    common_arguments(install_parser)
+    install_parser.add_argument("--interval-minutes", type=int, default=15)
 
-    else:
-        data = response.json()
-        data_list = []
+    subparsers.add_parser("remove-schedule", help="remove managed scheduling files")
+    args = parser.parse_args(argv)
+    if hasattr(args, "timeout") and not 0.5 <= args.timeout <= 120:
+        parser.error("--timeout must be between 0.5 and 120 seconds")
+    return args
 
-        for line in data[1:]:
-            match = search(r"\[([A-Za-z0-9_]+)\]", line[1])
-            data_list.append({
-                'hostname' : line[0],
-                'os' : match.group(1),
-            })
-        print(dumps(data_list, indent=3))
 
-def cron(log=None):
-    # Logrotate
-    log.debug("Setup logrotate ...")
-    path = f"{getenv('OMD_ROOT', '')}/etc/logrotate.d/export_oxidized"
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    if args.command == "export":
+        return export_inventory(args)
+    if args.command == "install-schedule":
+        return install_schedule(args)
+    return remove_schedule()
 
-    if not isfile(path):
-        data = """/omd/sites/mon/var/log/export_oxidized.log {
-    missingok
-    rotate 7
-    compress
-    delaycompress
-    notifempty
-}
-"""
-        with open(path, "w") as f:
-            f.write(data)
-            f.close()
 
-    # cron
-    log.debug("Setup cronjob ...")
-    path = f"{getenv('OMD_ROOT', '')}/etc/cron.d/export_oxidized"
-
-    if not isfile(path):
-        data = """#
-# Export for Oxidized
-#
-*/15 * * * * (flock -n 200; mk-job oxidized-daily export_oxidized --cron --dis-verify 1>$OMD_ROOT/war/www/open/oxidized.json) 200>/omd/sites/mon/tmp/export_oxidized.lock
-"""
-        with open(path, "w") as f:
-            f.write(data)
-            f.close()
-
-        run("omd restart crontab", shell=True, capture_output=True)
-
-if __name__ == '__main__':
-    logger = getLogger(__name__)
-
-    if "--dis-verify" in argv:
-        disable_verify = False
-    else:
-        disable_verify = True
-
-    if "--debug" in argv:
-        logger.setLevel(DEBUG)
-    else:
-        logger.setLevel(INFO)
-
-    if "--cron" in argv:
-        basicConfig(format="%(asctime)s %(levelname)-5s: %(message)s", filename=f"{getenv('OMD_ROOT', '')}/var/log/export_oxidized.log", datefmt="%Y-%m-%d %H:%M:%S")
-        logger.debug("-" * 80)
-        cron(log=logger)
-
-    else:
-        basicConfig(format="%(asctime)s %(levelname)-5s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
-
-    export(log=logger, verify=disable_verify)
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (ExportError, OSError, subprocess.SubprocessError, KeyError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc

@@ -1,0 +1,23 @@
+title: Oxidized backup verification
+agents: cmk-agent
+catalog: hw/network
+license: MIT
+distribution: DanielDietz-de
+description:
+ Verifies the complete Oxidized backup chain for devices exported by Checkmk.
+ The Linux agent plug-in runs on the Oxidized host, reconciles Checkmk's existing
+ Oxidized JSON export with the Oxidized node API, verifies that a non-empty
+ configuration blob exists in the local Git repository, and checks that the
+ local repository HEAD matches the configured remote branch.
+
+ The agent plug-in emits one central section on the Oxidized host and one
+ piggyback section for every device in the Checkmk export. Persistent collection
+ timestamps are maintained through the supplied Oxidized exec-hook mode so that
+ a restart of the Oxidized process does not reset backup history to "never".
+
+ Remote Git synchronization is reported only on the central Oxidized host to
+ prevent one shared Git outage from creating an alert on every network device.
+inventory:
+ On every exported device, discovers "Oxidized backup". On the Oxidized host,
+ discovers "Oxidized backup inventory", "Oxidized Git repository", and
+ "Oxidized Git remote synchronization".

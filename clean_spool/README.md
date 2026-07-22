@@ -14,21 +14,24 @@ The script reads every file in `$OMD_ROOT/var/check_mk/notify/spool`, orders the
 - For services: the same logic keyed on `HOSTNAME###SERVICEDESC`.
 - At the end it prints a small ASCII summary of how many host/service state and downtime entries were removed and the total number of files inspected.
 
-The script uses `eval()` to parse the spool files (which are Python literal dicts written by Checkmk). It must be run as the site user so that `OMD_ROOT` is set correctly.
+Spool records are parsed with `ast.literal_eval`, never `eval`. Only dictionary records containing a dictionary `context` and the required string fields are accepted. Files larger than 1 MiB, malformed literals, executable expressions, and invalid schemas are skipped.
 
 ## Package contents
 
 | Path | Purpose |
 | --- | --- |
 | `src/bin/clean_spoolfiles` | Python script installed as `bin/clean_spoolfiles` in the site. |
+| `tests/test_parser.py` | Regression tests for non-executable spool parsing. |
 
 ## Installation
 
 1. Install the MKP on the Checkmk site.
-2. Run `clean_spoolfiles` as the site user when the notification spooler is backed up. There is no scheduled trigger — you run it manually (or wire it into a cron of your choice).
+2. Run `clean_spoolfiles` as the site user when the notification spooler is backed up. There is no scheduled trigger — you run it manually or wire it into a cron of your choice.
 
-## Known limitations
+## Remaining operational limitations
 
-- Destructive: matching spool files are unlinked, not quarantined.
-- Uses `eval()` on spool file content. This assumes the files were written by the Checkmk notification spooler itself.
-- No locking against a concurrently running notification spooler.
+- Matching spool files are still unlinked directly rather than quarantined.
+- The command does not yet lock against a concurrently running notification spooler.
+- The command is destructive by default.
+
+Those deletion-safety concerns are handled in a separate change so this parser fix remains reviewable in isolation.

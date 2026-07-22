@@ -4,58 +4,91 @@
 ![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.3.0b1-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.4.0p5-blue)
 <!-- compatibility-badges:end -->
 
-Exports a list of hosts from Checkmk for consumption by
-[Oxidized](https://github.com/ytti/oxidized) (network device configuration
-backup). The script runs every 15 minutes on the Checkmk site and writes a
-JSON file containing hostname and OS for each host returned by a dedicated
-Checkmk view.
+Exports the validated `oxidized_hosts` Checkmk view as a private JSON inventory for Oxidized.
 
-## How it works
+## Security model
 
-1. The helper script [`export_oxidized`](src/bin/export_oxidized) runs on
-   the Checkmk site.
-2. It reads the automation secret of the `oxidized` automation user from
-   `$OMD_ROOT/var/check_mk/web/oxidized/automation.secret`.
-3. It queries the Checkmk REST view `oxidized_hosts` with
-   `output_format=json` and extracts hostname and OS tag (matched from the
-   second column) for each host.
-4. Output is printed as a JSON list:
+- The local automation secret may be sent only to the current Checkmk site through `localhost`, `127.0.0.0/8`, or `::1`.
+- The default URL is `http://localhost/$OMD_SITE`; cleartext HTTP is never accepted for a non-loopback host.
+- HTTPS uses the system trust store or an explicitly configured private CA bundle. Certificate verification cannot be disabled.
+- Redirects and proxy environment variables are disabled for authenticated requests.
+- The automation secret file must be a regular, non-symlink file with no group or other permissions.
+- Responses are capped at 10 MiB and must contain a valid two-column view table.
+- Every hostname and `[os]` tag is validated. Conflicting duplicate hosts fail the complete export.
+- Output paths must remain below `OMD_ROOT` and may not be symlinks.
+- Output is written atomically with mode `0640`.
+- On any failed refresh, the active output is renamed to a timestamped `.stale.*` file so consumers cannot silently continue using an old active inventory.
+- The exporter returns a non-zero status for request, validation, write, or scheduling failures.
 
-   ```text
-   [
-      { "hostname": "sw1.example", "os": "ios" },
-      { "hostname": "rtr2.example", "os": "junos" }
-   ]
-   ```
+## Output
 
-5. When invoked with `--cron`, it also installs a logrotate config at
-   `etc/logrotate.d/export_oxidized` and a cron entry under
-   `etc/cron.d/export_oxidized` that runs the export every 15 minutes and
-   writes the JSON to `$OMD_ROOT/var/www/open/oxidized.json`.
+The default output is:
+
+```text
+$OMD_ROOT/var/oxidized/oxidized.json
+```
+
+It is not published below `var/www/open`. Provide Oxidized with local filesystem access through an appropriately restricted account or expose the file through an authenticated service under your own access-control policy.
+
+## Commands
+
+Generate the inventory:
+
+```text
+export_oxidized export
+```
+
+Also print the generated JSON:
+
+```text
+export_oxidized export --stdout
+```
+
+Install or update the managed cron and logrotate configuration:
+
+```text
+export_oxidized install-schedule --interval-minutes 15
+```
+
+Remove the managed schedule:
+
+```text
+export_oxidized remove-schedule
+```
+
+`install-schedule` always rewrites the managed files using the current `OMD_ROOT`, `OMD_SITE`, output path, automation user, timeout, and CA bundle. It does not preserve stale hard-coded content from an earlier installation.
+
+## Important options
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--site-url` | `http://localhost/$OMD_SITE` | Current site on loopback only. |
+| `--automation-user` | `oxidized` | Automation user used to read the view. |
+| `--secret-file` | `$OMD_ROOT/var/check_mk/web/oxidized/automation.secret` | Restrictively permissioned automation secret. |
+| `--output` | `$OMD_ROOT/var/oxidized/oxidized.json` | Private active inventory below `OMD_ROOT`. |
+| `--timeout` | `15` | Per-request timeout, constrained to 0.5–120 seconds. |
+| `--ca-bundle` | system trust | Optional absolute private CA bundle for HTTPS. |
+| `--interval-minutes` | `15` | Schedule interval for `install-schedule`. |
+
+## Checkmk view requirements
+
+Create a view named `oxidized_hosts` with:
+
+1. hostname in the first column;
+2. an OS tag such as `[ios]`, `[junos]`, or `[picos]` in the second column.
+
+Rows without a valid OS tag fail the export instead of creating a partial inventory.
+
+## Migration from 1.0.x
+
+- Remove any old file from `$OMD_ROOT/var/www/open/oxidized.json` after consumers are migrated.
+- Run `export_oxidized install-schedule` to replace the old hard-coded cron and logrotate files.
+- Configure Oxidized to read the new private output or an authenticated endpoint serving it.
+- The historical `--cron` and `--dis-verify` flags are removed.
 
 ## Package contents
 
 | Path | Purpose |
 | --- | --- |
-| `src/bin/export_oxidized` | Site script: queries Checkmk view and emits the Oxidized host list as JSON. Self-installs cronjob and logrotate when run with `--cron`. |
-
-## Installation
-
-1. Install the MKP on the Checkmk site.
-2. Create an automation user named `oxidized` and grant it permission to
-   read the view `oxidized_hosts` (you must create this view so it returns
-   the hostnames and an OS tag of the form `[os_name]` in the second
-   column).
-3. Run `export_oxidized --cron` once on the site to install the logrotate
-   config and the cron entry. From then on the export runs every 15 minutes
-   and the resulting JSON file is served from
-   `$OMD_ROOT/var/www/open/oxidized.json`, ready to be consumed by Oxidized
-   as a source.
-
-## Known limitations
-
-- The target URL is hardcoded to `https://016-mon-001/mon` inside the
-  script — adjust the script for your site before installing.
-- The cron entry and lock file paths are hardcoded to the `mon` site.
-- TLS verification is disabled by default and only re-enabled with the
-  `--dis-verify` flag.
+| `src/bin/export_oxidized` | Export, schedule installation, and schedule removal command. |
+| `tests/test_export_oxidized.py` | URL, parser, output, stale-state, permission, and path regression tests. |

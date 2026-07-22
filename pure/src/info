@@ -1,9 +1,5 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Pure checks For Devices, Fans, Interfaces etc.\n'
-                '\n'
-                'Login Tokens:\n'
-                'You need to create in Pure Storage Interface -> Settings -> '
-                'Api Client or CLI: pureadmin create --api-token\n',
+ 'description': 'Pure checks For Devices, Fans, Interfaces etc.\n\nLogin Tokens:\nYou need to create in Pure Storage Interface -> Settings -> Api Client or CLI: pureadmin create --api-token\n',
  'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
  'files': {'cmk_addons_plugins': ['pure/agent_based/alerts.py',
                                   'pure/agent_based/array.py',
@@ -23,6 +19,6 @@
                                   'pure/graphing/arraydetails.py']},
  'name': 'pure',
  'title': 'Pure checks',
- 'version': '2.0.5',
+ 'version': '2.0.6',
  'version.min_required': '2.3.0b1',
  'version.packaged': '2.3.0p30'}

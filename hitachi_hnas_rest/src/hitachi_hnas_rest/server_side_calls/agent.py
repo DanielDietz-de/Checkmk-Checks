@@ -1,10 +1,5 @@
-"""
-Hitachi HNAS REST API Special Agent
+"""Server-side command wiring for Hitachi HNAS REST monitoring."""
 
-Kuhn & Rueß GmbH
-Consulting and Development
-https://kuhn-ruess.de
-"""
 from cmk.server_side_calls.v1 import (
     HostConfig,
     Secret,
@@ -15,9 +10,6 @@ from cmk.server_side_calls.v1 import (
 
 
 def _agent_arguments(params, host_config: HostConfig):
-    """
-    Build Special Agent Command Line
-    """
     address_mode, address_value = params["address"]
     if address_mode == "ip":
         address = host_config.primary_ip_config.address
@@ -27,19 +19,26 @@ def _agent_arguments(params, host_config: HostConfig):
         address = host_config.name
 
     args: list[str | Secret] = [
-        "--host-address", address,
-        "--port", str(params.get("port", 8444)),
-        "--timeout", str(params.get("timeout", 30)),
+        "--host-address",
+        address,
+        "--port",
+        str(params.get("port", 8444)),
+        "--timeout",
+        str(params.get("timeout", 30)),
     ]
 
     auth_method, auth = params["auth"]
     if auth_method == "api_key":
-        args += ["--api-key", auth["key"].unsafe()]
+        args.extend(("--api-key", auth["key"]))
     else:
-        args += [
-            "--user", auth["username"],
-            "--password", auth["password"].unsafe(),
-        ]
+        args.extend(
+            (
+                "--user",
+                auth["username"],
+                "--password",
+                auth["password"],
+            )
+        )
 
     if params.get("no_cert_check"):
         args.append("--no-cert-check")
