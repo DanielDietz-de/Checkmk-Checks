@@ -34,13 +34,10 @@ env:
   USABLE_UNTIL: 2.5.99
 
 jobs:
-  build:
-    name: Build all active MKPs
+  tests:
+    name: Run all package tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    outputs:
-      artifact-name: ${{ steps.metadata.outputs.artifact-name }}
-      package-count: ${{ steps.metadata.outputs.package-count }}
 
     steps:
       - name: Check out repository
@@ -62,16 +59,55 @@ jobs:
           ruff check --select E9,F63,F7,F82 .github/scripts create_mkp_index.py
           python -m compileall -q .github/scripts create_mkp_index.py
 
-      - name: Run all package test suites
+      - name: Execute every package test suite
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          : > package-tests.log
+          failures=()
           shopt -s nullglob
           test_dirs=(*/tests)
           for test_dir in "${test_dirs[@]}"; do
-            echo "::group::pytest ${test_dir}"
-            pytest -q "$test_dir"
-            echo "::endgroup::"
+            echo "===== pytest ${test_dir} =====" | tee -a package-tests.log
+            if pytest -q "$test_dir" 2>&1 | tee -a package-tests.log; then
+              echo "PASS ${test_dir}" | tee -a package-tests.log
+            else
+              echo "FAIL ${test_dir}" | tee -a package-tests.log
+              failures+=("$test_dir")
+            fi
           done
+          if ((${#failures[@]})); then
+            printf 'Failed package test suites:\n' | tee -a package-tests.log
+            printf ' - %s\n' "${failures[@]}" | tee -a package-tests.log
+            exit 1
+          fi
+
+      - name: Upload package test log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: repository-package-tests
+          path: package-tests.log
+          if-no-files-found: error
+          retention-days: 7
+
+  build:
+    name: Build all active MKPs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      artifact-name: ${{ steps.metadata.outputs.artifact-name }}
+      package-count: ${{ steps.metadata.outputs.package-count }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
 
       - name: Build deterministic MKPs
         run: |
@@ -200,6 +236,7 @@ jobs:
   persist:
     name: Commit complete validated MKP set
     needs:
+      - tests
       - build
       - validate
     if: >-
