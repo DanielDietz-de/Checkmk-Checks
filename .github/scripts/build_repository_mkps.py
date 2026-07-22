@@ -24,25 +24,27 @@ from typing import Any
 PACKAGED_VERSION = "2.5.0p9"
 USABLE_UNTIL = "2.5.99"
 
-# Source roots below <package>/src for each Checkmk package component.
+# Source roots below <package>/src for each Checkmk package component. Some
+# packages retain the older cmk/plugins source layout while their MKP component
+# is still named cmk_plugins. Keep both layouts readable during normalization.
 _COMPONENT_SOURCE_ROOTS = {
-    "agent_based": Path("base/plugins/agent_based"),
-    "agents": Path("agents"),
-    "alert_handlers": Path("alert_handlers"),
-    "bin": Path("bin"),
-    "checkman": Path("checkman"),
-    "checks": Path("checks"),
-    "cmk_addons_plugins": Path("."),
-    "cmk_plugins": Path("cmk_plugins"),
-    "doc": Path("doc"),
-    "inventory": Path("inventory"),
-    "lib": Path("lib"),
-    "locales": Path("locales"),
-    "mibs": Path("mibs"),
-    "notifications": Path("notifications"),
-    "pnp-rraconf": Path("pnp-rraconf"),
-    "pnp-templates": Path("pnp-templates"),
-    "web": Path("web"),
+    "agent_based": (Path("base/plugins/agent_based"),),
+    "agents": (Path("agents"),),
+    "alert_handlers": (Path("alert_handlers"),),
+    "bin": (Path("bin"),),
+    "checkman": (Path("checkman"),),
+    "checks": (Path("checks"),),
+    "cmk_addons_plugins": (Path("."),),
+    "cmk_plugins": (Path("cmk_plugins"), Path("cmk/plugins")),
+    "doc": (Path("doc"),),
+    "inventory": (Path("inventory"),),
+    "lib": (Path("lib"),),
+    "locales": (Path("locales"),),
+    "mibs": (Path("mibs"),),
+    "notifications": (Path("notifications"),),
+    "pnp-rraconf": (Path("pnp-rraconf"),),
+    "pnp-templates": (Path("pnp-templates"),),
+    "web": (Path("web"),),
 }
 
 
@@ -118,22 +120,30 @@ def _safe_relative_path(value: str) -> PurePosixPath:
 
 
 def _source_path(package_dir: Path, component: str, relative: str) -> Path:
-    root = package_dir / "src" / _COMPONENT_SOURCE_ROOTS[component]
     safe_relative = _safe_relative_path(relative)
-    source = root.joinpath(*safe_relative.parts)
-    if not source.exists() and not source.is_symlink():
-        raise FileNotFoundError(
-            f"{package_dir.name}: missing source for {component}:{relative} at {source}"
-        )
-    resolved_root = root.resolve()
-    if source.is_symlink():
-        # Symlinks are archived as symlinks; only their path location must remain inside the source root.
-        parent = source.parent.resolve()
-        if not parent.is_relative_to(resolved_root):
-            raise ValueError(f"{source}: symlink parent escapes package source root")
-    elif not source.resolve().is_relative_to(resolved_root):
-        raise ValueError(f"{source}: source path escapes package source root")
-    return source
+    candidates: list[Path] = []
+    for source_root in _COMPONENT_SOURCE_ROOTS[component]:
+        root = package_dir / "src" / source_root
+        source = root.joinpath(*safe_relative.parts)
+        candidates.append(source)
+        if not source.exists() and not source.is_symlink():
+            continue
+
+        resolved_root = root.resolve()
+        if source.is_symlink():
+            # Symlinks are archived as symlinks; only their location must remain
+            # inside the selected package source root.
+            parent = source.parent.resolve()
+            if not parent.is_relative_to(resolved_root):
+                raise ValueError(f"{source}: symlink parent escapes package source root")
+        elif not source.resolve().is_relative_to(resolved_root):
+            raise ValueError(f"{source}: source path escapes package source root")
+        return source
+
+    raise FileNotFoundError(
+        f"{package_dir.name}: missing source for {component}:{relative}; "
+        f"checked {[str(path) for path in candidates]}"
+    )
 
 
 def _tarinfo_for(source: Path, arcname: str) -> tuple[tarfile.TarInfo, io.BufferedReader | None]:
