@@ -15,6 +15,7 @@
                                    'acgateway/checkman/acgateway_ha',
                                    'acgateway/checkman/acgateway_ipgroup',
                                    'acgateway/checkman/acgateway_license',
+                                   'acgateway/checkman/acgateway_mediarealm',
                                    'acgateway/checkman/acgateway_sipinterface',
                                    'acgateway/checkman/acgateway_tls',
                                    'acgateway/graphing/acgateway.py',
