@@ -1,7 +1,7 @@
 # switch_port_sync
 
 <!-- compatibility-badges:start -->
-![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.4.0b1-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.5.0p9-blue) ![usable until](https://img.shields.io/badge/usable%20until-2.5.99-green)
+![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.4.0p5-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.5.0p9-blue) ![usable until](https://img.shields.io/badge/usable%20until-2.5.99-green)
 <!-- compatibility-badges:end -->
 
 Checkmk 2.4 and 2.5 extension for monitoring one-to-one interface synchronization across a pair of switches. The repository folder, technical package, and plug-in name are all `switch_port_sync`.
@@ -78,7 +78,7 @@ mkp enable switch_port_sync 1.0.2
 cmk -R
 ```
 
-The workflow loads the source on Checkmk 2.4.0p34 and 2.5.0p9. The MKP itself is generated and inspected by Checkmk 2.5.0p9 and declares `version.usable_until: 2.5.99` only after both compatibility jobs pass.
+The workflow loads the source on Checkmk 2.4.0p5, 2.4.0p34 and 2.5.0p9. It also runs the packaged special agent's `--help` smoke test. The MKP itself is generated, inspected and archive-verified by Checkmk 2.5.0p9 and declares `version.usable_until: 2.5.99` only after all compatibility jobs pass.
 
 ### Source installation
 
