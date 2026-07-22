@@ -33,8 +33,9 @@ jobs:
       package_title: AudioCode Gateway
       package_author: Kuhn & Rueß GmbH
       package_description: SNMP checks for AudioCodes SIP gateways
-      min_required: 2.4.0b1
+      min_required: 2.4.0p5
       test_dir: acgateway/tests
+      caller_workflow: .github/workflows/acgateway-ci.yml
       manual_checks: >-
         acgateway_call_capacity
         acgateway_ha
