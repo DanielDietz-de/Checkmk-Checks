@@ -113,6 +113,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Prepare repository-wide release manifests
+        run: >-
+          python .github/scripts/prepare_repository_mkp_release.py
+          --repository .
+
       - name: Build deterministic MKPs
         run: |
           set -euo pipefail
@@ -267,6 +272,12 @@ jobs:
           name: ${{ needs.build.outputs.artifact-name }}
           path: ${{ env.DIST_DIR }}
 
+      - name: Prepare canonical release metadata
+        run: >-
+          python .github/scripts/prepare_repository_mkp_release.py
+          --repository .
+          --complete
+
       - name: Verify and stage complete package set
         run: |
           set -euo pipefail
@@ -275,7 +286,8 @@ jobs:
           import json
           import os
           import shutil
-          from pathlib import Path
+          import tarfile
+          from pathlib import Path, PurePosixPath
 
           dist = Path(os.environ["DIST_DIR"])
           packages = json.loads((dist / "packages.json").read_text(encoding="utf-8"))
@@ -288,9 +300,26 @@ jobs:
                   raise SystemExit(f"Checksum mismatch: {source}")
               target_dir = Path(package["package_dir"])
               target_dir.mkdir(parents=True, exist_ok=True)
+              for old_package in target_dir.glob("*.mkp"):
+                  old_package.unlink()
+              for old_checksum in target_dir.glob("*.mkp.sha256"):
+                  old_checksum.unlink()
+
+              with tarfile.open(source, mode="r:gz") as archive:
+                  info_member = next(
+                      member
+                      for member in archive.getmembers()
+                      if PurePosixPath(member.name).name == "info"
+                  )
+                  info_file = archive.extractfile(info_member)
+                  if info_file is None:
+                      raise SystemExit(f"Unable to read manifest from {source}")
+                  (target_dir / "src" / "info").write_bytes(info_file.read())
+
               shutil.copy2(source, target_dir / source.name)
               shutil.copy2(checksum, target_dir / checksum.name)
           PY
+          python update_readmes.py
           python create_mkp_index.py
 
       - name: Commit package set if source is still current
@@ -302,7 +331,7 @@ jobs:
           remote_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- '*/' mkp_index.json
+          git add -- '*/' mkp_index.json .github/repository-mkp-release.json
           if git diff --cached --quiet; then
             echo "Repository MKP set is unchanged; nothing to commit."
             exit 0
@@ -314,7 +343,9 @@ jobs:
             '*/src/**' \
             .github/scripts \
             .github/workflows/repository-mkp-ci.yml \
-            create_mkp_index.py; then
+            .github/repository-mkp-release.json \
+            create_mkp_index.py \
+            update_readmes.py; then
             echo "Package inputs changed on master; refusing to publish a stale repository MKP set." >&2
             exit 0
           fi
