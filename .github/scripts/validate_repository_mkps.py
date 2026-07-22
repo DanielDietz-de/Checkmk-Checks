@@ -150,14 +150,15 @@ def main() -> None:
             raise ValueError(f"{package_path}: metadata index mismatch")
 
         print(
-            f"Validating {package['name']} {package['version']} from {package['package_dir']}",
+            f"Installing {package['name']} {package['version']} from {package['package_dir']}",
             flush=True,
         )
+        # The deterministic builder has already inspected the outer archive,
+        # every component inventory, and the SHA-256 checksum. The clean-site
+        # phase therefore concentrates on Checkmk's own add/enable semantics.
         commands = [
-            ["mkp", "inspect", str(package_path)],
             ["mkp", "add", str(package_path)],
             ["mkp", "enable", package["name"], package["version"]],
-            ["mkp", "files", package["name"], package["version"]],
         ]
         package_succeeded = True
         for command in commands:
