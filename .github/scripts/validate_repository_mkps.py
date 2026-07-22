@@ -8,9 +8,21 @@ import ast
 import json
 import re
 import subprocess
+import sys
 import tarfile
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
+
+
+@dataclass(frozen=True)
+class CommandFailure:
+    package_dir: str
+    package_name: str
+    package_version: str
+    command: tuple[str, ...]
+    returncode: int
+    output: str
 
 
 def _parse_args() -> argparse.Namespace:
@@ -35,9 +47,18 @@ def _supports_target(min_required: str, target: str) -> bool:
     return _version_key(min_required) <= _version_key(target)
 
 
-def _run(command: list[str]) -> None:
+def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
     print("+", " ".join(command), flush=True)
-    subprocess.run(command, check=True)
+    completed = subprocess.run(
+        command,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    if completed.stdout:
+        print(completed.stdout, end="" if completed.stdout.endswith("\n") else "\n", flush=True)
+    return completed
 
 
 def _manifest(package_path: Path) -> dict[str, Any]:
@@ -69,6 +90,42 @@ def _manual_names(manifest: dict[str, Any]) -> set[str]:
     return names
 
 
+def _record_failure(
+    failures: list[CommandFailure],
+    package: dict[str, str],
+    command: list[str],
+    completed: subprocess.CompletedProcess[str],
+) -> None:
+    failures.append(
+        CommandFailure(
+            package_dir=package["package_dir"],
+            package_name=package["name"],
+            package_version=package["version"],
+            command=tuple(command),
+            returncode=completed.returncode,
+            output=completed.stdout or "",
+        )
+    )
+
+
+def _print_failures(failures: list[CommandFailure], target: str) -> None:
+    print("\n=== REPOSITORY MKP VALIDATION FAILURES ===", file=sys.stderr)
+    print(f"Checkmk target: {target}", file=sys.stderr)
+    print(f"Failure count: {len(failures)}", file=sys.stderr)
+    for index, failure in enumerate(failures, start=1):
+        print(
+            f"\n[{index}] {failure.package_dir} "
+            f"({failure.package_name} {failure.package_version})",
+            file=sys.stderr,
+        )
+        print(f"Command: {' '.join(failure.command)}", file=sys.stderr)
+        print(f"Exit code: {failure.returncode}", file=sys.stderr)
+        if failure.output:
+            print("Command output:", file=sys.stderr)
+            print(failure.output.rstrip(), file=sys.stderr)
+    print("=== END REPOSITORY MKP VALIDATION FAILURES ===", file=sys.stderr)
+
+
 def main() -> None:
     args = _parse_args()
     dist = args.dist.resolve()
@@ -76,6 +133,8 @@ def main() -> None:
 
     installed: list[dict[str, str]] = []
     manuals: set[str] = set()
+    failures: list[CommandFailure] = []
+
     for package in metadata:
         if not _supports_target(package["min_required"], args.checkmk_version):
             print(
@@ -94,24 +153,46 @@ def main() -> None:
             f"Validating {package['name']} {package['version']} from {package['package_dir']}",
             flush=True,
         )
-        try:
-            _run(["mkp", "inspect", str(package_path)])
-            _run(["mkp", "add", str(package_path)])
-            _run(["mkp", "enable", package["name"], package["version"]])
-            _run(["mkp", "files", package["name"], package["version"]])
-        except subprocess.CalledProcessError as exc:
-            raise SystemExit(
-                f"Package installation failed for {package['package_dir']} "
-                f"({package['name']} {package['version']}): {exc}"
-            ) from exc
+        commands = [
+            ["mkp", "inspect", str(package_path)],
+            ["mkp", "add", str(package_path)],
+            ["mkp", "enable", package["name"], package["version"]],
+            ["mkp", "files", package["name"], package["version"]],
+        ]
+        package_succeeded = True
+        for command in commands:
+            completed = _run(command)
+            if completed.returncode != 0:
+                _record_failure(failures, package, command, completed)
+                package_succeeded = False
+                break
+
+        if not package_succeeded:
+            continue
 
         manuals.update(_manual_names(manifest))
         installed.append(package)
 
-    _run(["cmk-validate-plugins"])
-    for manual in sorted(manuals):
-        _run(["cmk", "-M", manual])
-    _run(["cmk", "-R"])
+    if failures:
+        _print_failures(failures, args.checkmk_version)
+        raise SystemExit(1)
+
+    global_package = {
+        "package_dir": "<repository>",
+        "name": "<repository>",
+        "version": args.checkmk_version,
+    }
+    global_commands = [["cmk-validate-plugins"]]
+    global_commands.extend(["cmk", "-M", manual] for manual in sorted(manuals))
+    global_commands.append(["cmk", "-R"])
+    for command in global_commands:
+        completed = _run(command)
+        if completed.returncode != 0:
+            _record_failure(failures, global_package, command, completed)
+
+    if failures:
+        _print_failures(failures, args.checkmk_version)
+        raise SystemExit(1)
 
     print(
         f"Validated {len(installed)} packages on Checkmk {args.checkmk_version}",
