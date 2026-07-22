@@ -17,17 +17,21 @@ _BAKERY_RELATIVE_IMPORT = "from .bakery_api.v1 import"
 _BAKERY_LIBRARY_ROOT = Path("lib/python3/cmk/base/cee/plugins/bakery")
 _ALERTMANAGER_PACKAGE = "alertmanager_extended"
 _ALERTMANAGER_PLUGIN = Path("src/cmk_plugins/collection/agent_based/alertmanager.py")
-_ALERTMANAGER_RULESET = Path("src/kr_alertmanager/rulesets/alertmanager.py")
+_ALERTMANAGER_LEGACY_RULESET = Path("src/kr_alertmanager/rulesets/alertmanager.py")
+_ALERTMANAGER_OVERRIDE_RULESET = Path("src/alertmanager/rulesets/alertmanager.py")
+_ALERTMANAGER_LEGACY_MANIFEST_ENTRY = "kr_alertmanager/rulesets/alertmanager.py"
+_ALERTMANAGER_OVERRIDE_MANIFEST_ENTRY = "alertmanager/rulesets/alertmanager.py"
 _ALERTMANAGER_RULESET_REFERENCES = {
     'check_ruleset_name="alertmanager_rule_state_custom"':
         'check_ruleset_name="alertmanager_rule_state"',
     'check_ruleset_name="alertmanager_rule_state_summary_custom"':
         'check_ruleset_name="alertmanager_rule_state_summary"',
 }
-_ALERTMANAGER_RULESET_DECLARATIONS = (
-    'name="alertmanager_rule_state_custom"',
-    'name="alertmanager_rule_state_summary_custom"',
-)
+_ALERTMANAGER_RULESET_DECLARATIONS = {
+    'name="alertmanager_rule_state_custom"': 'name="alertmanager_rule_state"',
+    'name="alertmanager_rule_state_summary_custom"':
+        'name="alertmanager_rule_state_summary"',
+}
 _ALERTMANAGER_DEBUG_PRINTS = (
     '                print("got severity: %s" % severity)\n',
     '                                print("set status to CRIT")\n',
@@ -126,57 +130,86 @@ def _normalize_bakery_module(package_dir: Path, manifest: dict[str, Any]) -> lis
     return [f"{legacy_entry} -> lib/{library_path}"]
 
 
-def _normalize_alertmanager_ruleset_references(package_dir: Path) -> list[str]:
-    """Align custom Alertmanager overrides with Checkmk's normalized rule names.
+def _normalize_alertmanager_override(
+    package_dir: Path,
+    manifest: dict[str, Any],
+) -> list[str]:
+    """Convert the extended Alertmanager package into a true built-in override.
 
-    ``CheckParameters`` declarations ending in ``_custom`` intentionally override
-    the built-in rule specs. Checkmk exposes those declarations under the base
-    name, so check plug-ins must reference the normalized name without the suffix.
+    Checkmk already ships ``alertmanager_rule_state`` rulesets. A parallel
+    ``*_custom`` ruleset leaves either the built-in or custom ruleset unused and
+    cannot validate defaults containing the extension's ``severity_state`` key.
+    Installing the extended ruleset in the same add-on family with the same base
+    names lets the local package override the built-in implementation cleanly.
     """
 
     if package_dir.name != _ALERTMANAGER_PACKAGE:
         return []
 
     plugin_path = package_dir / _ALERTMANAGER_PLUGIN
-    ruleset_path = package_dir / _ALERTMANAGER_RULESET
-    if not plugin_path.is_file() or not ruleset_path.is_file():
-        raise FileNotFoundError(
-            f"{package_dir}: Alertmanager plug-in or ruleset source is missing"
-        )
+    legacy_ruleset_path = package_dir / _ALERTMANAGER_LEGACY_RULESET
+    override_ruleset_path = package_dir / _ALERTMANAGER_OVERRIDE_RULESET
+    if not plugin_path.is_file():
+        raise FileNotFoundError(f"{package_dir}: Alertmanager check plug-in is missing")
 
-    ruleset_content = ruleset_path.read_text(encoding="utf-8")
-    missing_declarations = [
-        declaration
-        for declaration in _ALERTMANAGER_RULESET_DECLARATIONS
-        if declaration not in ruleset_content
-    ]
-    if missing_declarations:
-        raise ValueError(
-            f"{ruleset_path}: missing custom override declarations {missing_declarations}"
-        )
+    if legacy_ruleset_path.is_file():
+        ruleset_content = legacy_ruleset_path.read_text(encoding="utf-8")
+    elif override_ruleset_path.is_file():
+        ruleset_content = override_ruleset_path.read_text(encoding="utf-8")
+    else:
+        raise FileNotFoundError(f"{package_dir}: Alertmanager ruleset source is missing")
 
-    content = plugin_path.read_text(encoding="utf-8")
-    original = content
     migrations: list[str] = []
-    for legacy, normalized in _ALERTMANAGER_RULESET_REFERENCES.items():
-        if legacy in content:
-            content = content.replace(legacy, normalized)
+    for legacy, normalized in _ALERTMANAGER_RULESET_DECLARATIONS.items():
+        if legacy in ruleset_content:
+            ruleset_content = ruleset_content.replace(legacy, normalized)
             migrations.append(f"{legacy} -> {normalized}")
-        elif normalized not in content:
+        elif normalized not in ruleset_content:
+            raise ValueError(
+                f"{legacy_ruleset_path}: neither legacy nor normalized declaration was found"
+            )
+
+    override_ruleset_path.parent.mkdir(parents=True, exist_ok=True)
+    override_ruleset_path.write_text(ruleset_content, encoding="utf-8")
+    if legacy_ruleset_path != override_ruleset_path and legacy_ruleset_path.exists():
+        legacy_ruleset_path.unlink()
+        migrations.append(
+            f"{_ALERTMANAGER_LEGACY_RULESET} -> {_ALERTMANAGER_OVERRIDE_RULESET}"
+        )
+
+    files = manifest.setdefault("files", {})
+    addons = list(files.get("cmk_addons_plugins", []))
+    normalized_addons = [
+        _ALERTMANAGER_OVERRIDE_MANIFEST_ENTRY
+        if entry == _ALERTMANAGER_LEGACY_MANIFEST_ENTRY
+        else entry
+        for entry in addons
+    ]
+    if _ALERTMANAGER_OVERRIDE_MANIFEST_ENTRY not in normalized_addons:
+        normalized_addons.append(_ALERTMANAGER_OVERRIDE_MANIFEST_ENTRY)
+    files["cmk_addons_plugins"] = sorted(dict.fromkeys(normalized_addons))
+
+    plugin_content = plugin_path.read_text(encoding="utf-8")
+    original_plugin_content = plugin_content
+    for legacy, normalized in _ALERTMANAGER_RULESET_REFERENCES.items():
+        if legacy in plugin_content:
+            plugin_content = plugin_content.replace(legacy, normalized)
+            migrations.append(f"{legacy} -> {normalized}")
+        elif normalized not in plugin_content:
             raise ValueError(
                 f"{plugin_path}: neither legacy nor normalized rule reference was found"
             )
 
     removed_debug = 0
     for debug_line in _ALERTMANAGER_DEBUG_PRINTS:
-        if debug_line in content:
-            content = content.replace(debug_line, "")
+        if debug_line in plugin_content:
+            plugin_content = plugin_content.replace(debug_line, "")
             removed_debug += 1
     if removed_debug:
         migrations.append(f"removed {removed_debug} debug print statements")
 
-    if content != original:
-        plugin_path.write_text(content, encoding="utf-8")
+    if plugin_content != original_plugin_content:
+        plugin_path.write_text(plugin_content, encoding="utf-8")
     return migrations
 
 
@@ -211,7 +244,7 @@ def main() -> None:
         )
         migrations.extend(
             f"{package_dir.name}: {entry}"
-            for entry in _normalize_alertmanager_ruleset_references(package_dir)
+            for entry in _normalize_alertmanager_override(package_dir, manifest)
         )
 
         old_version = str(manifest["version"])
