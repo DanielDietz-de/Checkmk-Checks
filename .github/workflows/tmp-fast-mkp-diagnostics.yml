@@ -19,8 +19,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: 2.5.0p9
-            image: checkmk/check-mk-community:2.5.0p9
+          - label: 2.4.0p34
+            image: checkmk/check-mk-raw:2.4.0p34
 
     steps:
       - name: Check out repository
