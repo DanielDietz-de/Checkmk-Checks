@@ -24,7 +24,8 @@ jobs:
         run: |
           set -euo pipefail
           tar --exclude=.git --exclude='*.mkp' --exclude='*.mkp.sha256' \
-            -czf repository-source.tar.gz .
+            -czf /tmp/repository-source.tar.gz .
+          mv /tmp/repository-source.tar.gz repository-source.tar.gz
 
       - name: Upload source archive
         uses: actions/upload-artifact@v7
