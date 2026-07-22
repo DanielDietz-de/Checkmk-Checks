@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
-# -*- encoding: utf-8; py-indent-offset: 4 -*-
-"""
-Kuhn & Rueß GmbH
-Consulting and Development
-https://kuhn-ruess.de
-"""
+"""Server-side command wiring for Unisphere PowerMax."""
 
+from typing import Optional
 
 from pydantic import BaseModel
-from typing import Optional # type: ignore
 
 from cmk.server_side_calls.v1 import (
     HostConfig,
@@ -16,6 +11,7 @@ from cmk.server_side_calls.v1 import (
     SpecialAgentCommand,
     SpecialAgentConfig,
 )
+
 
 class AgentPowermaxUParams(BaseModel):
     username: str
@@ -37,23 +33,18 @@ class AgentPowermaxUParams(BaseModel):
 
 
 def generate_powermanx_command(params: AgentPowermaxUParams, host_config: HostConfig):
-    """
-    Define the Arguements
-    """
-    args = []
-    args.append("--user")
-    args.append(params.username)
-    args.append("--password")
-    args.append(params.password.unsafe())
+    args: list[str | Secret] = [
+        "--user",
+        params.username,
+        "--password",
+        params.password,
+    ]
     if params.port:
-        args.append("--port")
-        args.append(str(params.port))
+        args.extend(("--port", str(params.port)))
     if params.cache_time:
-        args.append("--cache_time")
-        args.append(str(params.cache_time))
-    args.append("--api_version")
-    args.append(str(params.api_version))
-    for what in [
+        args.extend(("--cache_time", str(params.cache_time)))
+    args.extend(("--api_version", str(params.api_version)))
+    for option in (
         "disable_get_srp_info",
         "disable_get_director_info",
         "disable_get_health_score_info",
@@ -64,30 +55,25 @@ def generate_powermanx_command(params: AgentPowermaxUParams, host_config: HostCo
         "disable_get_masking_view_info",
         "enable_remote_sym_checks",
         "no_cert_check",
-        ]:
-        if getattr(params, what):
-            args.append(f'--{what}')
+    ):
+        if getattr(params, option):
+            args.append(f"--{option}")
 
     args.append("--hostname")
-
-
     if params.use_ip:
         try:
-            # Checkmk 2.3
             ip_address = host_config.ipv4_address
         except AttributeError:
-            # Checkmk 2.4
             ip_address = host_config.primary_ip_config.address
         args.append(ip_address)
     else:
         args.append(host_config.name)
 
-    yield SpecialAgentCommand(
-        command_arguments = args
-    )
+    yield SpecialAgentCommand(command_arguments=args)
+
 
 special_agent_semu = SpecialAgentConfig(
-    name = "unisphere_powermax",
-    parameter_parser = AgentPowermaxUParams.model_validate,
-    commands_function = generate_powermanx_command,
+    name="unisphere_powermax",
+    parameter_parser=AgentPowermaxUParams.model_validate,
+    commands_function=generate_powermanx_command,
 )

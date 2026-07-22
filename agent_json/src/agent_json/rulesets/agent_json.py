@@ -1,82 +1,82 @@
 #!/usr/bin/env python3
+"""Ruleset for the hardened Agent JSON special agent."""
 
-"""
-Kuhn & Rueß GmbH
-Consuling and Development
-https://kuhn-ruess.de
-"""
-
-from cmk.rulesets.v1 import Title, Help
+from cmk.rulesets.v1 import Help, Title
 from cmk.rulesets.v1.form_specs import (
-    Dictionary,
+    DefaultValue,
     DictElement,
+    Dictionary,
     List,
-    String,
     Password,
     SingleChoice,
     SingleChoiceElement,
-    DefaultValue,
+    String,
 )
 from cmk.rulesets.v1.form_specs.validators import LengthInRange
 from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
 
 def _migrate(value):
-    """
-    Move the legacy single-endpoint format (api_url/method/username/password
-    on the top level) into the new list-of-endpoints format so existing rules
-    keep working.
-    """
     if "endpoints" in value:
         return value
-
     endpoint = {}
     for key in ("api_url", "method", "username", "password"):
         if key in value:
             endpoint[key] = value[key]
-
     return {"endpoints": [endpoint]} if endpoint else value
 
 
 def _endpoint_form():
     return Dictionary(
-        title = Title("Endpoint"),
-        elements = {
+        title=Title("HTTPS endpoint"),
+        help_text=Help(
+            "The endpoint must be an absolute HTTPS URL. Redirects, embedded "
+            "credentials and cleartext HTTP are rejected by the runtime."
+        ),
+        elements={
             "api_url": DictElement(
-                parameter_form = String(
-                    title = Title("API URL"),
+                parameter_form=String(
+                    title=Title("HTTPS API URL"),
+                    help_text=Help(
+                        "Absolute HTTPS URL. TLS certificates are verified "
+                        "against the Checkmk server's system trust store."
+                    ),
                     custom_validate=(LengthInRange(min_value=1),),
                 ),
-                required = True,
+                required=True,
             ),
             "method": DictElement(
-                parameter_form = SingleChoice(
-                    title = Title("HTTP method"),
-                    help_text = Help(
-                        "HTTP method used to query the API endpoint. "
-                        "Defaults to POST to stay compatible with existing rules; "
-                        "select GET for endpoints that serve the JSON on GET."
+                parameter_form=SingleChoice(
+                    title=Title("HTTP method"),
+                    help_text=Help(
+                        "Only GET and POST are accepted. POST remains the "
+                        "default for compatibility with existing rules."
                     ),
-                    elements = [
-                        SingleChoiceElement(name = "post", title = Title("POST")),
-                        SingleChoiceElement(name = "get", title = Title("GET")),
-                    ],
-                    prefill = DefaultValue("post"),
+                    elements=(
+                        SingleChoiceElement(name="post", title=Title("POST")),
+                        SingleChoiceElement(name="get", title=Title("GET")),
+                    ),
+                    prefill=DefaultValue("post"),
                 ),
-                required = False,
+                required=False,
             ),
             "username": DictElement(
-                parameter_form = String(
-                    title = Title("Username"),
+                parameter_form=String(
+                    title=Title("Username"),
+                    help_text=Help("Optional HTTP Basic authentication user."),
                     custom_validate=(LengthInRange(min_value=1),),
                 ),
-                required = False,
+                required=False,
             ),
             "password": DictElement(
-                parameter_form = Password(
-                    title = Title("Password"),
+                parameter_form=Password(
+                    title=Title("Password"),
+                    help_text=Help(
+                        "Optional HTTP Basic authentication password stored as "
+                        "a Checkmk secret."
+                    ),
                 ),
-                required = False,
+                required=False,
             ),
         },
     )
@@ -84,30 +84,32 @@ def _endpoint_form():
 
 def _parameter_form_special_agent_json():
     return Dictionary(
-        title = Title("Agent JSON"),
-        help_text = Help("This rule set selects the special agent who parses json"),
-        migrate = _migrate,
-        elements = {
+        title=Title("Agent JSON"),
+        help_text=Help(
+            "Fetch bounded, validated health JSON over verified HTTPS and "
+            "convert it to escaped Checkmk local checks."
+        ),
+        migrate=_migrate,
+        elements={
             "endpoints": DictElement(
-                parameter_form = List(
-                    title = Title("Endpoints"),
-                    help_text = Help(
-                        "One or more API endpoints to query. Every endpoint is "
-                        "fetched with its own credentials and HTTP method; all "
-                        "returned checks are merged into a single local section."
+                parameter_form=List(
+                    title=Title("Endpoints"),
+                    help_text=Help(
+                        "Each endpoint has independent credentials and method. "
+                        "All returned checks are merged into one local section."
                     ),
-                    element_template = _endpoint_form(),
+                    element_template=_endpoint_form(),
                     custom_validate=(LengthInRange(min_value=1),),
                 ),
-                required = True,
-            ),
+                required=True,
+            )
         },
     )
 
 
 rule_spec_agent_json = SpecialAgent(
-    name = "json",
-    topic = Topic.SERVER_HARDWARE,
-    parameter_form = _parameter_form_special_agent_json,
-    title = Title("Agent JSON"),
+    name="json",
+    topic=Topic.SERVER_HARDWARE,
+    parameter_form=_parameter_form_special_agent_json,
+    title=Title("Agent JSON"),
 )
