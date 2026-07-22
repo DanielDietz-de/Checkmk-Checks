@@ -1,0 +1,46 @@
+name: Temporary repository package inventory
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/tmp-repository-package-inventory.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Export repository inventory
+        run: |
+          set -euo pipefail
+          {
+            echo '=== TOP LEVEL ==='
+            find . -mindepth 1 -maxdepth 1 -printf '%f\n' | sort
+            echo
+            echo '=== PACKAGE METADATA ==='
+            find . -type f \( -path '*/src/info' -o -name '*.mkp' -o -name '*.mkp.sha256' \) -printf '%P\n' | sort
+            echo
+            echo '=== WORKFLOWS ==='
+            find .github/workflows -maxdepth 1 -type f -printf '%P\n' | sort
+            echo
+            echo '=== ALL REPOSITORY FILES ==='
+            find . -type f -not -path './.git/*' -printf '%P\n' | sort
+          } > repository-package-inventory.txt
+          cat repository-package-inventory.txt
+
+      - name: Upload inventory
+        uses: actions/upload-artifact@v7
+        with:
+          name: repository-package-inventory
+          path: repository-package-inventory.txt
+          if-no-files-found: error
+          retention-days: 1
