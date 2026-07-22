@@ -1,0 +1,34 @@
+name: Temporary AudioCodes inventory
+
+on:
+  pull_request:
+    paths:
+      - "acgateway/**"
+      - ".github/workflows/tmp-acgateway-inventory.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Export source inventory
+        run: |
+          set -euo pipefail
+          find acgateway/src/acgateway -type f -printf '%P\n' | sort > acgateway-inventory.txt
+          cat acgateway-inventory.txt
+
+      - name: Upload inventory
+        uses: actions/upload-artifact@v7
+        with:
+          name: acgateway-source-inventory
+          path: acgateway-inventory.txt
+          if-no-files-found: error
+          retention-days: 1
