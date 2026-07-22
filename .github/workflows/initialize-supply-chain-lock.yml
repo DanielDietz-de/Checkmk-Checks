@@ -1,0 +1,55 @@
+name: Initialize immutable supply-chain lock
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - "tools/ci/pin_supply_chain*.py"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: initialize-supply-chain-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  initialize:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the exact pull-request branch without an external action
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${HEAD_REF}"
+          git checkout -B "${HEAD_REF}" FETCH_HEAD
+
+      - name: Resolve and commit immutable references
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          cp tools/ci/pin_supply_chain_corrected.py tools/ci/pin_supply_chain.py
+          python3 tools/ci/pin_supply_chain.py --write
+          rm -f tools/ci/pin_supply_chain_corrected.py
+          rm -f .github/workflows/initialize-supply-chain-lock.yml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          if git diff --cached --quiet; then
+            echo "No supply-chain lock changes were required."
+            exit 0
+          fi
+          git commit -m "ci: pin workflow dependencies [skip ci]"
+          git push origin "HEAD:${HEAD_REF}"
