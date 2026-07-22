@@ -23,8 +23,7 @@ jobs:
       - name: Create source archive
         run: |
           set -euo pipefail
-          tar --exclude=.git --exclude='*.mkp' --exclude='*.mkp.sha256' \
-            -czf /tmp/repository-source.tar.gz .
+          tar --exclude=.git -czf /tmp/repository-source.tar.gz .
           mv /tmp/repository-source.tar.gz repository-source.tar.gz
 
       - name: Upload source archive
