@@ -19,7 +19,9 @@ def test_example_configuration_is_valid_json_and_has_no_real_credentials() -> No
 
 
 def test_hook_example_references_packaged_paths() -> None:
-    text = (DEPLOYMENT_DIR / "oxidized_backup-hook.yml").read_text(encoding="utf-8")
+    text = (DEPLOYMENT_DIR / "oxidized_backup-hook.yml").read_text(
+        encoding="utf-8"
+    )
     assert "/usr/lib/check_mk_agent/plugins/300/oxidized_backup" in text
     assert "--config /etc/check_mk/oxidized_backup.json" in text
     assert "node_success" in text
