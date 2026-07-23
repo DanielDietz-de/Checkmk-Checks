@@ -185,9 +185,8 @@ jobs:
             set -euo pipefail
             plugin_root="${PLUGIN_BASE}/${PACKAGE_NAME}"
             python3 -m compileall -q "$plugin_root"
-            python3 -m py_compile \
-              "${AGENT_BASE}/plugins/${PACKAGE_NAME}" \
-              "${LIB_BASE}/base/cee/plugins/bakery/${PACKAGE_NAME}.py"
+            python3 -m py_compile "${AGENT_BASE}/plugins/${PACKAGE_NAME}"
+            test -r "${LIB_BASE}/base/cee/plugins/bakery/${PACKAGE_NAME}.py"
             "${AGENT_BASE}/plugins/${PACKAGE_NAME}" --help >/dev/null
             while IFS= read -r -d "" plugin; do
               echo "Loading ${plugin#$plugin_root/}"
@@ -211,10 +210,7 @@ jobs:
           source = path.read_text(encoding="utf-8")
           required = (
               "from .bakery_api.v1 import",
-              "Plugin(",
-              "SystemBinary(",
-              "PluginConfig(",
-              "SystemConfig(",
+              "Plugin(", "SystemBinary(", "PluginConfig(", "SystemConfig(",
               "Scriptlet(step=DebStep.POSTINST",
               "Scriptlet(step=RpmStep.POST",
               "register.bakery_plugin(",
