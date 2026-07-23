@@ -42,13 +42,13 @@ This is the Linux agent source consumed by Agent Bakery and by the documented ma
 Installed below:
 
 ```text
-$OMD_ROOT/local/lib/check_mk/base/cee/plugins/bakery/oxidized_backup.py
+$OMD_ROOT/local/lib/python3/cmk/base/cee/plugins/bakery/oxidized_backup.py
 ```
 
 The corresponding `lib` component path in the MKP manifest is:
 
 ```text
-base/cee/plugins/bakery/oxidized_backup.py
+python3/cmk/base/cee/plugins/bakery/oxidized_backup.py
 ```
 
 This is the Bakery API v1 implementation. It describes the host-specific artifacts:
@@ -66,11 +66,12 @@ The active Oxidized YAML configuration is deliberately not modified by package i
 The `oxidized_backup checks` workflow:
 
 1. runs Python and security-focused tests;
-2. validates the check, ruleset, Bakery module, and generated Bakery artifacts on Checkmk 2.4.0p5 and 2.4.0p34;
-3. builds the MKP with Checkmk;
-4. verifies the `agents`, `cmk_addons_plugins`, and `lib` component archives;
-5. creates the SHA-256 checksum;
-6. uploads the package and checksum as a workflow artifact.
+2. validates the check and rule registration on Checkmk 2.4.0p5 and 2.4.0p34;
+3. validates the commercial Bakery API v1 callbacks through an isolated contract test because Raw does not ship the commercial Bakery runtime;
+4. builds the MKP with Checkmk;
+5. verifies the `agents`, `cmk_addons_plugins`, and `lib` component archives;
+6. creates the SHA-256 checksum;
+7. uploads the package and checksum as a workflow artifact.
 
 After a successful push build on `master`, the `Persist oxidized_backup MKP` workflow downloads that exact artifact, verifies its checksum, and commits both files into `oxidized_backup/`.
 
