@@ -1,65 +1,157 @@
 #!/usr/bin/env python3
-# Kentix SMS Gateway
 # Bulk: yes
+"""Send Checkmk notifications through a Kentix SMS gateway."""
+
+from __future__ import annotations
+
+import ipaddress
+import re
+import sys
+from pathlib import Path
+from typing import Iterable
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
-import sys
-import pprint
 
 from cmk.notification_plugins import utils
 
-bulk_mode = "--bulk" in sys.argv
-
-def get_hosts_from_bulk_contexts(contexts):
-    hosts = set([])
-    for context in contexts:
-        hosts.add(context["HOSTNAME"])
-    return hosts
+MAX_MESSAGE_LENGTH = 320
+PHONE_RE = re.compile(r"^\+?[0-9]{6,20}$")
 
 
-def normalize_pager_number(pager_number):
-    return requests.utils.quote(pager_number.replace(" ", ""))
+class KentixError(RuntimeError):
+    """Raised when an SMS cannot be submitted safely."""
 
 
-def send_sms(manager_ip, key, pager_number, text):
-    url = "https://%s/php/sms_gateway.php?key=%s&recipients=%s&message=%s" % (manager_ip, key, pager_number, text)
-    response = requests.get(url)
-    status_code = response.status_code
-    if status_code == 200:
-        return
-    elif status_code == 403:
-        sys.stderr.write("Wrong SMS gateway password\n")
-    elif status_code == 404:
-        sys.stderr.write("SMS gateway not active\n")
-    elif status_code == 900:
-        sys.stderr.write("SIM card was not recognized\n")
-    elif status_code == 901:
-        sys.stderr.write("GSM modem was not detected\n")
-    elif status_code == 902:
-        sys.stderr.write("SIM card is locked\n")
-    exit(2)
+def get_hosts_from_bulk_contexts(contexts: Iterable[dict[str, str]]) -> set[str]:
+    return {context["HOSTNAME"] for context in contexts}
 
-    
-def main():
+
+def normalize_pager_number(value: str) -> str:
+    number = re.sub(r"[\s()./-]", "", value)
+    if not PHONE_RE.fullmatch(number):
+        raise KentixError("pager number must contain 6-20 digits and optional leading +")
+    return number
+
+
+def validate_gateway(value: str) -> str:
+    raw = value.strip()
+    parsed = urlsplit(raw if "://" in raw else f"https://{raw}")
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise KentixError("gateway must be an HTTPS host or URL")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise KentixError("gateway URL must not contain credentials, query, or fragment")
+    if parsed.path not in {"", "/"}:
+        raise KentixError("gateway URL must not contain a path")
+    try:
+        if parsed.port is not None and not 1 <= parsed.port <= 65535:
+            raise KentixError("gateway port is invalid")
+    except ValueError as exc:
+        raise KentixError("gateway port is invalid") from exc
+    return urlunsplit(("https", parsed.netloc, "/php/sms_gateway.php", "", ""))
+
+
+def validate_ca_bundle(value: str | None) -> bool | str:
+    if not value:
+        return True
+    path = Path(value)
+    if not path.is_absolute() or not path.is_file() or path.is_symlink():
+        raise KentixError("CA bundle must be an absolute regular file")
+    return str(path)
+
+
+def normalize_message(value: str) -> str:
+    text = " ".join(value.replace("\x00", " ").split())
+    if not text:
+        raise KentixError("SMS message is empty")
+    return text[:MAX_MESSAGE_LENGTH]
+
+
+def send_sms(
+    *,
+    gateway: str,
+    key: str,
+    pager_number: str,
+    text: str,
+    timeout: float,
+    verify: bool | str,
+    session: requests.Session | None = None,
+) -> int:
+    client = requests.Session() if session is None else session
+    client.trust_env = False
+    try:
+        response = client.post(
+            validate_gateway(gateway),
+            data={
+                "key": key,
+                "recipients": normalize_pager_number(pager_number),
+                "message": normalize_message(text),
+            },
+            headers={"Accept": "text/plain"},
+            timeout=timeout,
+            verify=verify,
+            allow_redirects=False,
+        )
+    except requests.RequestException as exc:
+        # Sending an SMS is non-idempotent. Never retry after an ambiguous
+        # transport failure because the gateway may already have accepted it.
+        raise KentixError(f"SMS request failed: {exc}") from exc
+    if response.is_redirect:
+        raise KentixError("gateway returned an unexpected redirect")
+    errors = {
+        403: "wrong SMS gateway password",
+        404: "SMS gateway is not active",
+        900: "SIM card was not recognized",
+        901: "GSM modem was not detected",
+        902: "SIM card is locked",
+    }
+    if response.status_code not in {200, 201, 202, 204}:
+        raise KentixError(errors.get(response.status_code, f"HTTP {response.status_code}"))
+    print("Kentix SMS request accepted.")
+    return 0
+
+
+def main() -> int:
+    bulk_mode = "--bulk" in sys.argv
     if bulk_mode:
         parameters, contexts = utils.read_bulk_contexts()
+        if not contexts:
+            raise KentixError("bulk notification has no contexts")
         key = utils.retrieve_from_passwordstore(parameters["PARAMETER_PASSWORD"])
-        pager_number = normalize_pager_number(contexts[0]["CONTACTPAGER"]) 
-        manager_ip = parameters["PARAMETER_IPADDRESS"]
-        text = requests.utils.quote(utils.get_bulk_notification_subject(contexts, get_hosts_from_bulk_contexts(contexts)))
+        pager_number = contexts[0]["CONTACTPAGER"]
+        gateway = parameters["PARAMETER_IPADDRESS"]
+        text = utils.get_bulk_notification_subject(
+            contexts, get_hosts_from_bulk_contexts(contexts)
+        )
+        timeout_raw = parameters.get("PARAMETER_TIMEOUT", "10")
+        ca_bundle = parameters.get("PARAMETER_CA_BUNDLE")
     else:
         context = utils.collect_context()
         key = utils.retrieve_from_passwordstore(context["PARAMETER_PASSWORD"])
-        pager_number = normalize_pager_number(context["CONTACTPAGER"]) 
-        manager_ip = context["PARAMETER_IPADDRESS"]
-        text = requests.utils.quote(utils.substitute_context(context["PARAMETER_TEMPLATE_TEXT"], context))
-    send_sms(
-        manager_ip=manager_ip,
+        pager_number = context["CONTACTPAGER"]
+        gateway = context["PARAMETER_IPADDRESS"]
+        text = utils.substitute_context(context["PARAMETER_TEMPLATE_TEXT"], context)
+        timeout_raw = context.get("PARAMETER_TIMEOUT", "10")
+        ca_bundle = context.get("PARAMETER_CA_BUNDLE")
+    try:
+        timeout = float(timeout_raw)
+    except (TypeError, ValueError) as exc:
+        raise KentixError("timeout must be numeric") from exc
+    if not 0.5 <= timeout <= 120:
+        raise KentixError("timeout must be between 0.5 and 120 seconds")
+    return send_sms(
+        gateway=gateway,
         key=key,
         pager_number=pager_number,
         text=text,
+        timeout=timeout,
+        verify=validate_ca_bundle(ca_bundle),
     )
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        raise SystemExit(main())
+    except (KentixError, KeyError, OSError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc

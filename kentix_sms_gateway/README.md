@@ -4,54 +4,59 @@
 ![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.4.0b1-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.5.0-blue)
 <!-- compatibility-badges:end -->
 
-Bulk-capable Checkmk notification plugin that sends SMS messages through a Kentix AlarmManager's built-in SMS gateway. The notification target is the contact's pager number.
+Bulk-capable Checkmk notification plug-in that sends SMS messages through a Kentix AlarmManager's legacy SMS gateway.
 
-## How it works
+## Request security
 
-The notification script calls the Kentix AlarmManager HTTP endpoint:
+The plug-in sends one HTTPS POST to:
 
 ```text
-https://<manager_ip>/php/sms_gateway.php?key=<password>&recipients=<pager>&message=<text>
+https://<gateway>/php/sms_gateway.php
 ```
 
-It reads the contact context (bulk or single) via `cmk.notification_plugins.utils`, retrieves the gateway password from the password store, URL-encodes the pager number and the message, and submits the request. HTTP response codes are mapped to error messages:
+The gateway password, recipient and message are form fields in the POST body. They are not embedded in the URL and therefore do not appear in normal URL access logs, browser histories or proxy request-line logs.
+
+Additional safeguards:
+
+- HTTPS is mandatory;
+- redirects and proxy-environment variables are disabled;
+- TLS uses system trust or an optional private CA bundle;
+- requests have a configurable timeout;
+- pager numbers are validated after separator removal;
+- messages are normalized and limited to 320 characters;
+- normal successful 2xx responses are accepted;
+- SMS submission is attempted exactly once after a transport failure because the gateway may already have accepted it.
+
+The legacy endpoint must support `application/x-www-form-urlencoded` POST fields named `key`, `recipients`, and `message`. Verify this on the deployed Kentix firmware before enabling the updated rule.
+
+## Error mapping
 
 | Code | Meaning |
 | --- | --- |
-| `200` | delivered |
 | `403` | wrong SMS gateway password |
 | `404` | SMS gateway not active |
 | `900` | SIM card not recognized |
 | `901` | GSM modem not detected |
 | `902` | SIM card locked |
 
-Bulk mode (`--bulk`) is supported and builds a single subject line covering all hosts in the bulk.
+Bulk mode remains supported and sends one subject covering the bulk contexts to the first context's pager number.
+
+## Configuration
+
+| Parameter | Meaning |
+| --- | --- |
+| `ipaddress` | Gateway hostname with optional port; an `https://` prefix is accepted. |
+| `password` | SMS gateway password stored in Checkmk's password store. |
+| `template_text` | Message template with Checkmk context substitutions. |
+| `timeout` | Per-request timeout, constrained to 0.5–120 seconds. |
+| `ca_bundle` | Optional absolute private CA bundle. |
+
+Contact pager numbers must contain 6–20 digits with an optional leading `+`; spaces, parentheses, dots, slashes and hyphens are removed.
 
 ## Package contents
 
 | Path | Purpose |
 | --- | --- |
-| `src/notifications/kentix` | Notification script (Python, `Bulk: yes`). |
-| `src/web/plugins/wato/notification_sms_kentix.py` | WATO ruleset `NotificationParameterKentix` (ident `kentix`). |
-
-## Installation
-
-1. Install the MKP on the Checkmk site.
-2. Configure each contact who should receive SMS with a pager number (E.164 format, spaces are stripped).
-3. Create a notification rule of type *Kentix SMS Gateway* and fill in the parameters below.
-
-## Configuration
-
-WATO rule: **Setup -> Notifications** -> notification method *Kentix SMS Gateway*.
-
-| Parameter | Type | Meaning |
-| --- | --- | --- |
-| `ipaddress` | IPv4Address | IP of the Kentix AlarmManager exposing the SMS gateway. |
-| `password` | Password (stored) | SMS gateway password (the `key` URL parameter). |
-| `template_text` | Text area | Message body; Checkmk context macros are substituted before sending. |
-
-## Known limitations
-
-- Uses the legacy `cmk.gui.plugins.wato.utils` / `notification_parameter_registry` API. Still loads on 2.1 and later as long as the legacy notification API is available.
-- The WATO module references `Dictionary` and `_` without explicit imports — this follows the original 2.1 convention where those names are provided implicitly by the WATO loader.
-- SMS delivery uses plain HTTPS with no certificate verification configuration.
+| `src/notifications/kentix` | Single and bulk POST delivery. |
+| `src/kentix_sms_gateway/rulesets/kentix.py` | Notification parameters. |
+| `tests/test_kentix.py` | URL-confidentiality, retry and validation tests. |
