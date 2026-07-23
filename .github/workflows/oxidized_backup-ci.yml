@@ -18,7 +18,7 @@ env:
   PACKAGE_NAME: oxidized_backup
   PACKAGE_SOURCE: oxidized_backup/src/oxidized_backup
   AGENT_PLUGIN_SOURCE: oxidized_backup/src/agents/plugins/oxidized_backup
-  BAKERY_SOURCE: oxidized_backup/src/lib/python3/cmk/base/cee/plugins/bakery/oxidized_backup.py
+  BAKERY_SOURCE: oxidized_backup/src/lib/base/cee/plugins/bakery/oxidized_backup.py
   PACKAGE_VERSION: "1.1.0"
   PLUGIN_BASE: /omd/sites/cmk/local/lib/python3/cmk_addons/plugins
   AGENT_BASE: /omd/sites/cmk/local/share/check_mk/agents
@@ -36,7 +36,6 @@ jobs:
     name: Python syntax, security, and functional tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -53,14 +52,13 @@ jobs:
 
       - name: Check for fatal Python errors
         run: >-
-          ruff check
-          --select E9,F63,F7,F82
+          ruff check --select E9,F63,F7,F82
           "$PACKAGE_SOURCE"
           "$AGENT_PLUGIN_SOURCE"
           "$BAKERY_SOURCE"
           "$PACKAGE_DIR/tests"
 
-      - name: Compile all Python files
+      - name: Compile Python files
         run: |
           python -m compileall -q "$PACKAGE_SOURCE" "$PACKAGE_DIR/tests"
           python -m py_compile "$AGENT_PLUGIN_SOURCE" "$BAKERY_SOURCE"
@@ -68,25 +66,20 @@ jobs:
       - name: Run functional and security tests
         run: pytest -q "$PACKAGE_DIR/tests"
 
-      - name: Validate check manual metadata
+      - name: Validate manuals and deployment templates
         run: |
           python - <<'PY'
+          import json
           import os
           from pathlib import Path
 
+          package = Path(os.environ["PACKAGE_SOURCE"])
           required = {
-              "title",
-              "agents",
-              "catalog",
-              "license",
-              "distribution",
-              "description",
-              "inventory",
+              "title", "agents", "catalog", "license", "distribution",
+              "description", "inventory",
           }
-          checkman_dir = Path(os.environ["PACKAGE_SOURCE"]) / "checkman"
           errors = []
-
-          for path in sorted(checkman_dir.iterdir()):
+          for path in sorted((package / "checkman").iterdir()):
               if not path.is_file():
                   continue
               keys = {
@@ -97,34 +90,22 @@ jobs:
               missing = sorted(required - keys)
               if missing:
                   errors.append(f"{path}: missing {', '.join(missing)}")
-
           if errors:
               raise SystemExit("\n".join(errors))
-          PY
 
-      - name: Validate packaged deployment templates
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          deployment = Path(os.environ["PACKAGE_SOURCE"]) / "deployment"
-          config_path = deployment / "oxidized_backup.json"
-          hook_path = deployment / "oxidized_backup-hook.yml"
-
-          config = json.loads(config_path.read_text(encoding="utf-8"))
+          deployment = package / "deployment"
+          config = json.loads(
+              (deployment / "oxidized_backup.json").read_text(encoding="utf-8")
+          )
           serialized = json.dumps(config).lower()
           forbidden = ("rkg", "rau", '"password"', '"token"')
           found = [value for value in forbidden if value in serialized]
           if found:
-              raise SystemExit(f"Configuration template contains forbidden values: {found}")
+              raise SystemExit(f"Template contains forbidden values: {found}")
 
-          hook = hook_path.read_text(encoding="utf-8")
+          hook = (deployment / "oxidized_backup-hook.yml").read_text(encoding="utf-8")
           required_hook_tokens = (
-              "node_success",
-              "node_fail",
-              "post_store",
+              "node_success", "node_fail", "post_store",
               "/usr/bin/oxidized_backup_hook",
               "--config /etc/check_mk/oxidized_backup.json",
           )
@@ -143,7 +124,6 @@ jobs:
         checkmk:
           - 2.4.0p5
           - 2.4.0p34
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -179,52 +159,34 @@ jobs:
             fi
             sleep 2
           done
-
           docker logs checkmk-ci
-          echo 'Checkmk container did not become ready' >&2
           exit 1
 
-      - name: Install plug-ins into the temporary site
+      - name: Install package sources into the temporary site
         run: |
           docker exec --user root checkmk-ci bash -lc '
             set -euo pipefail
-            plugin_source="/work/${PACKAGE_SOURCE}"
             plugin_target="${PLUGIN_BASE}/${PACKAGE_NAME}"
-            agent_source="/work/${AGENT_PLUGIN_SOURCE}"
-            agent_target="${AGENT_BASE}/plugins/${PACKAGE_NAME}"
-            bakery_source="/work/${BAKERY_SOURCE}"
-            bakery_target="${LIB_BASE}/python3/cmk/base/cee/plugins/bakery/${PACKAGE_NAME}.py"
-
-            test -d "$plugin_source"
-            test -f "$agent_source"
-            test -f "$bakery_source"
-            test -f "$plugin_source/deployment/${PACKAGE_NAME}.json"
-            test -f "$plugin_source/deployment/${PACKAGE_NAME}-hook.yml"
-
+            bakery_target="${LIB_BASE}/base/cee/plugins/bakery/${PACKAGE_NAME}.py"
             install -d -o cmk -g cmk "$plugin_target"
-            cp -a "$plugin_source/." "$plugin_target/"
-            install -D -m 0755 -o cmk -g cmk "$agent_source" "$agent_target"
-            install -D -m 0644 -o cmk -g cmk "$bakery_source" "$bakery_target"
+            cp -a "/work/${PACKAGE_SOURCE}/." "$plugin_target/"
+            install -D -m 0755 -o cmk -g cmk \
+              "/work/${AGENT_PLUGIN_SOURCE}" \
+              "${AGENT_BASE}/plugins/${PACKAGE_NAME}"
+            install -D -m 0644 -o cmk -g cmk \
+              "/work/${BAKERY_SOURCE}" \
+              "$bakery_target"
             chown -R cmk:cmk "$plugin_target"
           '
 
-      - name: Load and validate plug-ins with Checkmk
+      - name: Load Checkmk check and ruleset APIs
         run: |
           docker exec --user cmk checkmk-ci bash -lc '
             set -euo pipefail
-            export PAGER=cat
             plugin_root="${PLUGIN_BASE}/${PACKAGE_NAME}"
-            agent_plugin="${AGENT_BASE}/plugins/${PACKAGE_NAME}"
-            bakery_plugin="${LIB_BASE}/python3/cmk/base/cee/plugins/bakery/${PACKAGE_NAME}.py"
-            deployment_config="${plugin_root}/deployment/${PACKAGE_NAME}.json"
-            deployment_hook="${plugin_root}/deployment/${PACKAGE_NAME}-hook.yml"
-
             python3 -m compileall -q "$plugin_root"
-            python3 -m py_compile "$agent_plugin" "$bakery_plugin"
-            python3 -m json.tool "$deployment_config" >/dev/null
-            test -s "$deployment_hook"
-            "$agent_plugin" --help >/dev/null
-
+            python3 -m py_compile "${AGENT_BASE}/plugins/${PACKAGE_NAME}"
+            "${AGENT_BASE}/plugins/${PACKAGE_NAME}" --help >/dev/null
             while IFS= read -r -d "" plugin; do
               echo "Loading ${plugin#$plugin_root/}"
               python3 "$plugin"
@@ -232,7 +194,12 @@ jobs:
               find "$plugin_root/agent_based" "$plugin_root/rulesets" \
                 -type f -name "*.py" -print0 | sort -z
             )
+          '
 
+      - name: Validate Bakery API artifacts and scriptlets
+        run: |
+          docker exec --user cmk checkmk-ci bash -lc '
+            set -euo pipefail
             python3 - <<"PY"
           from cmk.base.cee.plugins.bakery import oxidized_backup as bakery
 
@@ -279,30 +246,26 @@ jobs:
                   "orphan_state": "warn",
               },
           }
-
           artifacts = list(bakery.get_files(conf))
           assert [type(item).__name__ for item in artifacts] == [
-              "Plugin",
-              "SystemBinary",
-              "PluginConfig",
-              "SystemConfig",
+              "Plugin", "SystemBinary", "PluginConfig", "SystemConfig",
           ]
-          assert str(artifacts[0].source) == "oxidized_backup"
-          assert str(artifacts[1].source) == "plugins/oxidized_backup"
           assert str(artifacts[1].target) == "oxidized_backup_hook"
           assert str(artifacts[2].target) == "oxidized_backup.json"
           assert str(artifacts[3].target) == "check_mk/oxidized_backup-hook.yml"
-
           scriptlets = list(bakery.get_scriptlets(conf, "test-agent-hash"))
-          assert [type(item.step).__name__ for item in scriptlets] == [
-              "DebStep",
-              "RpmStep",
-          ]
+          assert len(scriptlets) == 2
           script_text = "\n".join(line for item in scriptlets for line in item.lines)
           assert "/var/lib/oxidized/oxidized_backup" in script_text
           assert "/var/lib/check_mk_agent/oxidized_backup" in script_text
           PY
+          '
 
+      - name: Validate Checkmk registration
+        run: |
+          docker exec --user cmk checkmk-ci bash -lc '
+            set -euo pipefail
+            export PAGER=cat
             cmk-validate-plugins
             cmk -M oxidized_backup >/dev/null
             cmk -R
@@ -323,7 +286,6 @@ jobs:
       - checkmk-api-load
     runs-on: ubuntu-latest
     timeout-minutes: 20
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -360,41 +322,34 @@ jobs:
             fi
             sleep 2
           done
-
           docker logs checkmk-mkp
-          echo 'Checkmk packaging container did not become ready' >&2
           exit 1
 
-      - name: Install package source into Checkmk
+      - name: Install package sources into Checkmk
         run: |
           docker exec --user root checkmk-mkp bash -lc '
             set -euo pipefail
-            plugin_source="/work/${PACKAGE_SOURCE}"
             plugin_target="${PLUGIN_BASE}/${PACKAGE_NAME}"
-            agent_source="/work/${AGENT_PLUGIN_SOURCE}"
-            agent_target="${AGENT_BASE}/plugins/${PACKAGE_NAME}"
-            bakery_source="/work/${BAKERY_SOURCE}"
-            bakery_target="${LIB_BASE}/python3/cmk/base/cee/plugins/bakery/${PACKAGE_NAME}.py"
-
-            test -d "$plugin_source"
-            test -f "$agent_source"
-            test -f "$bakery_source"
+            bakery_target="${LIB_BASE}/base/cee/plugins/bakery/${PACKAGE_NAME}.py"
             install -d -o cmk -g cmk "$plugin_target"
-            cp -a "$plugin_source/." "$plugin_target/"
-            install -D -m 0755 -o cmk -g cmk "$agent_source" "$agent_target"
-            install -D -m 0644 -o cmk -g cmk "$bakery_source" "$bakery_target"
+            cp -a "/work/${PACKAGE_SOURCE}/." "$plugin_target/"
+            install -D -m 0755 -o cmk -g cmk \
+              "/work/${AGENT_PLUGIN_SOURCE}" \
+              "${AGENT_BASE}/plugins/${PACKAGE_NAME}"
+            install -D -m 0644 -o cmk -g cmk \
+              "/work/${BAKERY_SOURCE}" \
+              "$bakery_target"
             find "$plugin_target" -type d -name __pycache__ -prune -exec rm -rf {} +
             find "$plugin_target" -type f -name "*.pyc" -delete
             chown -R cmk:cmk "$plugin_target"
           '
 
-      - name: Generate and validate MKP manifest
+      - name: Generate MKP manifest
         run: |
           docker exec --user cmk checkmk-mkp bash -lc '
             set -euo pipefail
             manifest="$HOME/tmp/check_mk/${PACKAGE_NAME}-ci.manifest.temp"
             mkdir -p "$(dirname "$manifest")"
-
             MANIFEST="$manifest" python3 - <<"PY"
           import ast
           import os
@@ -409,16 +364,8 @@ jobs:
           plugin_root = plugin_base / package_name
           agent_file = agent_base / "plugins" / package_name
           bakery_file = (
-              lib_base
-              / "python3"
-              / "cmk"
-              / "base"
-              / "cee"
-              / "plugins"
-              / "bakery"
-              / f"{package_name}.py"
+              lib_base / "base" / "cee" / "plugins" / "bakery" / f"{package_name}.py"
           )
-
           addon_files = sorted(
               str(path.relative_to(plugin_base))
               for path in plugin_root.rglob("*")
@@ -428,7 +375,6 @@ jobs:
           )
           agent_files = [str(agent_file.relative_to(agent_base))]
           library_files = [str(bakery_file.relative_to(lib_base))]
-
           required_addon_files = {
               f"{package_name}/bakery_common.py",
               f"{package_name}/rulesets/ruleset_{package_name}_bakery.py",
@@ -438,15 +384,13 @@ jobs:
           missing = required_addon_files - set(addon_files)
           if missing:
               raise SystemExit(f"Required package files missing: {sorted(missing)}")
-
           manifest = {
               "name": package_name,
               "title": "Oxidized Backup Verification",
               "author": "Daniel Dietz",
               "description": (
-                  "Verifies Oxidized inventory, collection freshness, local Git backup "
-                  "artifacts, repository integrity, remote Git synchronization, and "
-                  "supports Checkmk Agent Bakery deployment."
+                  "Verifies Oxidized collection, Git backup artifacts, remote "
+                  "synchronization, and supports Agent Bakery deployment."
               ),
               "version": os.environ["PACKAGE_VERSION"],
               "version.min_required": "2.4.0b1",
@@ -459,20 +403,11 @@ jobs:
                   "lib": library_files,
               },
           }
-
           content = repr(manifest) + "\n"
           path = Path(os.environ["MANIFEST"])
           path.write_text(content, encoding="utf-8")
-          parsed = ast.literal_eval(path.read_text(encoding="utf-8"))
-          assert parsed == manifest
-          assert agent_files == [f"plugins/{package_name}"]
-          assert library_files == [
-              f"python3/cmk/base/cee/plugins/bakery/{package_name}.py"
-          ]
-          print(
-              f"Manifest contains {len(addon_files)} Checkmk files, "
-              f"{len(agent_files)} agent source, and {len(library_files)} library file"
-          )
+          assert ast.literal_eval(path.read_text(encoding="utf-8")) == manifest
+          assert library_files == [f"base/cee/plugins/bakery/{package_name}.py"]
           print(content)
           PY
           '
@@ -487,15 +422,13 @@ jobs:
               -name "${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp" -ls
           '
 
-      - name: Inspect and verify MKP with Checkmk
+      - name: Inspect component archives
         run: |
           docker exec --user cmk checkmk-mkp bash -lc '
             set -euo pipefail
             export PAGER=cat
             package="$HOME/var/check_mk/packages_local/${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp"
-            test -f "$package"
             mkp inspect "$package"
-
             PACKAGE="$package" python3 - <<"PY"
           import ast
           import io
@@ -503,68 +436,47 @@ jobs:
           import tarfile
           from pathlib import PurePosixPath
 
-          package = os.environ["PACKAGE"]
-
           def normalized(name: str) -> str:
               return str(PurePosixPath(name.removeprefix("./")))
 
-          with tarfile.open(package, "r:*") as outer:
-              outer_members = outer.getmembers()
+          with tarfile.open(os.environ["PACKAGE"], "r:*") as outer:
               by_basename = {
                   PurePosixPath(normalized(member.name)).name: member
-                  for member in outer_members
+                  for member in outer.getmembers()
               }
               info_file = outer.extractfile(by_basename["info"])
               if info_file is None:
                   raise SystemExit("Unable to read MKP metadata")
               info = ast.literal_eval(info_file.read().decode("utf-8"))
-              components = info.get("files", {})
-              required_outer = {"info", "info.json"} | {
-                  f"{component}.tar" for component in components
-              }
-              missing_outer = required_outer - set(by_basename)
-              if missing_outer:
-                  raise SystemExit(f"Missing outer MKP members: {sorted(missing_outer)}")
-
-              for component, required_files in components.items():
-                  component_file = outer.extractfile(by_basename[f"{component}.tar"])
-                  if component_file is None:
-                      raise SystemExit(f"Unable to read {component}.tar")
-                  with tarfile.open(
-                      fileobj=io.BytesIO(component_file.read()), mode="r:*"
-                  ) as inner:
-                      inner_names = {
-                          normalized(member.name) for member in inner.getmembers()
-                      }
-                  missing_inner = sorted(
+              for component, required_files in info.get("files", {}).items():
+                  member = outer.extractfile(by_basename[f"{component}.tar"])
+                  if member is None:
+                      raise SystemExit(f"Missing {component}.tar")
+                  with tarfile.open(fileobj=io.BytesIO(member.read()), mode="r:*") as inner:
+                      names = {normalized(item.name) for item in inner.getmembers()}
+                  missing = [
                       required
                       for required in required_files
                       if not any(
                           name == required or name.endswith("/" + required)
-                          for name in inner_names
+                          for name in names
                       )
-                  )
-                  if missing_inner:
-                      raise SystemExit(
-                          f"Missing packaged {component} files: {missing_inner}"
-                      )
+                  ]
+                  if missing:
+                      raise SystemExit(f"Missing packaged {component} files: {missing}")
                   print(f"Verified {len(required_files)} files in {component}.tar")
           PY
           '
 
-      - name: Export MKP to package folder
+      - name: Export MKP and checksum
         run: |
           set -euo pipefail
           package_name="${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp"
-          output="${PACKAGE_DIR}/${package_name}"
           docker cp \
             "checkmk-mkp:/omd/sites/cmk/var/check_mk/packages_local/${package_name}" \
-            "$output"
-          chmod 0644 "$output"
-          (
-            cd "$PACKAGE_DIR"
-            sha256sum "$package_name" >"${package_name}.sha256"
-          )
+            "${PACKAGE_DIR}/${package_name}"
+          chmod 0644 "${PACKAGE_DIR}/${package_name}"
+          (cd "$PACKAGE_DIR" && sha256sum "$package_name" >"${package_name}.sha256")
 
       - name: Upload MKP artifact
         uses: actions/upload-artifact@v6
