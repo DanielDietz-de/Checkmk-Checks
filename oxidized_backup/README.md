@@ -191,7 +191,7 @@ In the GUI, open **Setup > Agents > Windows, Linux, Solaris, AIX > Agent Bakery*
 A host-specific command-line bake can also be triggered as the site user:
 
 ```bash
-cmk -fAv oxidized-host
+cmk -Av oxidized-host
 ```
 
 Replace `oxidized-host` with the Checkmk host name of the Oxidized server.
@@ -471,7 +471,7 @@ cmk-validate-plugins
 Force a rebake after changing the rule:
 
 ```bash
-cmk -fAv oxidized-host
+cmk -Av oxidized-host
 ```
 
 Inspect piggyback data and check results:
