@@ -1,55 +1,71 @@
-#!/usr/bin/env python3
-# -*- encoding: utf-8; py-indent-offset: 4 -*-
-
-"""
-Kuhn & Rueß GmbH
-Consulting and Development
-https://kuhn-ruess.de
-"""
-
 from cmk.rulesets.v1 import Help, Title
 from cmk.rulesets.v1.form_specs import (
+    DefaultValue,
     DictElement,
     Dictionary,
-    String,
     Password,
+    String,
+    TimeMagnitude,
+    TimeSpan,
 )
-from cmk.rulesets.v1.rule_specs import (
-    NotificationParameters,
-    Topic,
-)
+from cmk.rulesets.v1.form_specs.validators import LengthInRange
+from cmk.rulesets.v1.rule_specs import NotificationParameters, Topic
 
 
-def _parameters_service_now_notify():
+def _parameters_service_now_notify() -> Dictionary:
     return Dictionary(
-        title=Title("ServiceNow Notify"),
-        help_text=Help("Configure ServiceNow incident creation via API"),
+        title=Title("ServiceNow notification"),
+        help_text=Help(
+            "Create and close incidents through a fixed HTTPS gateway. "
+            "Credential-bearing requests are never retried automatically."
+        ),
         elements={
             "api_url": DictElement(
                 parameter_form=String(
-                    title=Title("API URL"),
-                    help_text=Help("URL to the ServiceNow API"),
+                    title=Title("HTTPS API base URL"),
+                    help_text=Help(
+                        "Absolute HTTPS base URL. The notification appends "
+                        "checkmk/incident/create or checkmk/incident/close."
+                    ),
+                    custom_validate=(LengthInRange(min_value=1),),
                 ),
                 required=True,
             ),
             "api_user": DictElement(
                 parameter_form=String(
-                    title=Title("Auth User"),
-                    help_text=Help("User for Authentication"),
+                    title=Title("Authentication user"),
+                    custom_validate=(LengthInRange(min_value=1),),
                 ),
                 required=True,
             ),
             "api_password": DictElement(
-                parameter_form=Password(
-                    title=Title("Auth Password"),
-                    help_text=Help("Password for Authentication"),
+                parameter_form=Password(title=Title("Authentication password")),
+                required=True,
+            ),
+            "timeout": DictElement(
+                parameter_form=TimeSpan(
+                    title=Title("Request timeout"),
+                    displayed_magnitudes=(TimeMagnitude.SECOND,),
+                    prefill=DefaultValue(15.0),
                 ),
                 required=True,
             ),
+            "ca_bundle": DictElement(
+                parameter_form=String(
+                    title=Title("Private CA bundle"),
+                    help_text=Help(
+                        "Optional absolute path to a regular CA bundle. "
+                        "Leave empty to use the system trust store."
+                    ),
+                ),
+                required=False,
+            ),
             "proxy": DictElement(
                 parameter_form=String(
-                    title=Title("Proxy"),
-                    help_text=Help("Proxy to be used (optional)"),
+                    title=Title("HTTPS proxy"),
+                    help_text=Help(
+                        "Optional absolute HTTPS proxy URL without embedded credentials."
+                    ),
                 ),
                 required=False,
             ),
@@ -58,7 +74,7 @@ def _parameters_service_now_notify():
 
 
 rule_spec_service_now_notify = NotificationParameters(
-    title=Title("Service Now Notify"),
+    title=Title("ServiceNow notification"),
     topic=Topic.NOTIFICATIONS,
     parameter_form=_parameters_service_now_notify,
     name="service_now_notify",

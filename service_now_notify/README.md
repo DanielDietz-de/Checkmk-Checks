@@ -1,65 +1,80 @@
-# Service Now Notification
+# ServiceNow notification
 
 <!-- compatibility-badges:start -->
 ![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.4.0-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.5.0-blue)
 <!-- compatibility-badges:end -->
 
-Notification plugin that creates and closes ServiceNow incidents for Checkmk host and service events, using Checkmk contact groups to derive the ServiceNow assignment group. A contact group prefix of `SNOW_<number>_...` determines the assignment: the group with the highest number wins, and host or service custom attributes can override it explicitly.
+Notification plug-in that creates and closes ServiceNow incidents through a customer middleware endpoint. Checkmk contact groups determine the default assignment group, while host and service attributes can override it.
 
-## How it works
+## Transport and delivery safety
 
-On `PROBLEM` notifications the script POSTs a JSON payload to
-`<api_url>checkmk/incident/create` using HTTP Basic authentication. On `RECOVERY` it posts to `checkmk/incident/close`. Both endpoints are called through an optional HTTPS proxy.
+- The configured API value must be an absolute HTTPS base URL.
+- Both problem and recovery endpoints are built from the same normalized base URL.
+- Basic authentication is therefore never sent over cleartext HTTP.
+- Redirects and proxy-environment variables are disabled.
+- An optional proxy must itself be an absolute HTTPS URL without embedded credentials.
+- TLS uses the system trust store or an optional private CA bundle.
+- Requests have a configurable timeout and responses are capped at 1 MiB.
+- Every 2xx status is accepted; non-2xx responses and invalid JSON fail the notification without copying the response body into logs or monitoring output.
+- Create and close POSTs are attempted once. An ambiguous timeout is not retried because the middleware may already have applied the operation.
+- The previous persistent DEBUG log containing complete payloads and responses was removed.
 
-Key payload fields:
+## Endpoints
 
-- `QUELLEID`: `<site>|<host>[|<service>]`
-- `FQDN`, `KURZBESCHREIBUNG` (plugin output), `SERVERITY` (state)
-- `MP`: management pack dict with hostname/service/contacts
-- `ASSIGNMENT`: picked from contact groups whose names start with `SNOW_`, comparing the numeric segment between the first two underscores. Default fallback is `SNOW_000_OS`.
-- `ASSIGNMENT_GROUP`: overridden by the host custom attribute `HOST_SNOW_RESP_GRP` or the service custom attribute `SERVICE_SVC_SNOW_RESP_GRP_2` when present.
-- `DISPOSITION`: derived from the service level (`0 -> Keine_Bereitschaft`, `10 -> Bereitschaft`).
+For an API base such as:
 
-### On-call duty suppression via service labels
+```text
+https://middleware.example/api/
+```
 
-Service labels can force the service level (and therefore `DISPOSITION`) down to `0` (`Keine_Bereitschaft`) for selected states, so an incident is still created but on-call duty is not raised:
+the plug-in calls:
 
-| Label (set to value `OFF`) | Effect |
+```text
+https://middleware.example/api/checkmk/incident/create
+https://middleware.example/api/checkmk/incident/close
+```
+
+A trailing slash is added safely when omitted.
+
+## Assignment behavior
+
+The default is `SNOW_000_OS`. Contact groups matching `SNOW_<number>...` are parsed defensively, and the numerically highest valid group wins. Malformed names are ignored rather than raising an exception.
+
+Overrides:
+
+- host: `HOST_SNOW_RESP_GRP`;
+- service: `SERVICE_SNOW_RESP_GRP_2`;
+- the historical duplicated key `SERVICE_SVC_SNOW_RESP_GRP_2` remains accepted for migration.
+
+All values copied from notification context into the payload are bounded and stripped of control characters.
+
+## On-call duty labels
+
+The following service labels can force the service level to `0` (`Keine_Bereitschaft`):
+
+| Label set to `OFF` | Effect |
 | --- | --- |
-| `SNOW_onCALLDUTY_WARN` | Drops the service level to `0` when the service is `WARN` (state 1). |
-| `SNOW_onCALLDUTY_CRIT` | Drops the service level to `0` when the service is `CRIT` (state 2). |
-| `SNOW_onCALLDUTY_ALL` | Drops the service level to `0` for both `WARN` and `CRIT`. |
+| `SNOW_onCALLDUTY_WARN` | WARN only. |
+| `SNOW_onCALLDUTY_CRIT` | CRIT only. |
+| `SNOW_onCALLDUTY_ALL` | WARN and CRIT. |
 
-Labels are read from the notification context as `SERVICELABEL_<key>` and matched case-sensitively. Host notifications are unaffected.
+## Configuration
 
-Debug and error information is written to `~/var/log/snow_notify.log`.
+| Parameter | Meaning |
+| --- | --- |
+| `api_url` | Absolute HTTPS API base URL. |
+| `api_user` | Basic-authentication user. |
+| `api_password` | Basic-authentication password stored as a Checkmk secret. |
+| `timeout` | Per-request timeout, constrained to 0.5–120 seconds. |
+| `ca_bundle` | Optional absolute private CA bundle. |
+| `proxy` | Optional absolute HTTPS proxy without embedded credentials. |
 
 ## Package contents
 
 | Path | Purpose |
 | --- | --- |
-| `src/notifications/service_now_notify` | Notification script executed by Checkmk. |
-| `src/service_now_notify/rulesets/service_now_notify.py` | WATO notification parameter form (API URL, user, password, proxy). |
+| `src/notifications/service_now_notify` | Payload creation, secure delivery and response validation. |
+| `src/service_now_notify/rulesets/service_now_notify.py` | Notification parameters. |
+| `tests/test_service_now_notify.py` | URL, retry, assignment and recovery regression tests. |
 
-## Installation
-
-1. Install the MKP on the Checkmk site.
-2. Create a new notification rule and select *ServiceNow Notify* as the plugin.
-3. Configure API URL (with trailing slash), basic auth credentials, and optional proxy.
-4. Assign Checkmk contact groups following the `SNOW_<NN>_<name>` scheme so that the script can pick the right assignment group, or set the `SNOW_RESP_GRP` custom host/service attributes to override.
-
-## Configuration
-
-| Parameter | Type | Meaning |
-| --- | --- | --- |
-| `api_url` | String | Base URL of the ServiceNow integration endpoint (the script appends `checkmk/incident/create` or `checkmk/incident/close`). |
-| `api_user` | String | HTTP Basic user. |
-| `api_password` | Password | HTTP Basic password. |
-| `proxy` | String | Optional HTTPS proxy. |
-
-## Known limitations
-
-- The ruleset uses the mixed legacy/new form-spec notification API (`recompose` + `notification_parameter_registry`) and will need adjustments if that compatibility shim is removed in a later Checkmk release.
-- Payload field names are in German (`QUELLE`, `ZIEL`, `KURZBESCHREIBUNG`, ...) because they target a specific customer middleware — adjust the script if your ServiceNow bridge expects different keys.
-- `DISPOSITION` only distinguishes two service levels (`0` and `10`); other values fall back to `N/A`.
-- Only `PROBLEM` and `RECOVERY` notification types are handled; everything else exits silently.
+The middleware payload field names remain customer-specific (`QUELLE`, `ZIEL`, `KURZBESCHREIBUNG`, and so on). `DISPOSITION` currently maps service level `0` to `Keine_Bereitschaft` and `10` to `Bereitschaft`; other values become `N/A`.
