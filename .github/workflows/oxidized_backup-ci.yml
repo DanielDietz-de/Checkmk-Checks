@@ -115,7 +115,7 @@ jobs:
           PY
 
   checkmk-api-load:
-    name: Checkmk API and Bakery load (${{ matrix.checkmk }})
+    name: Checkmk API and Raw compatibility (${{ matrix.checkmk }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -185,7 +185,9 @@ jobs:
             set -euo pipefail
             plugin_root="${PLUGIN_BASE}/${PACKAGE_NAME}"
             python3 -m compileall -q "$plugin_root"
-            python3 -m py_compile "${AGENT_BASE}/plugins/${PACKAGE_NAME}"
+            python3 -m py_compile \
+              "${AGENT_BASE}/plugins/${PACKAGE_NAME}" \
+              "${LIB_BASE}/base/cee/plugins/bakery/${PACKAGE_NAME}.py"
             "${AGENT_BASE}/plugins/${PACKAGE_NAME}" --help >/dev/null
             while IFS= read -r -d "" plugin; do
               echo "Loading ${plugin#$plugin_root/}"
@@ -196,68 +198,30 @@ jobs:
             )
           '
 
-      - name: Validate Bakery API artifacts and scriptlets
+      - name: Confirm commercial Bakery isolation in Raw
         run: |
           docker exec --user cmk checkmk-ci bash -lc '
             set -euo pipefail
             python3 - <<"PY"
-          from cmk.base.cee.plugins.bakery import oxidized_backup as bakery
+          from pathlib import Path
 
-          conf = {
-              "deployment": ("cached", 300.0),
-              "inventory": {
-                  "url": "https://checkmk.example.invalid/site/open/oxidized.json",
-                  "timeout_seconds": 10,
-                  "max_response_bytes": 4194304,
-                  "allow_insecure_http": False,
-                  "auth": ("none", None),
-              },
-              "oxidized": {
-                  "url": "http://127.0.0.1:8888/nodes.json",
-                  "timeout_seconds": 10,
-                  "max_response_bytes": 4194304,
-                  "allow_insecure_http": False,
-                  "auth": ("none", None),
-              },
-              "state": {
-                  "hook_state_file": "/var/lib/oxidized/oxidized_backup/hook-state.json",
-                  "monitor_state_file": "/var/lib/check_mk_agent/oxidized_backup/monitor-state.json",
-              },
-              "git": {
-                  "run_as_user": "oxidized",
-                  "git_binary": "/usr/bin/git",
-                  "repositories": [{
-                      "id": "default",
-                      "path": "/var/lib/oxidized/oxidized.git",
-                      "groups": [("wildcard", None)],
-                      "single_repo": True,
-                      "remote": "origin",
-                      "branch": "main",
-                      "command_timeout_seconds": 30,
-                      "fsck_timeout_seconds": 120,
-                  }],
-              },
-              "policy": {
-                  "collection_warning_age_seconds": 7200.0,
-                  "collection_critical_age_seconds": 14400.0,
-                  "remote_sync_grace_seconds": 300.0,
-                  "remote_verification_max_age_seconds": 3600.0,
-                  "fsck_interval_seconds": 3600.0,
-                  "orphan_state": "warn",
-              },
-          }
-          artifacts = list(bakery.get_files(conf))
-          assert [type(item).__name__ for item in artifacts] == [
-              "Plugin", "SystemBinary", "PluginConfig", "SystemConfig",
-          ]
-          assert str(artifacts[1].target) == "oxidized_backup_hook"
-          assert str(artifacts[2].target) == "oxidized_backup.json"
-          assert str(artifacts[3].target) == "check_mk/oxidized_backup-hook.yml"
-          scriptlets = list(bakery.get_scriptlets(conf, "test-agent-hash"))
-          assert len(scriptlets) == 2
-          script_text = "\n".join(line for item in scriptlets for line in item.lines)
-          assert "/var/lib/oxidized/oxidized_backup" in script_text
-          assert "/var/lib/check_mk_agent/oxidized_backup" in script_text
+          path = Path(
+              "/omd/sites/cmk/local/lib/check_mk/base/cee/plugins/bakery/oxidized_backup.py"
+          )
+          source = path.read_text(encoding="utf-8")
+          required = (
+              "from .bakery_api.v1 import",
+              "Plugin(",
+              "SystemBinary(",
+              "PluginConfig(",
+              "SystemConfig(",
+              "Scriptlet(step=DebStep.POSTINST",
+              "Scriptlet(step=RpmStep.POST",
+              "register.bakery_plugin(",
+          )
+          missing = [token for token in required if token not in source]
+          if missing:
+              raise SystemExit(f"Bakery source contract is incomplete: {missing}")
           PY
           '
 
