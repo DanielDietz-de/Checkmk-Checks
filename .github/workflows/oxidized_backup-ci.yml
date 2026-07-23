@@ -18,9 +18,11 @@ env:
   PACKAGE_NAME: oxidized_backup
   PACKAGE_SOURCE: oxidized_backup/src/oxidized_backup
   AGENT_PLUGIN_SOURCE: oxidized_backup/src/agents/plugins/oxidized_backup
-  PACKAGE_VERSION: "1.0.1"
+  BAKERY_SOURCE: oxidized_backup/src/lib/python3/cmk/base/cee/plugins/bakery/oxidized_backup.py
+  PACKAGE_VERSION: "1.1.0"
   PLUGIN_BASE: /omd/sites/cmk/local/lib/python3/cmk_addons/plugins
   AGENT_BASE: /omd/sites/cmk/local/share/check_mk/agents
+  LIB_BASE: /omd/sites/cmk/local/lib/check_mk
 
 permissions:
   contents: read
@@ -55,12 +57,13 @@ jobs:
           --select E9,F63,F7,F82
           "$PACKAGE_SOURCE"
           "$AGENT_PLUGIN_SOURCE"
+          "$BAKERY_SOURCE"
           "$PACKAGE_DIR/tests"
 
       - name: Compile all Python files
         run: |
           python -m compileall -q "$PACKAGE_SOURCE" "$PACKAGE_DIR/tests"
-          python -m py_compile "$AGENT_PLUGIN_SOURCE"
+          python -m py_compile "$AGENT_PLUGIN_SOURCE" "$BAKERY_SOURCE"
 
       - name: Run functional and security tests
         run: pytest -q "$PACKAGE_DIR/tests"
@@ -122,7 +125,7 @@ jobs:
               "node_success",
               "node_fail",
               "post_store",
-              "/usr/lib/check_mk_agent/plugins/300/oxidized_backup",
+              "/usr/bin/oxidized_backup_hook",
               "--config /etc/check_mk/oxidized_backup.json",
           )
           missing = [token for token in required_hook_tokens if token not in hook]
@@ -131,7 +134,7 @@ jobs:
           PY
 
   checkmk-api-load:
-    name: Checkmk API load (${{ matrix.checkmk }})
+    name: Checkmk API and Bakery load (${{ matrix.checkmk }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -159,8 +162,10 @@ jobs:
             --env PACKAGE_NAME \
             --env PACKAGE_SOURCE \
             --env AGENT_PLUGIN_SOURCE \
+            --env BAKERY_SOURCE \
             --env PLUGIN_BASE \
             --env AGENT_BASE \
+            --env LIB_BASE \
             --volume "$GITHUB_WORKSPACE:/work:ro" \
             "$CHECKMK_IMAGE"
 
@@ -187,15 +192,19 @@ jobs:
             plugin_target="${PLUGIN_BASE}/${PACKAGE_NAME}"
             agent_source="/work/${AGENT_PLUGIN_SOURCE}"
             agent_target="${AGENT_BASE}/plugins/${PACKAGE_NAME}"
+            bakery_source="/work/${BAKERY_SOURCE}"
+            bakery_target="${LIB_BASE}/python3/cmk/base/cee/plugins/bakery/${PACKAGE_NAME}.py"
 
             test -d "$plugin_source"
             test -f "$agent_source"
+            test -f "$bakery_source"
             test -f "$plugin_source/deployment/${PACKAGE_NAME}.json"
             test -f "$plugin_source/deployment/${PACKAGE_NAME}-hook.yml"
 
             install -d -o cmk -g cmk "$plugin_target"
             cp -a "$plugin_source/." "$plugin_target/"
             install -D -m 0755 -o cmk -g cmk "$agent_source" "$agent_target"
+            install -D -m 0644 -o cmk -g cmk "$bakery_source" "$bakery_target"
             chown -R cmk:cmk "$plugin_target"
           '
 
@@ -206,11 +215,12 @@ jobs:
             export PAGER=cat
             plugin_root="${PLUGIN_BASE}/${PACKAGE_NAME}"
             agent_plugin="${AGENT_BASE}/plugins/${PACKAGE_NAME}"
+            bakery_plugin="${LIB_BASE}/python3/cmk/base/cee/plugins/bakery/${PACKAGE_NAME}.py"
             deployment_config="${plugin_root}/deployment/${PACKAGE_NAME}.json"
             deployment_hook="${plugin_root}/deployment/${PACKAGE_NAME}-hook.yml"
 
             python3 -m compileall -q "$plugin_root"
-            python3 -m py_compile "$agent_plugin"
+            python3 -m py_compile "$agent_plugin" "$bakery_plugin"
             python3 -m json.tool "$deployment_config" >/dev/null
             test -s "$deployment_hook"
             "$agent_plugin" --help >/dev/null
@@ -218,7 +228,80 @@ jobs:
             while IFS= read -r -d "" plugin; do
               echo "Loading ${plugin#$plugin_root/}"
               python3 "$plugin"
-            done < <(find "$plugin_root/agent_based" -type f -name "*.py" -print0 | sort -z)
+            done < <(
+              find "$plugin_root/agent_based" "$plugin_root/rulesets" \
+                -type f -name "*.py" -print0 | sort -z
+            )
+
+            python3 - <<"PY"
+          from cmk.base.cee.plugins.bakery import oxidized_backup as bakery
+
+          conf = {
+              "deployment": ("cached", 300.0),
+              "inventory": {
+                  "url": "https://checkmk.example.invalid/site/open/oxidized.json",
+                  "timeout_seconds": 10,
+                  "max_response_bytes": 4194304,
+                  "allow_insecure_http": False,
+                  "auth": ("none", None),
+              },
+              "oxidized": {
+                  "url": "http://127.0.0.1:8888/nodes.json",
+                  "timeout_seconds": 10,
+                  "max_response_bytes": 4194304,
+                  "allow_insecure_http": False,
+                  "auth": ("none", None),
+              },
+              "state": {
+                  "hook_state_file": "/var/lib/oxidized/oxidized_backup/hook-state.json",
+                  "monitor_state_file": "/var/lib/check_mk_agent/oxidized_backup/monitor-state.json",
+              },
+              "git": {
+                  "run_as_user": "oxidized",
+                  "git_binary": "/usr/bin/git",
+                  "repositories": [{
+                      "id": "default",
+                      "path": "/var/lib/oxidized/oxidized.git",
+                      "groups": [("wildcard", None)],
+                      "single_repo": True,
+                      "remote": "origin",
+                      "branch": "main",
+                      "command_timeout_seconds": 30,
+                      "fsck_timeout_seconds": 120,
+                  }],
+              },
+              "policy": {
+                  "collection_warning_age_seconds": 7200.0,
+                  "collection_critical_age_seconds": 14400.0,
+                  "remote_sync_grace_seconds": 300.0,
+                  "remote_verification_max_age_seconds": 3600.0,
+                  "fsck_interval_seconds": 3600.0,
+                  "orphan_state": "warn",
+              },
+          }
+
+          artifacts = list(bakery.get_files(conf))
+          assert [type(item).__name__ for item in artifacts] == [
+              "Plugin",
+              "SystemBinary",
+              "PluginConfig",
+              "SystemConfig",
+          ]
+          assert str(artifacts[0].source) == "oxidized_backup"
+          assert str(artifacts[1].source) == "plugins/oxidized_backup"
+          assert str(artifacts[1].target) == "oxidized_backup_hook"
+          assert str(artifacts[2].target) == "oxidized_backup.json"
+          assert str(artifacts[3].target) == "check_mk/oxidized_backup-hook.yml"
+
+          scriptlets = list(bakery.get_scriptlets(conf, "test-agent-hash"))
+          assert [type(item.step).__name__ for item in scriptlets] == [
+              "DebStep",
+              "RpmStep",
+          ]
+          script_text = "\n".join(line for item in scriptlets for line in item.lines)
+          assert "/var/lib/oxidized/oxidized_backup" in script_text
+          assert "/var/lib/check_mk_agent/oxidized_backup" in script_text
+          PY
 
             cmk-validate-plugins
             cmk -M oxidized_backup >/dev/null
@@ -259,9 +342,11 @@ jobs:
             --env PACKAGE_NAME \
             --env PACKAGE_SOURCE \
             --env AGENT_PLUGIN_SOURCE \
+            --env BAKERY_SOURCE \
             --env PACKAGE_VERSION \
             --env PLUGIN_BASE \
             --env AGENT_BASE \
+            --env LIB_BASE \
             --volume "$GITHUB_WORKSPACE:/work:ro" \
             checkmk/check-mk-raw:2.4.0p34
 
@@ -288,15 +373,16 @@ jobs:
             plugin_target="${PLUGIN_BASE}/${PACKAGE_NAME}"
             agent_source="/work/${AGENT_PLUGIN_SOURCE}"
             agent_target="${AGENT_BASE}/plugins/${PACKAGE_NAME}"
+            bakery_source="/work/${BAKERY_SOURCE}"
+            bakery_target="${LIB_BASE}/python3/cmk/base/cee/plugins/bakery/${PACKAGE_NAME}.py"
 
             test -d "$plugin_source"
             test -f "$agent_source"
-            test -f "$plugin_source/deployment/${PACKAGE_NAME}.json"
-            test -f "$plugin_source/deployment/${PACKAGE_NAME}-hook.yml"
-
+            test -f "$bakery_source"
             install -d -o cmk -g cmk "$plugin_target"
             cp -a "$plugin_source/." "$plugin_target/"
             install -D -m 0755 -o cmk -g cmk "$agent_source" "$agent_target"
+            install -D -m 0644 -o cmk -g cmk "$bakery_source" "$bakery_target"
             find "$plugin_target" -type d -name __pycache__ -prune -exec rm -rf {} +
             find "$plugin_target" -type f -name "*.pyc" -delete
             chown -R cmk:cmk "$plugin_target"
@@ -316,28 +402,42 @@ jobs:
 
           plugin_base = Path(os.environ["PLUGIN_BASE"])
           agent_base = Path(os.environ["AGENT_BASE"])
+          lib_base = Path(os.environ["LIB_BASE"])
           package_name = os.environ["PACKAGE_NAME"]
           package_dir = os.environ["PACKAGE_DIR"]
           repository = os.environ["GITHUB_REPOSITORY"]
           plugin_root = plugin_base / package_name
           agent_file = agent_base / "plugins" / package_name
+          bakery_file = (
+              lib_base
+              / "python3"
+              / "cmk"
+              / "base"
+              / "cee"
+              / "plugins"
+              / "bakery"
+              / f"{package_name}.py"
+          )
 
           addon_files = sorted(
               str(path.relative_to(plugin_base))
               for path in plugin_root.rglob("*")
-              if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"
+              if path.is_file()
+              and "__pycache__" not in path.parts
+              and path.suffix != ".pyc"
           )
           agent_files = [str(agent_file.relative_to(agent_base))]
+          library_files = [str(bakery_file.relative_to(lib_base))]
 
-          required_deployment_files = {
+          required_addon_files = {
+              f"{package_name}/bakery_common.py",
+              f"{package_name}/rulesets/ruleset_{package_name}_bakery.py",
               f"{package_name}/deployment/{package_name}.json",
               f"{package_name}/deployment/{package_name}-hook.yml",
           }
-          missing_deployment_files = required_deployment_files - set(addon_files)
-          if missing_deployment_files:
-              raise SystemExit(
-                  f"Deployment templates missing from plug-in package: {sorted(missing_deployment_files)}"
-              )
+          missing = required_addon_files - set(addon_files)
+          if missing:
+              raise SystemExit(f"Required package files missing: {sorted(missing)}")
 
           manifest = {
               "name": package_name,
@@ -345,7 +445,8 @@ jobs:
               "author": "Daniel Dietz",
               "description": (
                   "Verifies Oxidized inventory, collection freshness, local Git backup "
-                  "artifacts, repository integrity, and remote Git synchronization."
+                  "artifacts, repository integrity, remote Git synchronization, and "
+                  "supports Checkmk Agent Bakery deployment."
               ),
               "version": os.environ["PACKAGE_VERSION"],
               "version.min_required": "2.4.0b1",
@@ -355,6 +456,7 @@ jobs:
               "files": {
                   "agents": agent_files,
                   "cmk_addons_plugins": addon_files,
+                  "lib": library_files,
               },
           }
 
@@ -363,11 +465,13 @@ jobs:
           path.write_text(content, encoding="utf-8")
           parsed = ast.literal_eval(path.read_text(encoding="utf-8"))
           assert parsed == manifest
-          assert addon_files
           assert agent_files == [f"plugins/{package_name}"]
+          assert library_files == [
+              f"python3/cmk/base/cee/plugins/bakery/{package_name}.py"
+          ]
           print(
-              f"Manifest contains {len(addon_files)} Checkmk files, including two "
-              f"deployment templates, and {len(agent_files)} agent executable"
+              f"Manifest contains {len(addon_files)} Checkmk files, "
+              f"{len(agent_files)} agent source, and {len(library_files)} library file"
           )
           print(content)
           PY
