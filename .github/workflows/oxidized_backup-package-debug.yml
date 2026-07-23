@@ -70,6 +70,7 @@ jobs:
             "version.min_required": "2.4.0b1",
             "version.packaged": "2.4.0p34",
             "version.usable_until": "2.4.99",
+            "download_url": "https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/oxidized_backup",
             "files": {
               "agents": ["plugins/oxidized_backup"],
               "cmk_addons_plugins": [
