@@ -7,9 +7,9 @@ The generated package and checksum belong directly in this folder:
 
 ## What the MKP contains
 
-The MKP installs two package components on the Checkmk server.
+Version 1.1.0 contains three Checkmk package components.
 
-### Checkmk plug-in component
+### Additional Checkmk plug-ins
 
 Installed below:
 
@@ -19,15 +19,15 @@ $OMD_ROOT/local/lib/python3/cmk_addons/plugins/oxidized_backup/
 
 This component contains:
 
-- the Checkmk agent-based plug-in;
+- the Checkmk agent-based check;
 - the Checkmk manual page;
-- the version-matched deployment templates:
-  - `deployment/oxidized_backup.json`
-  - `deployment/oxidized_backup-hook.yml`
+- the Agent Bakery rule;
+- pure configuration-normalization helpers shared by Bakery and tests;
+- generic JSON and hook templates for Raw/Community and manual fallback deployments.
 
-The templates are administrative files copied from the Checkmk server to the Oxidized host. They are intentionally stored in the Checkmk plug-in component because Checkmk's MKP `agents` component is reserved for files that belong to the agent distribution tree. Packaging the templates as additional `agents/cfg_examples` files caused a Checkmk file-conflict failure during `mkp package`.
+The Bakery rule is host-scoped and must be assigned only to the Checkmk host representing the Oxidized server. It does not select switches and does not replace the existing Checkmk-generated Oxidized inventory.
 
-### Agents component
+### Agents
 
 Installed below:
 
@@ -35,19 +35,36 @@ Installed below:
 $OMD_ROOT/local/share/check_mk/agents/plugins/oxidized_backup
 ```
 
-This component contains only the executable Linux agent plug-in. The administrator copies this executable and the two deployment templates from the enabled MKP installation to the Oxidized host.
+This is the Linux agent source consumed by Agent Bakery and by the documented manual fallback.
+
+### Libraries
+
+Installed below:
+
+```text
+$OMD_ROOT/local/lib/check_mk/python3/cmk/base/cee/plugins/bakery/oxidized_backup.py
+```
+
+This is the Bakery API v1 implementation. It describes the host-specific artifacts:
+
+- cached or synchronous `Plugin` execution;
+- a stable `SystemBinary` for the Oxidized exec hook;
+- generated `PluginConfig` JSON;
+- generated `SystemConfig` hook reference;
+- DEB and RPM post-install scriptlets for the configured state directories.
+
+The active Oxidized YAML configuration is deliberately not modified by package installation or Bakery scriptlets.
 
 ## Build and persistence workflow
 
 The `oxidized_backup checks` workflow:
 
 1. runs Python and security-focused tests;
-2. validates the plug-in and deployment templates on the supported Checkmk versions;
+2. validates the check, ruleset, Bakery module, and generated Bakery artifacts on Checkmk 2.4.0p5 and 2.4.0p34;
 3. builds the MKP with Checkmk;
-4. verifies the MKP manifest and every component archive;
-5. explicitly checks that both deployment templates are present in `cmk_addons_plugins.tar`;
-6. creates the SHA-256 checksum;
-7. uploads the package and checksum as a workflow artifact.
+4. verifies the `agents`, `cmk_addons_plugins`, and `lib` component archives;
+5. creates the SHA-256 checksum;
+6. uploads the package and checksum as a workflow artifact.
 
 After a successful push build on `master`, the `Persist oxidized_backup MKP` workflow downloads that exact artifact, verifies its checksum, and commits both files into `oxidized_backup/`.
 
@@ -55,4 +72,4 @@ Pull-request and manually dispatched builds remain read-only. Stale artifacts ar
 
 ## Versioning rule
 
-Any change to the Checkmk plug-in, Linux agent plug-in, configuration template, hook template, or package layout requires a new `PACKAGE_VERSION` in `.github/workflows/oxidized_backup-ci.yml`.
+Any change to the check, agent plug-in, Bakery rule, Bakery implementation, generated configuration model, hook reference, deployment templates, or package layout requires a new `PACKAGE_VERSION` in `.github/workflows/oxidized_backup-ci.yml`.
