@@ -10,6 +10,11 @@ description:
  configuration blob exists in the local Git repository, and checks that the
  local repository HEAD matches the configured remote branch.
 
+ The MKP includes an Agent Bakery rule for deploying the collector, generated
+ JSON configuration, stable Oxidized hook helper, hook reference, and state
+ directory scriptlets to the Checkmk host representing the Oxidized server.
+ The active Oxidized YAML configuration is not changed automatically.
+
  The agent plug-in emits one central section on the Oxidized host and one
  piggyback section for every device in the Checkmk export. Persistent collection
  timestamps are maintained through the supplied Oxidized exec-hook mode so that
