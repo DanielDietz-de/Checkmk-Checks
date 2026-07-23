@@ -17,8 +17,8 @@ env:
   PACKAGE_DIR: oxidized_backup
   PACKAGE_NAME: oxidized_backup
   PACKAGE_SOURCE: oxidized_backup/src/oxidized_backup
-  AGENT_SOURCE: oxidized_backup/src/agents/plugins/oxidized_backup
-  PACKAGE_VERSION: "1.0.0"
+  AGENT_PLUGIN_SOURCE: oxidized_backup/src/agents/plugins/oxidized_backup
+  PACKAGE_VERSION: "1.0.1"
   PLUGIN_BASE: /omd/sites/cmk/local/lib/python3/cmk_addons/plugins
   AGENT_BASE: /omd/sites/cmk/local/share/check_mk/agents
 
@@ -54,13 +54,13 @@ jobs:
           ruff check
           --select E9,F63,F7,F82
           "$PACKAGE_SOURCE"
-          "$AGENT_SOURCE"
+          "$AGENT_PLUGIN_SOURCE"
           "$PACKAGE_DIR/tests"
 
       - name: Compile all Python files
         run: |
           python -m compileall -q "$PACKAGE_SOURCE" "$PACKAGE_DIR/tests"
-          python -m py_compile "$AGENT_SOURCE"
+          python -m py_compile "$AGENT_PLUGIN_SOURCE"
 
       - name: Run functional and security tests
         run: pytest -q "$PACKAGE_DIR/tests"
@@ -71,7 +71,15 @@ jobs:
           import os
           from pathlib import Path
 
-          required = {"title", "agents", "catalog", "license", "distribution", "description", "inventory"}
+          required = {
+              "title",
+              "agents",
+              "catalog",
+              "license",
+              "distribution",
+              "description",
+              "inventory",
+          }
           checkman_dir = Path(os.environ["PACKAGE_SOURCE"]) / "checkman"
           errors = []
 
@@ -91,18 +99,35 @@ jobs:
               raise SystemExit("\n".join(errors))
           PY
 
-      - name: Validate examples contain no environment names or inline secrets
+      - name: Validate packaged deployment templates
         run: |
           python - <<'PY'
           import json
+          import os
           from pathlib import Path
 
-          config = json.loads(Path("oxidized_backup/examples/oxidized_backup.json").read_text())
+          deployment = Path(os.environ["PACKAGE_SOURCE"]) / "deployment"
+          config_path = deployment / "oxidized_backup.json"
+          hook_path = deployment / "oxidized_backup-hook.yml"
+
+          config = json.loads(config_path.read_text(encoding="utf-8"))
           serialized = json.dumps(config).lower()
           forbidden = ("rkg", "rau", '"password"', '"token"')
           found = [value for value in forbidden if value in serialized]
           if found:
-              raise SystemExit(f"Example configuration contains forbidden values: {found}")
+              raise SystemExit(f"Configuration template contains forbidden values: {found}")
+
+          hook = hook_path.read_text(encoding="utf-8")
+          required_hook_tokens = (
+              "node_success",
+              "node_fail",
+              "post_store",
+              "/usr/lib/check_mk_agent/plugins/300/oxidized_backup",
+              "--config /etc/check_mk/oxidized_backup.json",
+          )
+          missing = [token for token in required_hook_tokens if token not in hook]
+          if missing:
+              raise SystemExit(f"Hook template is missing: {missing}")
           PY
 
   checkmk-api-load:
@@ -133,7 +158,7 @@ jobs:
             --env CMK_SITE_ID='cmk' \
             --env PACKAGE_NAME \
             --env PACKAGE_SOURCE \
-            --env AGENT_SOURCE \
+            --env AGENT_PLUGIN_SOURCE \
             --env PLUGIN_BASE \
             --env AGENT_BASE \
             --volume "$GITHUB_WORKSPACE:/work:ro" \
@@ -160,11 +185,14 @@ jobs:
             set -euo pipefail
             plugin_source="/work/${PACKAGE_SOURCE}"
             plugin_target="${PLUGIN_BASE}/${PACKAGE_NAME}"
-            agent_source="/work/${AGENT_SOURCE}"
+            agent_source="/work/${AGENT_PLUGIN_SOURCE}"
             agent_target="${AGENT_BASE}/plugins/${PACKAGE_NAME}"
 
             test -d "$plugin_source"
             test -f "$agent_source"
+            test -f "$plugin_source/deployment/${PACKAGE_NAME}.json"
+            test -f "$plugin_source/deployment/${PACKAGE_NAME}-hook.yml"
+
             install -d -o cmk -g cmk "$plugin_target"
             cp -a "$plugin_source/." "$plugin_target/"
             install -D -m 0755 -o cmk -g cmk "$agent_source" "$agent_target"
@@ -178,9 +206,13 @@ jobs:
             export PAGER=cat
             plugin_root="${PLUGIN_BASE}/${PACKAGE_NAME}"
             agent_plugin="${AGENT_BASE}/plugins/${PACKAGE_NAME}"
+            deployment_config="${plugin_root}/deployment/${PACKAGE_NAME}.json"
+            deployment_hook="${plugin_root}/deployment/${PACKAGE_NAME}-hook.yml"
 
             python3 -m compileall -q "$plugin_root"
             python3 -m py_compile "$agent_plugin"
+            python3 -m json.tool "$deployment_config" >/dev/null
+            test -s "$deployment_hook"
             "$agent_plugin" --help >/dev/null
 
             while IFS= read -r -d "" plugin; do
@@ -226,7 +258,7 @@ jobs:
             --env PACKAGE_DIR \
             --env PACKAGE_NAME \
             --env PACKAGE_SOURCE \
-            --env AGENT_SOURCE \
+            --env AGENT_PLUGIN_SOURCE \
             --env PACKAGE_VERSION \
             --env PLUGIN_BASE \
             --env AGENT_BASE \
@@ -254,11 +286,14 @@ jobs:
             set -euo pipefail
             plugin_source="/work/${PACKAGE_SOURCE}"
             plugin_target="${PLUGIN_BASE}/${PACKAGE_NAME}"
-            agent_source="/work/${AGENT_SOURCE}"
+            agent_source="/work/${AGENT_PLUGIN_SOURCE}"
             agent_target="${AGENT_BASE}/plugins/${PACKAGE_NAME}"
 
             test -d "$plugin_source"
             test -f "$agent_source"
+            test -f "$plugin_source/deployment/${PACKAGE_NAME}.json"
+            test -f "$plugin_source/deployment/${PACKAGE_NAME}-hook.yml"
+
             install -d -o cmk -g cmk "$plugin_target"
             cp -a "$plugin_source/." "$plugin_target/"
             install -D -m 0755 -o cmk -g cmk "$agent_source" "$agent_target"
@@ -294,6 +329,16 @@ jobs:
           )
           agent_files = [str(agent_file.relative_to(agent_base))]
 
+          required_deployment_files = {
+              f"{package_name}/deployment/{package_name}.json",
+              f"{package_name}/deployment/{package_name}-hook.yml",
+          }
+          missing_deployment_files = required_deployment_files - set(addon_files)
+          if missing_deployment_files:
+              raise SystemExit(
+                  f"Deployment templates missing from plug-in package: {sorted(missing_deployment_files)}"
+              )
+
           manifest = {
               "name": package_name,
               "title": "Oxidized Backup Verification",
@@ -320,7 +365,10 @@ jobs:
           assert parsed == manifest
           assert addon_files
           assert agent_files == [f"plugins/{package_name}"]
-          print(f"Manifest contains {len(addon_files)} Checkmk files and {len(agent_files)} agent file")
+          print(
+              f"Manifest contains {len(addon_files)} Checkmk files, including two "
+              f"deployment templates, and {len(agent_files)} agent executable"
+          )
           print(content)
           PY
           '
@@ -331,7 +379,8 @@ jobs:
             set -euxo pipefail
             manifest="$HOME/tmp/check_mk/${PACKAGE_NAME}-ci.manifest.temp"
             mkp --debug package "$manifest"
-            find "$HOME/var/check_mk/packages_local" -maxdepth 1 -type f -name "${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp" -ls
+            find "$HOME/var/check_mk/packages_local" -maxdepth 1 -type f \
+              -name "${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp" -ls
           '
 
       - name: Inspect and verify MKP with Checkmk
@@ -377,15 +426,24 @@ jobs:
                   component_file = outer.extractfile(by_basename[f"{component}.tar"])
                   if component_file is None:
                       raise SystemExit(f"Unable to read {component}.tar")
-                  with tarfile.open(fileobj=io.BytesIO(component_file.read()), mode="r:*") as inner:
-                      inner_names = {normalized(member.name) for member in inner.getmembers()}
+                  with tarfile.open(
+                      fileobj=io.BytesIO(component_file.read()), mode="r:*"
+                  ) as inner:
+                      inner_names = {
+                          normalized(member.name) for member in inner.getmembers()
+                      }
                   missing_inner = sorted(
                       required
                       for required in required_files
-                      if not any(name == required or name.endswith("/" + required) for name in inner_names)
+                      if not any(
+                          name == required or name.endswith("/" + required)
+                          for name in inner_names
+                      )
                   )
                   if missing_inner:
-                      raise SystemExit(f"Missing packaged {component} files: {missing_inner}")
+                      raise SystemExit(
+                          f"Missing packaged {component} files: {missing_inner}"
+                      )
                   print(f"Verified {len(required_files)} files in {component}.tar")
           PY
           '

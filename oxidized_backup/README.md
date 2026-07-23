@@ -8,7 +8,7 @@
 
 The existing Checkmk Oxidized export remains the only source of truth. A device is expected to have a backup when it appears in that JSON export, for example because the Checkmk host tag `For_Oxidized` is set. The package does not implement a second tag filter, host list, folder rule, or hostname pattern.
 
-The collector runs as a **Checkmk Linux agent plug-in on the Oxidized host**. It is not a server-side special agent. This placement gives it controlled local access to the Oxidized Git repository while it still emits piggyback data for all exported network devices.
+The collector runs as a **Checkmk Linux agent plug-in on the Oxidized host**. It is not a server-side special agent. This placement gives it local, read-only access to the Oxidized Git repository while it emits central and piggyback sections for Checkmk.
 
 ## What is verified
 
@@ -25,7 +25,7 @@ On the Oxidized host, central services additionally verify that:
 3. periodic `git fsck --connectivity-only --no-dangling` checks succeed;
 4. every local repository `HEAD` equals the configured remote branch `HEAD` returned by `git ls-remote`.
 
-A recent successful collection is not inferred from Git commit age. Oxidized does not create a new Git commit when a device configuration is unchanged. Collection freshness and configuration-change history are therefore treated as separate facts.
+A successful collection is not inferred from Git commit age. Oxidized does not create a new Git commit when a configuration is unchanged, so collection freshness and configuration-change history are treated separately.
 
 ## Services
 
@@ -39,7 +39,7 @@ The Oxidized host receives:
 - **Oxidized Git repository**
 - **Oxidized Git remote synchronization**
 
-Remote synchronization is intentionally a central service. One unavailable Git remote must not create the same alert on every switch.
+Remote synchronization is intentionally a central service. A single unavailable Git remote must not create the same alert on every switch.
 
 ## State model
 
@@ -72,89 +72,172 @@ Remote synchronization is intentionally a central service. One unavailable Git r
 | Local repository missing, invalid, or unreadable | CRIT |
 | Monitor state cannot be read or persisted | UNKNOWN |
 
-## Architecture
+## Deployment model
+
+There are three distinct systems. Nothing is installed on the network devices.
+
+| System | Responsibilities |
+| --- | --- |
+| **Checkmk server** | Install and enable the MKP. The MKP installs the Checkmk check plug-in, the Linux agent plug-in, and the two deployment templates. Service discovery and activation also happen here. |
+| **Oxidized host** | Install the Linux agent plug-in copied from Checkmk, create and edit its configuration, create both state directories, merge the Oxidized hook, and run local validation. |
+| **Network devices** | No files are installed. Devices receive piggyback services because they are present in the existing Checkmk Oxidized export. |
 
 ```text
-Checkmk hosts with For_Oxidized
-             │
-             ▼
-existing Checkmk oxidized.json
-             │
-             ├──────────────► Oxidized node source
-             │
-             └──────────────► oxidized_backup agent plug-in
-                                  │
-                                  ├── Oxidized /nodes.json
-                                  ├── persistent Oxidized hook state
-                                  ├── local Git object database
-                                  └── remote Git branch HEAD
-                                           │
-                                           ▼
-                                central + piggyback sections
+Checkmk server
+  ├── Checkmk check plug-in
+  ├── Linux agent plug-in ────────────────────┐
+  ├── JSON configuration template ────────────┤ copied once to
+  └── Oxidized hook template ─────────────────┤ the Oxidized host
+                                               ▼
+Oxidized host
+  ├── Checkmk Linux agent
+  ├── oxidized_backup agent plug-in
+  ├── /etc/check_mk/oxidized_backup.json
+  ├── Oxidized exec hook
+  ├── two persistent state directories
+  ├── local Oxidized Git repository
+  └── access to the configured Git remote
+                                               │
+                                               ▼
+                                  central + piggyback sections
 ```
 
-The agent plug-in emits standard Checkmk piggyback markers. One section remains on the Oxidized host and one section is assigned to each exported Checkmk hostname.
+## Files delivered by the MKP
 
-## Package contents
+After the MKP is enabled, these files exist on the **Checkmk server** below the site directory:
 
-| Path | Purpose |
-| --- | --- |
-| `src/agents/plugins/oxidized_backup` | Standalone Linux agent plug-in and Oxidized hook-state recorder. |
-| `src/oxidized_backup/agent_based/oxidized_backup.py` | Parses central and piggyback data, discovers services, and evaluates states. |
-| `src/oxidized_backup/checkman/oxidized_backup` | Checkmk manual page. |
-| `examples/oxidized_backup.json` | Generic, non-production example configuration. |
-| `examples/oxidized-hook.yml` | Generic Oxidized exec-hook example. |
-| `tests/` | Parser, security, Git, hook-state, discovery, and state-matrix tests. |
+| Source on the Checkmk server | Purpose | Destination on the Oxidized host |
+| --- | --- | --- |
+| `$OMD_ROOT/local/share/check_mk/agents/plugins/oxidized_backup` | Executable Linux agent plug-in and Oxidized hook-state recorder | `/usr/lib/check_mk_agent/plugins/300/oxidized_backup` |
+| `$OMD_ROOT/local/lib/python3/cmk_addons/plugins/oxidized_backup/deployment/oxidized_backup.json` | Configuration template | `/etc/check_mk/oxidized_backup.json` |
+| `$OMD_ROOT/local/lib/python3/cmk_addons/plugins/oxidized_backup/deployment/oxidized_backup-hook.yml` | Oxidized hook snippet; reference file only | Merge into the active Oxidized configuration |
 
-The MKP contains both the Checkmk plug-in family and the Linux agent plug-in under the standard `agents` package component.
+The templates are deliberately packaged inside the Checkmk plug-in component rather than the MKP `agents` component. Checkmk's agent component is used only for the executable; the templates are still part of the same versioned MKP and are installed automatically with it.
+
+Repository paths under `oxidized_backup/src/` are development sources. For a normal installation, use the files installed by the MKP so the server-side check, agent plug-in, and templates are all from the same package version.
 
 ## Requirements
 
+### Checkmk server
+
 - Checkmk 2.4
-- Linux Checkmk agent on the Oxidized host
-- Python 3.11 or newer on the Oxidized host
+- permission to install and enable an MKP
+- shell access as the Checkmk site user for command-line installation
+
+The graphical MKP manager under **Setup > Maintenance > Extension packages** is available in Checkmk commercial editions. Checkmk Community users install the MKP with the `mkp` command.
+
+### Oxidized host
+
+- Linux Checkmk agent
+- Python 3.11 or newer
 - Git command-line client
 - `runuser` when the Checkmk agent executes as root and Git must run as the unprivileged Oxidized account
 - Oxidized web API available locally or over a trusted management network
 - Oxidized Git output
 - a Git remote that can be queried non-interactively by the Oxidized service account
 
-The collector uses only Python's standard library. It does not require PyYAML, Requests, Rugged, or direct access to the backed-up configuration contents.
+The collector uses only Python's standard library. It does not require PyYAML, Requests, Rugged, or access to configuration file contents.
 
 ## Installation
 
-### 1. Install the MKP on Checkmk
+Every step below states where it must be performed.
 
-Install the generated `oxidized_backup-*.mkp` package through **Setup > Maintenance > Extension packages**, or as the site user:
+### 1. Download and verify the MKP — administrator workstation or Checkmk server
+
+For a released package, download the MKP and checksum from the `oxidized_backup/` directory on the repository's `master` branch. Pull-request workflow artifacts are test builds, not the normal production source.
 
 ```bash
-mkp add /path/to/oxidized_backup-1.0.0.mkp
-mkp enable oxidized_backup 1.0.0
+PACKAGE_VERSION=1.0.1
+REPOSITORY_RAW=https://raw.githubusercontent.com/DanielDietz-de/Checkmk-Checks/master
+
+curl --fail --location --remote-name \
+  "${REPOSITORY_RAW}/oxidized_backup/oxidized_backup-${PACKAGE_VERSION}.mkp"
+curl --fail --location --remote-name \
+  "${REPOSITORY_RAW}/oxidized_backup/oxidized_backup-${PACKAGE_VERSION}.mkp.sha256"
+
+sha256sum --check "oxidized_backup-${PACKAGE_VERSION}.mkp.sha256"
+```
+
+When downloading on an administrator workstation, copy the verified MKP to the Checkmk server:
+
+```bash
+scp "oxidized_backup-${PACKAGE_VERSION}.mkp" root@checkmk.example:/tmp/
+```
+
+Replace `checkmk.example` with the actual Checkmk server name.
+
+### 2. Install and enable the MKP — Checkmk server
+
+Use the graphical MKP manager in a commercial edition, or switch to the site user and use the CLI:
+
+```bash
+sudo --login --user cmk
+PACKAGE_VERSION=1.0.1
+
+mkp add "/tmp/oxidized_backup-${PACKAGE_VERSION}.mkp"
+mkp enable oxidized_backup "${PACKAGE_VERSION}"
 cmk -R
 ```
 
-After installation, the Linux agent plug-in is available on the Checkmk site at:
+Replace `cmk` with the actual site name.
 
-```text
-$OMD_ROOT/local/share/check_mk/agents/plugins/oxidized_backup
+Confirm that the package installed all three deployment files:
+
+```bash
+test -x "$OMD_ROOT/local/share/check_mk/agents/plugins/oxidized_backup"
+test -r "$OMD_ROOT/local/lib/python3/cmk_addons/plugins/oxidized_backup/deployment/oxidized_backup.json"
+test -r "$OMD_ROOT/local/lib/python3/cmk_addons/plugins/oxidized_backup/deployment/oxidized_backup-hook.yml"
 ```
 
-### 2. Install the agent plug-in on the Oxidized host
+At this point the Checkmk check is installed, but the Oxidized host has not yet been changed.
 
-Run the collector at a cached interval. Five minutes is recommended for the Git and network operations performed by this plug-in:
+### 3. Copy the packaged files — Checkmk server to Oxidized host
+
+Run this on the **Checkmk server** as a user that can read the site files:
+
+```bash
+CHECKMK_SITE=cmk
+OXIDIZED_HOST=oxidized.example
+SITE_ROOT="/omd/sites/${CHECKMK_SITE}"
+DEPLOYMENT_ROOT="${SITE_ROOT}/local/lib/python3/cmk_addons/plugins/oxidized_backup/deployment"
+
+scp \
+  "${SITE_ROOT}/local/share/check_mk/agents/plugins/oxidized_backup" \
+  "${DEPLOYMENT_ROOT}/oxidized_backup.json" \
+  "${DEPLOYMENT_ROOT}/oxidized_backup-hook.yml" \
+  "root@${OXIDIZED_HOST}:/tmp/"
+```
+
+Replace `cmk` and `oxidized.example` with the actual site and host names.
+
+Do not download an unrelated agent copy directly from another branch or commit. Copying the files installed by the MKP keeps both systems on the same version.
+
+### 4. Install files and create state directories — Oxidized host
+
+All commands in this step run as `root` on the **Oxidized host**.
+
+Install the executable:
 
 ```bash
 install -d -m 0755 /usr/lib/check_mk_agent/plugins/300
 install -m 0755 \
-  /path/to/oxidized_backup \
+  /tmp/oxidized_backup \
   /usr/lib/check_mk_agent/plugins/300/oxidized_backup
 ```
 
-The same installed file is also called by the Oxidized exec hook.
+Install the configuration template and keep the hook template as an administrative reference:
 
-### 3. Create state directories
+```bash
+install -d -m 0755 /etc/check_mk
+install -m 0640 -o root -g oxidized \
+  /tmp/oxidized_backup.json \
+  /etc/check_mk/oxidized_backup.json
+install -m 0644 -o root -g root \
+  /tmp/oxidized_backup-hook.yml \
+  /etc/check_mk/oxidized_backup-hook.yml
+```
 
-Use separate ownership for Oxidized hook state and Checkmk monitor state:
+Create **both state directories on the Oxidized host**:
 
 ```bash
 install -d -m 0750 -o oxidized -g oxidized \
@@ -164,26 +247,90 @@ install -d -m 0700 -o root -g root \
   /var/lib/check_mk_agent/oxidized_backup
 ```
 
-Replace the account and paths when the Oxidized service uses different values.
+The directories have different owners because different processes write them:
 
-### 4. Create the configuration
+| Directory | Writer | Stored data |
+| --- | --- | --- |
+| `/var/lib/oxidized/oxidized_backup` | Oxidized service account | Persistent `node_success`, `node_fail`, and `post_store` hook state |
+| `/var/lib/check_mk_agent/oxidized_backup` | Checkmk agent process, normally `root` | Remote mismatch history, last successful remote verification, and cached Git fsck state |
 
-Copy `examples/oxidized_backup.json` to:
+When the Oxidized service account or Checkmk agent execution user differs, adjust ownership accordingly. The JSON configuration must remain readable by both identities.
 
-```text
-/etc/check_mk/oxidized_backup.json
+### 5. Configure the collector — Oxidized host
+
+Edit the installed configuration:
+
+```bash
+editor /etc/check_mk/oxidized_backup.json
 ```
 
-Then replace every example value with the actual environment values. The package intentionally ships no production URL, repository path, branch, site name, hostname, or threshold default.
+The template is deliberately non-functional until environment-specific values are confirmed:
 
-The Checkmk agent runs as root, while the Oxidized hook runs as the Oxidized service account. Make the configuration readable by both but not by unrelated users:
+| Setting | Required value |
+| --- | --- |
+| `inventory.url` | URL or local file URI of the existing Checkmk-generated `oxidized.json`. The request originates from the Oxidized host. |
+| `oxidized.url` | Oxidized node API. `http://127.0.0.1:8888/nodes.json` is valid only when Oxidized Web listens there. |
+| `state.hook_state_file` | Normally `/var/lib/oxidized/oxidized_backup/hook-state.json`. |
+| `state.monitor_state_file` | Normally `/var/lib/check_mk_agent/oxidized_backup/monitor-state.json`. |
+| `git.run_as_user` | Unprivileged account that can read the Oxidized repository and authenticate to its remote. |
+| `git.repositories[].path` | Actual local bare or non-bare Oxidized Git repository. |
+| `git.repositories[].groups` | Oxidized groups handled by that repository. |
+| `git.repositories[].single_repo` | `true` when grouped nodes are stored as `group/name`; otherwise `false`. |
+| `git.repositories[].remote` | Git remote name, normally `origin`. |
+| `git.repositories[].branch` | Remote branch to verify, for example `main`. |
+| `policy.*` | Thresholds suitable for the complete Oxidized polling cycle and acceptable remote-verification age. |
+
+Do not retain the example URL, repository path, branch, or thresholds without validating them.
+
+Protect the configuration while keeping it readable by the Oxidized service account:
 
 ```bash
 chown root:oxidized /etc/check_mk/oxidized_backup.json
 chmod 0640 /etc/check_mk/oxidized_backup.json
 ```
 
-Validate it as both execution identities:
+### 6. Merge the Oxidized hook — Oxidized host
+
+`/etc/check_mk/oxidized_backup-hook.yml` is a **snippet**, not a second Oxidized configuration file.
+
+A typical service-account installation uses this active Oxidized configuration:
+
+```text
+/home/oxidized/.config/oxidized/config
+```
+
+The actual path depends on the service unit. Confirm it before editing:
+
+```bash
+systemctl cat oxidized
+```
+
+Review the packaged snippet:
+
+```bash
+cat /etc/check_mk/oxidized_backup-hook.yml
+```
+
+Merge the nested `checkmk_oxidized_backup_state` entry into the existing `hooks:` mapping of the active Oxidized configuration.
+
+Important:
+
+- when `hooks:` already exists, add only the nested hook entry;
+- do not create a second top-level `hooks:` key;
+- keep the executable and configuration paths aligned with the files installed above;
+- preserve unrelated existing hooks.
+
+Restart Oxidized and inspect its log:
+
+```bash
+systemctl restart oxidized
+systemctl --no-pager --full status oxidized
+journalctl --unit oxidized --since "-5 minutes" --no-pager
+```
+
+### 7. Validate the local installation — Oxidized host
+
+Validate the JSON configuration as both execution identities:
 
 ```bash
 /usr/lib/check_mk_agent/plugins/300/oxidized_backup \
@@ -196,44 +343,53 @@ runuser -u oxidized -- \
   --config /etc/check_mk/oxidized_backup.json
 ```
 
-### 5. Configure the Oxidized hook
+Run the collector directly:
 
-Merge the supplied hook into the existing Oxidized configuration. Do not replace the complete `hooks` section when other hooks are already configured.
-
-```yaml
-hooks:
-  checkmk_oxidized_backup_state:
-    type: exec
-    events:
-      - node_success
-      - node_fail
-      - post_store
-    cmd: >-
-      /usr/lib/check_mk_agent/plugins/300/oxidized_backup
-      --record-hook
-      --config /etc/check_mk/oxidized_backup.json
-    timeout: 10
-    async: false
+```bash
+/usr/lib/check_mk_agent/plugins/300/oxidized_backup \
+  --config /etc/check_mk/oxidized_backup.json
 ```
 
-`node_success` records every successful configuration retrieval, including unchanged configurations. `node_fail` records a failed collection after Oxidized exhausts its retries. `post_store` records actual Git storage events, which occur only when Oxidized stores a changed configuration.
+Confirm that the normal Checkmk agent includes the section:
 
-Restart Oxidized after changing its hook configuration and verify that the hook-state file is updated after the next node job.
+```bash
+check_mk_agent | sed -n '/<<<oxidized_backup/,/<<<<>>>>/p'
+```
 
-### 6. Discover services
+After Oxidized completes at least one node job, confirm that hook state exists:
 
-1. Run the Checkmk agent on the Oxidized host.
-2. Rediscover services on the Oxidized host and accept the three central services.
-3. Let Checkmk process the piggyback data.
-4. Rediscover services on the devices contained in the Oxidized export and accept **Oxidized backup**.
+```bash
+stat /var/lib/oxidized/oxidized_backup/hook-state.json
+```
 
-For SNMP-only switches, keep SNMP enabled and allow piggyback data from the Oxidized host. No Checkmk agent needs to run on the switches themselves.
+### 8. Discover services — Checkmk server
+
+On the Checkmk server or in the GUI:
+
+1. rediscover services on the Oxidized host and accept:
+   - **Oxidized backup inventory**
+   - **Oxidized Git repository**
+   - **Oxidized Git remote synchronization**
+2. allow Checkmk to process the piggyback data;
+3. rediscover services on devices contained in the Oxidized export and accept **Oxidized backup**.
+
+CLI examples as the Checkmk site user:
+
+```bash
+cmk-validate-plugins
+cmk -d oxidized-host
+cmk-piggyback list sources
+cmk -IIv oxidized-host switch-1
+cmk -nv oxidized-host switch-1
+```
+
+Replace `oxidized-host` and `switch-1` with actual Checkmk host names. For SNMP-only switches, keep SNMP enabled and permit piggyback data from the Oxidized host. No Checkmk agent runs on the switches.
 
 ## Configuration reference
 
 ### `inventory`
 
-The existing Checkmk-generated JSON source. The expected schema is the schema already produced by the repository's `oxidized` exporter:
+The existing Checkmk-generated JSON source. The expected schema is the schema already supplied to Oxidized:
 
 ```json
 [
@@ -246,7 +402,7 @@ Required:
 
 - `url`: `https://`, `http://`, or `file://` URL
 
-Optional bounded transport values:
+Optional bounded transport settings:
 
 - `timeout_seconds`: 0.1 to 120 seconds
 - `max_response_bytes`: 1 KiB to 64 MiB
@@ -258,16 +414,16 @@ Credentials embedded in a URL are rejected.
 
 ### `oxidized`
 
-The Oxidized node API, normally the local `/nodes.json` endpoint. The same transport and authentication options as `inventory` are supported, except `file://` is not accepted.
+The Oxidized node API, normally the local `/nodes.json` endpoint. The same transport and authentication settings as `inventory` are supported, except `file://` is not accepted.
 
-A loopback HTTP URL is allowed without the non-loopback cleartext opt-in.
+Loopback HTTP is allowed without the non-loopback cleartext opt-in.
 
 ### `state`
 
 - `hook_state_file`: persistent state written by the Oxidized service account
 - `monitor_state_file`: remote mismatch, last synchronization, and fsck state written by the Checkmk agent
 
-Both must be absolute paths. State updates use file locks, temporary files, `fsync`, and atomic replacement. Existing state-file symlinks are refused.
+Both are absolute paths on the Oxidized host. State updates use file locks, temporary files, `fsync`, and atomic replacement. Existing state-file symlinks are refused.
 
 ### `git`
 
@@ -289,13 +445,13 @@ Repository definition:
 - `remote`: optional Git remote name; default `origin`
 - `branch`: optional explicit branch; when omitted, the current symbolic `HEAD` branch is used
 - `command_timeout_seconds`: optional, 1 to 300 seconds
-- `fsck_timeout_seconds`: optional integrity-check timeout, 1 to 3600 seconds
+- `fsck_timeout_seconds`: optional, 1 to 3600 seconds
 
-The remote is queried as `git.run_as_user` with `GIT_TERMINAL_PROMPT=0`. Configure SSH keys, `known_hosts`, or a non-interactive Git credential helper for that account. Do not place tokens or passwords in this JSON file.
+The remote is queried as `git.run_as_user` with `GIT_TERMINAL_PROMPT=0`. Configure SSH keys, `known_hosts`, or a non-interactive credential helper for that account. Do not put tokens or passwords in this JSON file.
 
 ### `policy`
 
-All policy values are required:
+All values are required:
 
 - `collection_warning_age_seconds`
 - `collection_critical_age_seconds`
@@ -307,13 +463,11 @@ All policy values are required:
   - `1`: WARN
   - `2`: CRIT
 
-The critical collection age must be greater than the warning age.
-
-Choose collection thresholds based on the complete Oxidized cycle duration, including thread count, node count, retries, device timeouts, and the configured Oxidized interval.
+The critical collection age must be greater than the warning age. Choose thresholds based on the complete Oxidized cycle duration, including node count, thread count, retries, device timeouts, and polling interval.
 
 ## Multiple Git repositories and groups
 
-For a single repository containing grouped devices:
+### One repository for all groups
 
 ```json
 {
@@ -324,7 +478,7 @@ For a single repository containing grouped devices:
 }
 ```
 
-Expected paths are:
+Expected tree paths:
 
 ```text
 switch-1
@@ -332,7 +486,7 @@ switches/switch-2
 routers/router-1
 ```
 
-For separate repositories per group:
+### Separate repository per group
 
 ```json
 [
@@ -359,36 +513,11 @@ For separate repositories per group:
 
 Ambiguous mappings are not guessed. The affected device becomes UNKNOWN and the central repository service explains the mapping problem.
 
-## Validation and troubleshooting
+## Troubleshooting
 
-Validate the installed configuration:
+### Oxidized host
 
-```bash
-/usr/lib/check_mk_agent/plugins/300/oxidized_backup \
-  --check-config \
-  --config /etc/check_mk/oxidized_backup.json
-```
-
-Run the collector directly:
-
-```bash
-/usr/lib/check_mk_agent/plugins/300/oxidized_backup \
-  --config /etc/check_mk/oxidized_backup.json
-```
-
-Check the complete agent output:
-
-```bash
-check_mk_agent | sed -n '/<<<oxidized_backup/,/<<<<>>>>/p'
-```
-
-Verify the Oxidized hook state:
-
-```bash
-stat /var/lib/oxidized/oxidized_backup/hook-state.json
-```
-
-Verify the local Git branch and a device path without reading configuration content:
+Verify the local Git branch and a device path without reading configuration contents:
 
 ```bash
 runuser -u oxidized -- \
@@ -407,14 +536,58 @@ runuser -u oxidized -- \
   ls-remote --exit-code origin refs/heads/main
 ```
 
-On the Checkmk site:
+Check ownership and path traversal:
 
 ```bash
-cmk-validate-plugins
-cmk -d oxidized-host
+namei -l /etc/check_mk/oxidized_backup.json
+namei -l /var/lib/oxidized/oxidized_backup
+namei -l /var/lib/check_mk_agent/oxidized_backup
+```
+
+### Checkmk server
+
+Confirm all package files:
+
+```bash
+mkp files oxidized_backup 1.0.1
+
+test -x "$OMD_ROOT/local/share/check_mk/agents/plugins/oxidized_backup"
+test -r "$OMD_ROOT/local/lib/python3/cmk_addons/plugins/oxidized_backup/deployment/oxidized_backup.json"
+test -r "$OMD_ROOT/local/lib/python3/cmk_addons/plugins/oxidized_backup/deployment/oxidized_backup-hook.yml"
+```
+
+Confirm piggyback sources and execute checks:
+
+```bash
 cmk-piggyback list sources
-cmk -IIv oxidized-host switch-1
 cmk -nv oxidized-host switch-1
+```
+
+## Upgrade
+
+An MKP upgrade changes the Checkmk server only. Re-copy the agent executable and compare the two newly installed templates with the live Oxidized-host files after enabling a newer package.
+
+Recommended sequence:
+
+1. download and verify the new MKP;
+2. install and enable it on Checkmk;
+3. copy the new executable and templates from the new MKP installation to `/tmp/` on the Oxidized host;
+4. replace the executable;
+5. compare the current JSON configuration and active hook with the new templates;
+6. preserve environment-specific values instead of overwriting the live configuration;
+7. rerun validation;
+8. restart Oxidized only when the hook changed.
+
+Example comparisons on the Oxidized host:
+
+```bash
+diff --unified \
+  /etc/check_mk/oxidized_backup.json \
+  /tmp/oxidized_backup.json || true
+
+diff --unified \
+  /etc/check_mk/oxidized_backup-hook.yml \
+  /tmp/oxidized_backup-hook.yml || true
 ```
 
 ## Security properties
@@ -431,34 +604,40 @@ cmk -nv oxidized-host switch-1
 - secret files must be regular files with no group or other permissions;
 - credentials embedded in URLs are rejected;
 - errors are bounded and redact URL user information, tokens, and password-like values;
-- node names are validated before being used in piggyback markers or Git tree paths;
+- node names are validated before use in piggyback markers or Git tree paths;
 - state files use locking and atomic replacement;
 - repository checks do not modify the local branch, working tree, or remote-tracking refs.
 
 ## Operational notes
 
-- The collector intentionally uses `git ls-remote`, not a local remote-tracking branch, to verify the actual remote branch.
-- A short mismatch grace period prevents alerts while the Oxidized `post_store` hook is still pushing a new commit.
-- The full connectivity fsck runs only at the configured interval. Its result is persisted between agent runs.
-- Removing `For_Oxidized` removes the device from the authoritative export. Its piggyback section then stops, and the service becomes vanished through normal Checkmk discovery handling.
+- The collector uses `git ls-remote`, not a local remote-tracking branch, to verify the actual remote branch.
+- A short mismatch grace period prevents alerts while the Oxidized `post_store` hook is still pushing a commit.
+- The full connectivity fsck runs only at the configured interval and persists its result between agent runs.
+- Removing `For_Oxidized` removes the device from the authoritative export. Its piggyback section stops and the service becomes vanished through normal Checkmk discovery handling.
 - A node left in Oxidized after removal from the export appears as an orphan in the central inventory service.
 - The collector never triggers a backup, changes a Git repository, fetches a remote into local refs, or repairs a repository. It is monitoring-only.
 
 ## Removal
 
-Disable and remove the MKP from Checkmk:
+### Checkmk server
+
+Disable and remove the MKP as the site user:
 
 ```bash
-mkp disable oxidized_backup 1.0.0
-mkp remove oxidized_backup 1.0.0
+PACKAGE_VERSION=1.0.1
+mkp disable oxidized_backup "${PACKAGE_VERSION}"
+mkp remove oxidized_backup "${PACKAGE_VERSION}"
 cmk -R
 ```
 
-Remove the agent-side files only after disabling the Oxidized hook:
+### Oxidized host
+
+First remove `checkmk_oxidized_backup_state` from the active Oxidized configuration and restart Oxidized. Then remove the deployed files and state:
 
 ```bash
 rm -f /usr/lib/check_mk_agent/plugins/300/oxidized_backup
 rm -f /etc/check_mk/oxidized_backup.json
+rm -f /etc/check_mk/oxidized_backup-hook.yml
 rm -rf /var/lib/check_mk_agent/oxidized_backup
 rm -rf /var/lib/oxidized/oxidized_backup
 ```
