@@ -45,10 +45,10 @@ Installed below:
 $OMD_ROOT/local/lib/python3/cmk/base/cee/plugins/bakery/oxidized_backup.py
 ```
 
-The corresponding `lib` component path in the MKP manifest is:
+The `lib` package component is rooted at `$OMD_ROOT/local/lib/python3`. Its manifest entry is therefore:
 
 ```text
-python3/cmk/base/cee/plugins/bakery/oxidized_backup.py
+cmk/base/cee/plugins/bakery/oxidized_backup.py
 ```
 
 This is the Bakery API v1 implementation. It describes the host-specific artifacts:
