@@ -11,7 +11,10 @@ from typing import Any
 
 ROOT = Path(__file__).parents[1]
 COMMON_PATH = ROOT / "src/oxidized_backup/bakery_common.py"
-BAKERY_PATH = ROOT / "src/lib/base/cee/plugins/bakery/oxidized_backup.py"
+BAKERY_PATH = (
+    ROOT
+    / "src/lib/python3/cmk/base/cee/plugins/bakery/oxidized_backup.py"
+)
 
 
 class OS(Enum):
