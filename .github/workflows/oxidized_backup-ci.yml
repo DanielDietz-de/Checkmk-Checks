@@ -22,7 +22,7 @@ env:
   PACKAGE_VERSION: "1.1.0"
   PLUGIN_BASE: /omd/sites/cmk/local/lib/python3/cmk_addons/plugins
   AGENT_BASE: /omd/sites/cmk/local/share/check_mk/agents
-  LIB_BASE: /omd/sites/cmk/local/lib/python3
+  LIB_BASE: /omd/sites/cmk/local/lib
 
 permissions:
   contents: read
@@ -167,7 +167,7 @@ jobs:
           docker exec --user root checkmk-ci bash -lc '
             set -euo pipefail
             plugin_target="${PLUGIN_BASE}/${PACKAGE_NAME}"
-            bakery_target="${LIB_BASE}/cmk/base/cee/plugins/bakery/${PACKAGE_NAME}.py"
+            bakery_target="${LIB_BASE}/python3/cmk/base/cee/plugins/bakery/${PACKAGE_NAME}.py"
             install -d -o cmk -g cmk "$plugin_target"
             cp -a "/work/${PACKAGE_SOURCE}/." "$plugin_target/"
             install -D -m 0755 -o cmk -g cmk \
@@ -186,7 +186,9 @@ jobs:
             plugin_root="${PLUGIN_BASE}/${PACKAGE_NAME}"
             python3 -m compileall -q "$plugin_root"
             python3 -m py_compile "${AGENT_BASE}/plugins/${PACKAGE_NAME}"
-            test -r "${LIB_BASE}/cmk/base/cee/plugins/bakery/${PACKAGE_NAME}.py"
+            test -L "${LIB_BASE}/check_mk"
+            test -r "${LIB_BASE}/python3/cmk/base/cee/plugins/bakery/${PACKAGE_NAME}.py"
+            test -r "${LIB_BASE}/check_mk/base/cee/plugins/bakery/${PACKAGE_NAME}.py"
             "${AGENT_BASE}/plugins/${PACKAGE_NAME}" --help >/dev/null
             while IFS= read -r -d "" plugin; do
               echo "Loading ${plugin#$plugin_root/}"
@@ -290,7 +292,7 @@ jobs:
           docker exec --user root checkmk-mkp bash -lc '
             set -euo pipefail
             plugin_target="${PLUGIN_BASE}/${PACKAGE_NAME}"
-            bakery_target="${LIB_BASE}/cmk/base/cee/plugins/bakery/${PACKAGE_NAME}.py"
+            bakery_target="${LIB_BASE}/python3/cmk/base/cee/plugins/bakery/${PACKAGE_NAME}.py"
             install -d -o cmk -g cmk "$plugin_target"
             cp -a "/work/${PACKAGE_SOURCE}/." "$plugin_target/"
             install -D -m 0755 -o cmk -g cmk \
@@ -323,8 +325,9 @@ jobs:
           repository = os.environ["GITHUB_REPOSITORY"]
           plugin_root = plugin_base / package_name
           agent_file = agent_base / "plugins" / package_name
-          bakery_file = (
+          bakery_physical_file = (
               lib_base
+              / "python3"
               / "cmk"
               / "base"
               / "cee"
@@ -332,6 +335,19 @@ jobs:
               / "bakery"
               / f"{package_name}.py"
           )
+          bakery_package_file = (
+              lib_base
+              / "check_mk"
+              / "base"
+              / "cee"
+              / "plugins"
+              / "bakery"
+              / f"{package_name}.py"
+          )
+          if not bakery_physical_file.is_file():
+              raise SystemExit(f"Physical Bakery file missing: {bakery_physical_file}")
+          if not bakery_package_file.is_file():
+              raise SystemExit(f"Bakery compatibility path missing: {bakery_package_file}")
           addon_files = sorted(
               str(path.relative_to(plugin_base))
               for path in plugin_root.rglob("*")
@@ -340,7 +356,7 @@ jobs:
               and path.suffix != ".pyc"
           )
           agent_files = [str(agent_file.relative_to(agent_base))]
-          library_files = [str(bakery_file.relative_to(lib_base))]
+          library_files = [str(bakery_package_file.relative_to(lib_base))]
           required_addon_files = {
               f"{package_name}/bakery_common.py",
               f"{package_name}/rulesets/ruleset_{package_name}_bakery.py",
@@ -374,7 +390,7 @@ jobs:
           path.write_text(content, encoding="utf-8")
           assert ast.literal_eval(path.read_text(encoding="utf-8")) == manifest
           assert library_files == [
-              f"cmk/base/cee/plugins/bakery/{package_name}.py"
+              f"check_mk/base/cee/plugins/bakery/{package_name}.py"
           ]
           print(content)
           PY
