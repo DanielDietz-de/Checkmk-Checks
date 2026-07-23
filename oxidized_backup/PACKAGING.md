@@ -42,7 +42,13 @@ This is the Linux agent source consumed by Agent Bakery and by the documented ma
 Installed below:
 
 ```text
-$OMD_ROOT/local/lib/check_mk/python3/cmk/base/cee/plugins/bakery/oxidized_backup.py
+$OMD_ROOT/local/lib/check_mk/base/cee/plugins/bakery/oxidized_backup.py
+```
+
+The corresponding `lib` component path in the MKP manifest is:
+
+```text
+base/cee/plugins/bakery/oxidized_backup.py
 ```
 
 This is the Bakery API v1 implementation. It describes the host-specific artifacts:
