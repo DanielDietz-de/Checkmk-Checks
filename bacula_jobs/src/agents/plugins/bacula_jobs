@@ -1,44 +1,234 @@
-#!/bin/sh
+#!/usr/bin/env python3
+"""Collect recent Bacula/Bareos jobs from MySQL/MariaDB or PostgreSQL."""
 
-# This plugin needs a configuration file 'bacula.cfg' in your MK_CONFDIR.
-# This is /etc/check_mk in most cases.
-# If you use the CMK Agent Bakery, the config file is created automatically.
+from __future__ import annotations
 
-echo "<<<bacula_jobs:sep(9)>>>"
+import json
+import os
+import pwd
+import re
+import shutil
+import stat
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
 
-# defaults
-DB_HOST_OPT=""
-backend_type=mysql
-dbhost="localhost"
-dbname="bacula"
-dbuser="bacula"
-
-# MK_CONFDIR="${MK_CONFDIR:-/etc/check_mk}"
-MK_CONFDIR="/etc/check_mk"
-
-if [ -e $MK_CONFDIR/bacula.cfg ] ; then
-    . "$MK_CONFDIR"/bacula.cfg
-fi
-
-if [ "$dbhost" ]; then
-    DB_HOST_OPT="--host=$dbhost"
-fi
+QUERY_MYSQL = (
+    "SELECT JobId, Name, JobStatus, EndTime FROM Job "
+    "WHERE EndTime BETWEEN CURDATE() - INTERVAL 30 DAY AND CURDATE();"
+)
+QUERY_POSTGRES = (
+    "SELECT JobId, Name, JobStatus, EndTime FROM Job "
+    "WHERE EndTime BETWEEN NOW() - interval '30 days' AND NOW();"
+)
+IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,127}$")
+HOST_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,255}$")
 
 
-if [ "$backend_type" = "pgsql" ]; then
-    psql_bin=$(which psql)
-    if [ ! "$psql_bin" ]; then
-        echo "psql executable cannot be found!" >&2
-        exit 1
-    fi
-    echo "Select JobId, Name, JobStatus, EndTime FROM Job WHERE EndTime BETWEEN NOW() - interval '30 days' AND NOW();" | sudo -u "$dbuser" "$psql_bin" --tuples-only -AF "$(printf '\t')"  "$dbname" "$dbuser"
-else
-    # default: MySQL / MariaDB
-    mysql_bin=$(which mysql)
-    if [ ! "$mysql_bin" ]; then
-        echo "mysql executable cannot be found!" >&2
-        exit 1
-    fi
+class BaculaConfigError(RuntimeError):
+    """Raised when the local collector configuration is unsafe or invalid."""
 
-    $mysql_bin "$DB_HOST_OPT" --defaults-file=/root/.my.cnf $dbname -B -e "Select JobId, Name, JobStatus, EndTime FROM Job WHERE EndTime BETWEEN CURDATE() - INTERVAL 30 DAY AND CURDATE();"
-fi
+
+def config_path() -> Path:
+    config_dir = Path(os.environ.get("MK_CONFDIR", "/etc/check_mk"))
+    return config_dir / "bacula_jobs.json"
+
+
+def validate_private_file(value: str, label: str) -> str:
+    path = Path(value)
+    if not path.is_absolute() or not path.is_file() or path.is_symlink():
+        raise BaculaConfigError(f"{label} must be an absolute regular file")
+    mode = stat.S_IMODE(path.stat().st_mode)
+    if mode & 0o077:
+        raise BaculaConfigError(f"{label} must not be accessible by group or others")
+    return str(path)
+
+
+def validate_config(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise BaculaConfigError("configuration root must be an object")
+    backend = raw.get("backend", "mysql")
+    if backend not in {"mysql", "postgresql"}:
+        raise BaculaConfigError("backend must be mysql or postgresql")
+
+    database = str(raw.get("database", "bacula"))
+    user = str(raw.get("user", "bacula"))
+    host = str(raw.get("host", "localhost"))
+    if not IDENTIFIER_RE.fullmatch(database):
+        raise BaculaConfigError("database contains invalid characters")
+    if not IDENTIFIER_RE.fullmatch(user):
+        raise BaculaConfigError("database user contains invalid characters")
+    if not HOST_RE.fullmatch(host):
+        raise BaculaConfigError("database host contains invalid characters")
+
+    try:
+        port = int(raw.get("port", 3306 if backend == "mysql" else 5432))
+        timeout = int(raw.get("timeout", 15))
+    except (TypeError, ValueError) as exc:
+        raise BaculaConfigError("port and timeout must be integers") from exc
+    if not 1 <= port <= 65535:
+        raise BaculaConfigError("port must be between 1 and 65535")
+    if not 1 <= timeout <= 120:
+        raise BaculaConfigError("timeout must be between 1 and 120 seconds")
+
+    config: dict[str, Any] = {
+        "backend": backend,
+        "database": database,
+        "user": user,
+        "host": host,
+        "port": port,
+        "timeout": timeout,
+    }
+    if backend == "mysql":
+        defaults_file = raw.get("mysql_defaults_file")
+        if defaults_file:
+            config["mysql_defaults_file"] = validate_private_file(
+                str(defaults_file), "MySQL defaults file"
+            )
+    else:
+        passfile = raw.get("postgres_passfile")
+        if passfile:
+            config["postgres_passfile"] = validate_private_file(
+                str(passfile), "PostgreSQL passfile"
+            )
+        os_user = raw.get("postgres_os_user")
+        if os_user:
+            os_user_text = str(os_user)
+            if not IDENTIFIER_RE.fullmatch(os_user_text):
+                raise BaculaConfigError("PostgreSQL operating-system user is invalid")
+            try:
+                pwd.getpwnam(os_user_text)
+            except KeyError as exc:
+                raise BaculaConfigError(
+                    f"PostgreSQL operating-system user {os_user_text!r} does not exist"
+                ) from exc
+            config["postgres_os_user"] = os_user_text
+    return config
+
+
+def load_config(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return validate_config({})
+    if path.is_symlink() or not path.is_file():
+        raise BaculaConfigError("configuration must be a regular non-symlink file")
+    if path.stat().st_size > 64 * 1024:
+        raise BaculaConfigError("configuration exceeds 64 KiB")
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise BaculaConfigError(f"cannot read configuration: {exc}") from exc
+    return validate_config(raw)
+
+
+def executable(name: str) -> str:
+    path = shutil.which(name)
+    if path is None:
+        raise BaculaConfigError(f"required executable {name!r} was not found")
+    return path
+
+
+def mysql_command(config: dict[str, Any]) -> tuple[list[str], dict[str, str]]:
+    command = [executable("mysql")]
+    defaults_file = config.get("mysql_defaults_file")
+    if defaults_file:
+        # MySQL requires this option before the remaining command options.
+        command.append(f"--defaults-extra-file={defaults_file}")
+    command.extend(
+        [
+            "--batch",
+            "--raw",
+            "--skip-column-names",
+            f"--connect-timeout={config['timeout']}",
+            f"--host={config['host']}",
+            f"--port={config['port']}",
+            f"--user={config['user']}",
+            config["database"],
+            "--execute",
+            QUERY_MYSQL,
+        ]
+    )
+    return command, clean_environment()
+
+
+def postgresql_command(config: dict[str, Any]) -> tuple[list[str], dict[str, str]]:
+    command = [
+        executable("psql"),
+        "--no-psqlrc",
+        "--tuples-only",
+        "--no-align",
+        "--field-separator",
+        "\t",
+        "--set",
+        "ON_ERROR_STOP=1",
+        "--host",
+        config["host"],
+        "--port",
+        str(config["port"]),
+        "--username",
+        config["user"],
+        "--dbname",
+        config["database"],
+        "--command",
+        QUERY_POSTGRES,
+    ]
+    os_user = config.get("postgres_os_user")
+    if os_user:
+        command = [executable("runuser"), "--user", os_user, "--", *command]
+    environment = clean_environment()
+    if config.get("postgres_passfile"):
+        environment["PGPASSFILE"] = config["postgres_passfile"]
+    environment["PGCONNECT_TIMEOUT"] = str(config["timeout"])
+    return command, environment
+
+
+def clean_environment() -> dict[str, str]:
+    allowed = {"PATH", "LANG", "LC_ALL", "TZ"}
+    return {key: value for key, value in os.environ.items() if key in allowed}
+
+
+def collect(config: dict[str, Any]) -> str:
+    command, environment = (
+        mysql_command(config)
+        if config["backend"] == "mysql"
+        else postgresql_command(config)
+    )
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=environment,
+            timeout=config["timeout"] + 5,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise BaculaConfigError("database query timed out") from exc
+    if result.returncode != 0:
+        error = " ".join(result.stderr.split())[:500]
+        raise BaculaConfigError(
+            f"database client exited with {result.returncode}: {error or 'no error output'}"
+        )
+    if len(result.stdout.encode("utf-8")) > 10 * 1024 * 1024:
+        raise BaculaConfigError("database result exceeds 10 MiB")
+    return result.stdout
+
+
+def main() -> int:
+    print("<<<bacula_jobs:sep(9)>>>")
+    try:
+        config = load_config(config_path())
+        output = collect(config)
+    except (BaculaConfigError, OSError) as exc:
+        print(f"Bacula collector error: {exc}", file=sys.stderr)
+        return 1
+    sys.stdout.write(output)
+    if output and not output.endswith("\n"):
+        sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
