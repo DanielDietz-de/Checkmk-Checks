@@ -1,0 +1,116 @@
+name: oxidized_backup package diagnostic
+
+on:
+  pull_request:
+    paths:
+      - "oxidized_backup/**"
+      - ".github/workflows/oxidized_backup-package-debug.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  package-diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Start Checkmk
+        run: |
+          docker run --detach --name checkmk-package-debug \
+            --env CMK_PASSWORD=diagnostic-password \
+            --env CMK_SITE_ID=cmk \
+            --volume "$GITHUB_WORKSPACE:/work:ro" \
+            checkmk/check-mk-raw:2.4.0p34
+          for _ in $(seq 1 120); do
+            if docker logs checkmk-package-debug 2>&1 | grep -q '### CONTAINER STARTED'; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs checkmk-package-debug
+          exit 1
+
+      - name: Install sources and capture package command
+        run: |
+          set +e
+          docker exec --user root checkmk-package-debug bash -lc '
+            set -euo pipefail
+            install -d -o cmk -g cmk \
+              /omd/sites/cmk/local/lib/python3/cmk_addons/plugins/oxidized_backup
+            cp -a /work/oxidized_backup/src/oxidized_backup/. \
+              /omd/sites/cmk/local/lib/python3/cmk_addons/plugins/oxidized_backup/
+            install -D -m 0755 -o cmk -g cmk \
+              /work/oxidized_backup/src/agents/plugins/oxidized_backup \
+              /omd/sites/cmk/local/share/check_mk/agents/plugins/oxidized_backup
+            install -D -m 0644 -o cmk -g cmk \
+              /work/oxidized_backup/src/lib/python3/cmk/base/cee/plugins/bakery/oxidized_backup.py \
+              /omd/sites/cmk/local/lib/python3/cmk/base/cee/plugins/bakery/oxidized_backup.py
+            find /omd/sites/cmk/local/lib/python3/cmk_addons/plugins/oxidized_backup \
+              -type d -name __pycache__ -prune -exec rm -rf {} +
+            find /omd/sites/cmk/local/lib/python3/cmk_addons/plugins/oxidized_backup \
+              -type f -name "*.pyc" -delete
+          '
+          docker exec --user cmk checkmk-package-debug bash -lc '
+            set -uo pipefail
+            manifest="$HOME/tmp/check_mk/oxidized_backup-debug.manifest.temp"
+            mkdir -p "$(dirname "$manifest")"
+            cat >"$manifest" <<"EOF"
+          {
+            "name": "oxidized_backup",
+            "title": "Oxidized Backup Verification",
+            "author": "Daniel Dietz",
+            "description": "Agent Bakery package diagnostic",
+            "version": "1.1.0",
+            "version.min_required": "2.4.0b1",
+            "version.packaged": "2.4.0p34",
+            "version.usable_until": "2.4.99",
+            "download_url": "https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/oxidized_backup",
+            "files": {
+              "agents": ["plugins/oxidized_backup"],
+              "cmk_addons_plugins": [
+                "oxidized_backup/agent_based/oxidized_backup.py",
+                "oxidized_backup/bakery_common.py",
+                "oxidized_backup/checkman/oxidized_backup",
+                "oxidized_backup/deployment/oxidized_backup-hook.yml",
+                "oxidized_backup/deployment/oxidized_backup.json",
+                "oxidized_backup/rulesets/ruleset_oxidized_backup_bakery.py"
+              ],
+              "lib": ["cmk/base/cee/plugins/bakery/oxidized_backup.py"]
+            }
+          }
+          EOF
+            echo "--- manifest ---"
+            cat "$manifest"
+            echo "--- package-part mappings ---"
+            python3 - <<"PY"
+          import inspect
+          import cmk.mkp_tool._parts as parts
+
+          print(inspect.getsource(parts))
+          PY
+            echo "--- package ---"
+            mkp --debug package "$manifest"
+            status=$?
+            echo "--- exit status: $status ---"
+            exit "$status"
+          ' >"$RUNNER_TEMP/package-diagnostic.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/package-diagnostic.log"
+          echo "status=$status" >>"$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload diagnostic
+        uses: actions/upload-artifact@v6
+        with:
+          name: oxidized-backup-package-diagnostic
+          path: ${{ runner.temp }}/package-diagnostic.log
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Remove container
+        if: always()
+        run: docker rm --force checkmk-package-debug || true
