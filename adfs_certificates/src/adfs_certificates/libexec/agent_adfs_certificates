@@ -1,0 +1,206 @@
+#!/usr/bin/env python3
+"""
+ADFS Certificate Monitoring Special Agent
+
+Kuhn & Rueß GmbH
+Consulting and Development
+https://kuhn-ruess.de
+"""
+import argparse
+import base64
+import json
+import socket
+import ssl
+import sys
+import traceback
+from datetime import datetime, timezone
+from xml.etree import ElementTree
+
+import requests
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+
+
+NAMESPACES = {
+    "md": "urn:oasis:names:tc:SAML:2.0:metadata",
+    "ds": "http://www.w3.org/2000/09/xmldsig#",
+}
+
+DEBUG = False
+
+
+def debug(message):
+    """
+    Print a diagnostic message to stderr when --debug is enabled. stderr is not
+    part of the agent section, so it never disturbs the check output but shows up
+    when running the agent manually or via `cmk --debug -d <host>`.
+    """
+    if DEBUG:
+        print(f"DEBUG: {message}", file=sys.stderr)
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="ADFS Certificate Monitoring")
+    parser.add_argument(
+        "--host-name",
+        required=True,
+        help="ADFS host name (e.g. sts.example.com)",
+    )
+    parser.add_argument(
+        "--proxy-url",
+        required=False,
+        help="Proxy URL (e.g. http://proxy.example.com:8080)",
+    )
+    parser.add_argument(
+        "--no-verify-ssl",
+        required=False,
+        action="store_true",
+        help="Disable SSL certificate verification",
+    )
+    parser.add_argument(
+        "--debug",
+        required=False,
+        action="store_true",
+        help="Print diagnostic information to stderr and full tracebacks",
+    )
+    return parser.parse_args()
+
+
+def fetch_federation_metadata(host_name, proxy_url=None, verify_ssl=True):
+    url = f"https://{host_name}/federationmetadata/2007-06/federationmetadata.xml"
+    proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
+    debug(f"Fetching federation metadata from {url} (proxy={proxy_url}, verify_ssl={verify_ssl})")
+    resp = requests.get(url, proxies=proxies, timeout=30, verify=verify_ssl)
+    debug(f"HTTP status {resp.status_code}, {len(resp.content)} bytes")
+    resp.raise_for_status()
+    return resp.content
+
+
+def _cert_to_dict(cert, use):
+    """
+    Build the section entry for a single X.509 certificate.
+    """
+    not_after = cert.not_valid_after_utc
+    now = datetime.now(timezone.utc)
+    days_remaining = (not_after - now).days
+
+    try:
+        subject = cert.subject.get_attributes_for_oid(
+            x509.NameOID.COMMON_NAME
+        )[0].value
+    except IndexError:
+        subject = cert.subject.rfc4514_string()
+
+    return {
+        "use": use,
+        "subject": subject,
+        "not_after": not_after.strftime("%Y-%m-%dT%H:%M:%S"),
+        "days_remaining": days_remaining,
+        "fingerprint": cert.fingerprint(hashes.SHA256()).hex(),
+    }
+
+
+def extract_certificates(xml_bytes):
+    """
+    Extract the token signing/encryption certificates from the federation
+    metadata.
+
+    ADFS publishes the same certificate inside several RoleDescriptors
+    (SecurityTokenService, ApplicationService, IDP/SP SSO descriptors), so a
+    plain iteration over all KeyDescriptor elements yields each certificate
+    multiple times. Deduplicate by SHA-256 fingerprint and only append a running
+    index when there really is more than one distinct certificate per use (e.g.
+    during a signing certificate rollover).
+    """
+    root = ElementTree.fromstring(xml_bytes)
+    seen = set()
+    by_use = {}
+    total = 0
+
+    for key_descriptor in root.iter("{urn:oasis:names:tc:SAML:2.0:metadata}KeyDescriptor"):
+        use = key_descriptor.get("use", "unspecified")
+        cert_elem = key_descriptor.find(
+            ".//{http://www.w3.org/2000/09/xmldsig#}X509Certificate"
+        )
+        if cert_elem is None or not cert_elem.text:
+            continue
+
+        total += 1
+        cert_der = base64.b64decode(cert_elem.text.strip())
+        cert = x509.load_der_x509_certificate(cert_der, default_backend())
+        info = _cert_to_dict(cert, use)
+
+        if info["fingerprint"] in seen:
+            debug(f"skipping duplicate {use} cert {info['subject']} ({info['fingerprint'][:16]}...)")
+            continue
+        seen.add(info["fingerprint"])
+        debug(f"found {use} cert {info['subject']} exp={info['not_after']} "
+              f"({info['fingerprint'][:16]}...)")
+        by_use.setdefault(use, []).append(info)
+
+    debug(f"KeyDescriptors with certificate: {total}, unique after dedup: {len(seen)}")
+    certs = []
+    for use, entries in by_use.items():
+        multiple = len(entries) > 1
+        for index, info in enumerate(entries, start=1):
+            info["item"] = f"{use} {index}" if multiple else use
+            certs.append(info)
+    return certs
+
+
+def fetch_service_certificate(host_name, port=443, verify_ssl=True):
+    """
+    Read the TLS server certificate presented by the ADFS host.
+
+    This is the "Service communications" certificate shown in the ADFS
+    management console. It is NOT part of the federation metadata, so it has to
+    be read directly from the TLS handshake.
+    """
+    context = ssl.create_default_context()
+    if not verify_ssl:
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+
+    debug(f"Opening TLS connection to {host_name}:{port} to read service communications cert")
+    with socket.create_connection((host_name, port), timeout=30) as sock:
+        with context.wrap_socket(sock, server_hostname=host_name) as ssock:
+            cert_der = ssock.getpeercert(binary_form=True)
+
+    cert = x509.load_der_x509_certificate(cert_der, default_backend())
+    info = _cert_to_dict(cert, "service communications")
+    info["item"] = "service communications"
+    debug(f"service communications cert {info['subject']} exp={info['not_after']}")
+    return info
+
+
+if __name__ == "__main__":
+    args = parse_arguments()
+    DEBUG = args.debug
+    verify_ssl = not args.no_verify_ssl
+    debug(f"Starting ADFS certificate agent for host {args.host_name}")
+
+    print("<<<adfs_certificates:sep(0)>>>")
+    try:
+        xml_bytes = fetch_federation_metadata(args.host_name, args.proxy_url, verify_ssl)
+        certs = extract_certificates(xml_bytes)
+    except Exception as e:
+        if DEBUG:
+            traceback.print_exc()
+        print(json.dumps({"error": str(e)}))
+        sys.exit(1)
+
+    # Service communications (TLS) certificate - best effort, must not abort the
+    # whole run if e.g. a firewall blocks the direct TLS connection.
+    try:
+        certs.append(fetch_service_certificate(args.host_name, verify_ssl=verify_ssl))
+    except Exception as e:
+        if DEBUG:
+            traceback.print_exc()
+        print(f"service communications certificate unavailable: {e}", file=sys.stderr)
+
+    if not certs:
+        print(json.dumps({"error": "No certificates found in federation metadata"}))
+    debug(f"Emitting {len(certs)} certificate(s)")
+    for cert in certs:
+        print(json.dumps(cert))

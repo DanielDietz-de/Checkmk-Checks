@@ -1,0 +1,34 @@
+title: ADFS Certificate Expiry
+agents: adfs_certificates
+catalog: app/adfs
+license: GPLv3
+distribution: kuhn-ruess
+description:
+ This check monitors the expiry of the X.509 certificates embedded in the
+ federation metadata of an Active Directory Federation Services (ADFS) host.
+
+ The special agent {agent_adfs_certificates} fetches
+ {/federationmetadata/2007-06/federationmetadata.xml} from the configured ADFS
+ host and extracts the token signing and encryption certificates found in the
+ {KeyDescriptor} elements. As ADFS publishes the same certificate inside several
+ role descriptors, duplicates are removed by their SHA-256 fingerprint so each
+ distinct certificate is monitored only once.
+
+ In addition the agent reads the {Service communications} certificate directly
+ from the TLS handshake with the ADFS host, as this certificate is not part of
+ the federation metadata.
+
+ For each certificate the remaining validity in days is reported as the metric
+ {certificate_validity_days}. The service goes {WARN} or {CRIT} when the
+ remaining validity falls below the configured lower thresholds (default 30 /
+ 14 days). If the agent cannot retrieve or parse the metadata, the service
+ goes {CRIT} with the reported error.
+
+item:
+ The certificate role: {signing}, {encryption} or {service communications}; a
+ running index is appended when more than one distinct certificate shares the
+ same role (for example during a signing certificate rollover).
+
+discovery:
+ One service is created for each certificate found in the federation metadata
+ plus one for the Service communications (TLS) certificate.
