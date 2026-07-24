@@ -16,6 +16,7 @@ class ConfigParser(BaseModel):
     username: str
     password: Secret
     proxy_url: str | None = None
+    debug: bool = False
 
 
 def agent_arguments(params, host_config: HostConfig):
@@ -30,6 +31,9 @@ def agent_arguments(params, host_config: HostConfig):
 
     if params.proxy_url:
         args.extend(["--proxy-url", params.proxy_url])
+
+    if params.debug:
+        args.append("--debug")
 
     yield SpecialAgentCommand(command_arguments=args)
 

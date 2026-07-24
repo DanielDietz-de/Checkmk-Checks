@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import argparse
+import sys
+
 import requests
 
 
@@ -32,6 +34,12 @@ def parse_arguments():
         help="Proxy URL (e.g., http://proxy.example.com:8080)"
     )
 
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print request URLs, HTTP status and raw responses to stderr"
+    )
+
     args = parser.parse_args()
 
     has_user_credentials = bool(args.username and args.password)
@@ -57,8 +65,20 @@ class SpecialAgent():
     scope = None
     grant_type = None
     proxy_url = None
+    debug = False
 
     access_token = False
+
+    def _debug(self, label, resp):
+        """
+        Print request URL, HTTP status and raw response body to stderr.
+        """
+        if not self.debug:
+            return
+        sys.stderr.write(
+            f"[debug] {label}: {resp.request.method} {resp.url} -> "
+            f"HTTP {resp.status_code}\n{resp.text}\n"
+        )
 
     def get_token(self):
         if not self.access_token:
@@ -72,6 +92,7 @@ class SpecialAgent():
                     "client": "requestip",
                 }
                 resp = requests.post(self.generate_token_url, data=data, proxies=proxies, timeout=30)
+                self._debug("generateToken", resp)
                 resp.raise_for_status()
                 payload = resp.json()
                 token = payload.get("token")
@@ -95,6 +116,7 @@ class SpecialAgent():
             proxies=proxies,
             timeout=30,
         )
+        self._debug("federation", result)
         print(result.text)
 
     def get_certificates(self):
@@ -112,6 +134,7 @@ class SpecialAgent():
             proxies=proxies,
             timeout=30,
         )
+        self._debug("certificates", result)
         print(result.text)
 
 
@@ -124,6 +147,7 @@ if __name__ == "__main__":
     agent.username = args.username
     agent.password = args.password
     agent.proxy_url = args.proxy_url
+    agent.debug = args.debug
     agent.scope = None
 
     agent.get_federation()
