@@ -9,6 +9,6 @@
                                   'adfs_certificates/server_side_calls/agent.py']},
  'name': 'adfs_certificates',
  'title': 'ADFS Certificate Monitoring',
- 'version': '1.0.0',
+ 'version': '1.0.1',
  'version.min_required': '2.4.0',
  'version.packaged': '2.4.0p19'}

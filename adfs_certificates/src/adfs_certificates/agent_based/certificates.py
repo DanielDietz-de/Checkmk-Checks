@@ -64,7 +64,7 @@ def check_adfs_certificates(item, params, section):
     yield from check_levels(
         days,
         metric_name="certificate_validity_days",
-        levels_lower=(warn_days, crit_days),
+        levels_lower=("fixed", (warn_days, crit_days)),
         label="Days remaining",
         render_func=lambda v: f"{int(v)} days",
     )
