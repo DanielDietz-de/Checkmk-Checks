@@ -257,6 +257,8 @@ jobs:
             --name checkmk-mkp \
             --env CMK_PASSWORD='oxidized-backup-ci-password' \
             --env CMK_SITE_ID='cmk' \
+            --env PACKAGE_NAME \
+            --env PACKAGE_VERSION \
             checkmk/check-mk-raw:2.4.0p34
 
           for _ in $(seq 1 120); do
