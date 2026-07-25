@@ -69,8 +69,10 @@ def test_builds_deterministic_mkp_with_all_components(tmp_path: Path) -> None:
         for component, required in info["files"].items():
             component_file = outer.extractfile(f"{component}.tar")
             assert component_file is not None
+            component_bytes = component_file.read()
+            assert not component_bytes.startswith(b"\x1f\x8b")
             with tarfile.open(
-                fileobj=io.BytesIO(component_file.read()), mode="r:*"
+                fileobj=io.BytesIO(component_bytes), mode="r:"
             ) as inner:
                 names = {member.name for member in inner.getmembers()}
             assert set(required) <= names
