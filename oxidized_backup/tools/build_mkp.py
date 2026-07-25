@@ -3,8 +3,8 @@
 
 Checkmk's ``mkp package`` command refuses to collect local extension files from
 parts of the Checkmk Python namespace because those paths overlap the product
-namespace.  Agent Bakery plug-ins must nevertheless be installed in that local
-namespace.  This builder creates the documented MKP archive structure directly
+namespace. Agent Bakery plug-ins must nevertheless be installed in that local
+namespace. This builder creates the documented MKP archive structure directly
 and leaves semantic validation to ``mkp inspect`` and a clean ``mkp add`` /
 ``mkp enable`` installation in CI.
 """
@@ -22,7 +22,6 @@ import re
 import tarfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import BinaryIO
 
 PACKAGE_NAME = "oxidized_backup"
 PACKAGE_TITLE = "Oxidized Backup Verification"
@@ -82,17 +81,18 @@ def _normalise_tar_info(info: tarfile.TarInfo) -> tarfile.TarInfo:
     return info
 
 
-def _gzip_tar_bytes(files: list[tuple[Path, PurePosixPath]]) -> bytes:
+def _tar_bytes(files: list[tuple[Path, PurePosixPath]]) -> bytes:
+    """Build an uncompressed component tar stream as required by Checkmk."""
+
     output = io.BytesIO()
-    with gzip.GzipFile(fileobj=output, mode="wb", filename="", mtime=0) as gz:
-        with tarfile.open(fileobj=gz, mode="w", format=tarfile.PAX_FORMAT) as archive:
-            for source, relative in files:
-                archive.add(
-                    source,
-                    arcname=str(relative),
-                    recursive=False,
-                    filter=_normalise_tar_info,
-                )
+    with tarfile.open(fileobj=output, mode="w", format=tarfile.PAX_FORMAT) as archive:
+        for source, relative in files:
+            archive.add(
+                source,
+                arcname=str(relative),
+                recursive=False,
+                filter=_normalise_tar_info,
+            )
     return output.getvalue()
 
 
@@ -181,7 +181,12 @@ def _validate_package(target: Path, manifest: dict[str, object]) -> None:
             member = outer.extractfile(f"{component}.tar")
             if member is None:
                 raise ValueError(f"Unable to read {component}.tar")
-            with tarfile.open(fileobj=io.BytesIO(member.read()), mode="r:*") as inner:
+            component_bytes = member.read()
+            if component_bytes.startswith(b"\x1f\x8b"):
+                raise ValueError(
+                    f"Component {component!r} must be an uncompressed tar stream"
+                )
+            with tarfile.open(fileobj=io.BytesIO(component_bytes), mode="r:") as inner:
                 names = {item.name.removeprefix("./") for item in inner.getmembers()}
             missing = set(required) - names
             if missing:
@@ -253,7 +258,7 @@ def build_package(
     }
 
     component_archives = {
-        component_name: _gzip_tar_bytes(files)
+        component_name: _tar_bytes(files)
         for component_name, files in selected.items()
     }
     target = output_dir / f"{PACKAGE_NAME}-{version}.mkp"
