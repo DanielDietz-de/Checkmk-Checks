@@ -61,8 +61,10 @@ jobs:
             "$PACKAGE_DIR/${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp" \
             "checkmk-install-debug:/tmp/${PACKAGE_NAME}-${PACKAGE_VERSION}.mkp"
 
-      - name: Trace install
+      - name: Capture install trace
+        id: trace
         run: |
+          set +e
           docker exec --user cmk checkmk-install-debug bash -lc '
             set -euxo pipefail
             export PAGER=cat
@@ -70,12 +72,27 @@ jobs:
             mkp inspect "$package" >/tmp/mkp-inspect.txt
             mkp add "$package"
             mkp enable "$PACKAGE_NAME" "$PACKAGE_VERSION"
-            find "$HOME/local" -maxdepth 10 -type f -o -type l | sort
+            find "$HOME/local" -maxdepth 10 \( -type f -o -type l \) | sort
             test -x "$HOME/local/share/check_mk/agents/plugins/$PACKAGE_NAME"
             test -r "$HOME/local/lib/python3/cmk_addons/plugins/$PACKAGE_NAME/bakery_common.py"
             test -r "$HOME/local/lib/python3/cmk_addons/plugins/$PACKAGE_NAME/rulesets/ruleset_${PACKAGE_NAME}_bakery.py"
             test -r "$HOME/local/lib/python3/cmk/base/cee/plugins/bakery/${PACKAGE_NAME}.py"
-          '
+          ' >"$RUNNER_TEMP/oxidized-backup-install-trace.log" 2>&1
+          status=$?
+          echo "status=$status" >>"$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload install trace
+        uses: actions/upload-artifact@v6
+        with:
+          name: oxidized-backup-install-trace
+          path: ${{ runner.temp }}/oxidized-backup-install-trace.log
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Fail when traced install failed
+        if: steps.trace.outputs.status != '0'
+        run: exit 1
 
       - name: Remove container
         if: always()
