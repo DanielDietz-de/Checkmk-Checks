@@ -205,7 +205,7 @@ Register the Agent Updater on the Oxidized host and assign the normal Agent Upda
 After deployment, verify on the Oxidized host:
 
 ```bash
-root@rkg-app-1011:~# for file in \
+for file in \
   /usr/bin/oxidized_backup_hook \
   /etc/check_mk/oxidized_backup.json \
   /etc/check_mk/oxidized_backup-hook.yml
