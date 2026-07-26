@@ -22,7 +22,7 @@ def test_hook_example_references_packaged_paths() -> None:
     text = (DEPLOYMENT_DIR / "oxidized_backup-hook.yml").read_text(
         encoding="utf-8"
     )
-    assert "/usr/lib/check_mk_agent/plugins/300/oxidized_backup" in text
+    assert "/usr/bin/oxidized_backup_hook" in text
     assert "--config /etc/check_mk/oxidized_backup.json" in text
     assert "node_success" in text
     assert "node_fail" in text

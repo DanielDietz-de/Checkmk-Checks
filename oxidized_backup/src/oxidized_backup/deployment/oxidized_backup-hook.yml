@@ -6,7 +6,7 @@ hooks:
       - node_fail
       - post_store
     cmd: >-
-      /usr/lib/check_mk_agent/plugins/300/oxidized_backup
+      /usr/bin/oxidized_backup_hook
       --record-hook
       --config /etc/check_mk/oxidized_backup.json
     timeout: 10
