@@ -205,9 +205,17 @@ Register the Agent Updater on the Oxidized host and assign the normal Agent Upda
 After deployment, verify on the Oxidized host:
 
 ```bash
-test -x /usr/bin/oxidized_backup_hook
-test -r /etc/check_mk/oxidized_backup.json
-test -r /etc/check_mk/oxidized_backup-hook.yml
+root@rkg-app-1011:~# for file in \
+  /usr/bin/oxidized_backup_hook \
+  /etc/check_mk/oxidized_backup.json \
+  /etc/check_mk/oxidized_backup-hook.yml
+do
+  if [ -e "$file" ]; then
+    stat -c 'OK: %A %U:%G %n' "$file"
+  else
+    echo "MISSING: $file"
+  fi
+done
 find /usr/lib/check_mk_agent/plugins -type f -name oxidized_backup -ls
 ```
 
