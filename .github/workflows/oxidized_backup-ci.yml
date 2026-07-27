@@ -19,7 +19,7 @@ env:
   PACKAGE_SOURCE: oxidized_backup/src/oxidized_backup
   AGENT_PLUGIN_SOURCE: oxidized_backup/src/agents/plugins/oxidized_backup
   BAKERY_SOURCE: oxidized_backup/src/lib/python3/cmk/base/cee/plugins/bakery/oxidized_backup.py
-  PACKAGE_VERSION: "1.1.0"
+  PACKAGE_VERSION: "1.1.1"
   PLUGIN_BASE: /omd/sites/cmk/local/lib/python3/cmk_addons/plugins
   AGENT_BASE: /omd/sites/cmk/local/share/check_mk/agents
 

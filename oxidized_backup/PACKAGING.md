@@ -7,7 +7,7 @@ The generated package and checksum belong directly in this folder:
 
 ## What the MKP contains
 
-Version 1.1.0 contains three Checkmk package components.
+Version 1.1.1 contains three Checkmk package components.
 
 ### Additional Checkmk plug-ins
 
@@ -57,7 +57,18 @@ The Bakery implementation describes the host-specific artifacts:
 - a stable `SystemBinary` for the Oxidized exec hook;
 - generated `PluginConfig` JSON;
 - generated `SystemConfig` hook reference;
-- DEB and RPM post-install scriptlets for the configured state directories.
+- DEB and RPM post-install scriptlets for the configured state directories;
+- post-install permission repair for `/etc/check_mk/oxidized_backup.json`.
+
+After the generated JSON is installed, both DEB and RPM scriptlets resolve the configured Oxidized account's primary group and enforce:
+
+```text
+owner: root
+ group: <configured Oxidized account primary group>
+  mode: 0640
+```
+
+This is required because the Checkmk agent reads the JSON as root while the Oxidized exec hook reads the same file as the configured unprivileged service account. The scriptlet refuses to change ownership when the path is missing or is a symbolic link. When the configured account does not exist, installation emits a warning instead of assigning an incorrect group.
 
 The active Oxidized YAML configuration is deliberately not modified by package installation or Bakery scriptlets.
 

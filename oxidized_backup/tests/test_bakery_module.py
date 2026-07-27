@@ -157,6 +157,7 @@ def test_bakery_v1_contract_and_generated_artifacts() -> None:
         COMMON_PATH,
     )
     assert common.HOOK_HELPER_PATH == "/usr/bin/oxidized_backup_hook"
+    assert common.CONFIG_PATH == "/etc/check_mk/oxidized_backup.json"
 
     register = Register()
     api = types.ModuleType("cmk.base.cee.plugins.bakery.bakery_api.v1")
@@ -204,6 +205,36 @@ def test_bakery_v1_contract_and_generated_artifacts() -> None:
     text = "\n".join(line for item in scriptlets for line in item.lines)
     assert "/var/lib/oxidized/oxidized_backup" in text
     assert "/var/lib/check_mk_agent/oxidized_backup" in text
+    assert "getent passwd oxidized" in text
+    assert "oxidized_backup_group=$(id -gn oxidized)" in text
+    assert (
+        "if [ -f /etc/check_mk/oxidized_backup.json ] "
+        "&& [ ! -L /etc/check_mk/oxidized_backup.json ]; then"
+    ) in text
+    assert (
+        'chown root:"$oxidized_backup_group" '
+        "/etc/check_mk/oxidized_backup.json"
+    ) in text
+    assert "chmod 0640 /etc/check_mk/oxidized_backup.json" in text
+    assert "configuration ownership was not changed" in text
+    assert "root:oxidized" not in text
+
+
+def test_scriptlets_use_the_configured_service_account() -> None:
+    bakery = sys.modules.get("cmk.base.cee.plugins.bakery.oxidized_backup")
+    if bakery is None:
+        test_bakery_v1_contract_and_generated_artifacts()
+        bakery = sys.modules["cmk.base.cee.plugins.bakery.oxidized_backup"]
+
+    config = _configuration()
+    config["git"]["run_as_user"] = "oxidized_svc"
+    scriptlets = list(bakery.get_scriptlets(config, "agent-hash"))
+    text = "\n".join(line for item in scriptlets for line in item.lines)
+
+    assert "getent passwd oxidized_svc" in text
+    assert "oxidized_backup_group=$(id -gn oxidized_svc)" in text
+    assert "-o oxidized_svc" in text
+    assert "root:oxidized_svc" not in text
 
 
 def test_do_not_deploy_yields_no_artifacts() -> None:

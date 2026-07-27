@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from cmk_addons.plugins.oxidized_backup.bakery_common import (
+    CONFIG_PATH,
     HOOK_HELPER_PATH,
     config_lines,
     hook_lines,
@@ -67,6 +68,7 @@ def get_scriptlets(conf: Any, aghash: str) -> ScriptletGenerator:
         return
 
     hook_directory, monitor_directory, run_as_user = state_directories(conf)
+    quoted_config_path = quote_shell_string(CONFIG_PATH)
     quoted_hook_directory = quote_shell_string(hook_directory)
     quoted_monitor_directory = quote_shell_string(monitor_directory)
     quoted_user = quote_shell_string(run_as_user)
@@ -79,11 +81,27 @@ def get_scriptlets(conf: Any, aghash: str) -> ScriptletGenerator:
             f"    install -d -m 0750 -o {quoted_user} "
             f"-g \"$oxidized_backup_group\" {quoted_hook_directory}"
         ),
+        (
+            f"    if [ -f {quoted_config_path} ] "
+            f"&& [ ! -L {quoted_config_path} ]; then"
+        ),
+        (
+            f"        chown root:\"$oxidized_backup_group\" "
+            f"{quoted_config_path}"
+        ),
+        f"        chmod 0640 {quoted_config_path}",
+        "    else",
+        (
+            "        printf '%s\\n' "
+            f"'oxidized_backup: configuration {CONFIG_PATH} is missing or is a "
+            "symbolic link; ownership was not changed' >&2"
+        ),
+        "    fi",
         "else",
         (
             "    printf '%s\\n' "
-            f"'oxidized_backup: user {run_as_user} does not exist; "
-            "hook state directory was not created' >&2"
+            f"'oxidized_backup: user {run_as_user} does not exist; hook state "
+            "directory was not created and configuration ownership was not changed' >&2"
         ),
         "fi",
     ]

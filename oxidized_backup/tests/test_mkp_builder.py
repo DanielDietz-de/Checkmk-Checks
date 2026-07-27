@@ -23,14 +23,14 @@ def test_builds_deterministic_mkp_with_all_components(tmp_path: Path) -> None:
     first, first_checksum = module.build_package(
         package_root=ROOT,
         output_dir=first_dir,
-        version="1.1.0",
+        version="1.1.1",
         repository="DanielDietz-de/Checkmk-Checks",
         packaged_version="2.4.0p34",
     )
     second, second_checksum = module.build_package(
         package_root=ROOT,
         output_dir=second_dir,
-        version="1.1.0",
+        version="1.1.1",
         repository="DanielDietz-de/Checkmk-Checks",
         packaged_version="2.4.0p34",
     )
@@ -53,7 +53,7 @@ def test_builds_deterministic_mkp_with_all_components(tmp_path: Path) -> None:
         assert info_file is not None and info_json_file is not None
         info = ast.literal_eval(info_file.read().decode("utf-8"))
         assert json.loads(info_json_file.read().decode("utf-8")) == info
-        assert info["version"] == "1.1.0"
+        assert info["version"] == "1.1.1"
         assert info["files"]["agents"] == ["plugins/oxidized_backup"]
         assert info["files"]["lib"] == [
             "python3/cmk/base/cee/plugins/bakery/oxidized_backup.py"
@@ -81,7 +81,7 @@ def test_builds_deterministic_mkp_with_all_components(tmp_path: Path) -> None:
 def test_rejects_invalid_version_and_repository(tmp_path: Path) -> None:
     for version, repository in (
         ("latest", "DanielDietz-de/Checkmk-Checks"),
-        ("1.1.0", "not-a-repository"),
+        ("1.1.1", "not-a-repository"),
     ):
         try:
             module.build_package(
