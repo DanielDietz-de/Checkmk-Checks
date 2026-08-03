@@ -43,7 +43,7 @@ jobs:
           install -D -m 0644 /tmp/oxidized_backup-info oxidized_backup/src/info
           git rm -f .github/workflows/oxidized_backup-ci.yml 2>/dev/null || true
 
-          mv .github/workflows/repository-mkp-ci.final.yml \
+          mv .github/repository-mkp-ci.final.yml \
             .github/workflows/repository-mkp-ci.yml
 
       - name: Extract and apply repair
@@ -131,7 +131,7 @@ After a successful non-bot push to `master`, the same workflow persists the exac
           set -euo pipefail
           git rm -f \
             .github/workflows/pr22-repair.yml \
-            .github/workflows/repository-mkp-ci.final.yml 2>/dev/null || true
+            .github/repository-mkp-ci.final.yml 2>/dev/null || true
           git add -A
           git diff --cached --check
           git commit -m "fix(ci): resolve repository MKP validation and security issues"
