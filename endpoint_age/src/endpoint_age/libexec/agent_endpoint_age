@@ -9,35 +9,87 @@ import json
 import re
 import socket
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
 from urllib.parse import urlsplit
 
 import requests
+import urllib3
 
 MAX_RESPONSE_BYTES = 1024 * 1024
 MAX_ENDPOINTS = 100
 MAX_JSON_PATH_LENGTH = 512
 MAX_NAME_LENGTH = 256
+MAX_URL_LENGTH = 2048
 
 
 class EndpointError(RuntimeError):
     """Raised when an endpoint is unsafe or cannot be probed reliably."""
 
 
-def validate_public_https_url(value: str) -> str:
-    parsed = urlsplit(value.strip())
+@dataclass(frozen=True)
+class PublicHTTPSDestination:
+    """A public HTTPS URL pinned to one address from its validated DNS answer."""
+
+    url: str
+    hostname: str
+    port: int
+    address: str
+    request_target: str
+    host_header: str
+
+
+class PinnedHTTPSResponse:
+    """Small response adapter for a single pinned urllib3 connection pool."""
+
+    def __init__(
+        self,
+        response: urllib3.response.BaseHTTPResponse,
+        pool: urllib3.HTTPSConnectionPool,
+    ) -> None:
+        self._response = response
+        self._pool = pool
+        self.status_code = response.status
+        self.headers = response.headers
+
+    @property
+    def is_redirect(self) -> bool:
+        return 300 <= self.status_code < 400
+
+    def iter_content(self, chunk_size: int = 65536):
+        yield from self._response.stream(amt=chunk_size, decode_content=True)
+
+    def close(self) -> None:
+        self._response.release_conn()
+        self._pool.close()
+
+
+def _host_header(hostname: str, port: int) -> str:
+    rendered = f"[{hostname}]" if ":" in hostname else hostname
+    return rendered if port == 443 else f"{rendered}:{port}"
+
+
+def validate_public_https_url(value: str) -> PublicHTTPSDestination:
+    url = value.strip()
+    if len(url) > MAX_URL_LENGTH:
+        raise EndpointError(f"URL must not exceed {MAX_URL_LENGTH} characters")
+    parsed = urlsplit(url)
     if parsed.scheme != "https" or not parsed.hostname:
         raise EndpointError("URL must be an absolute HTTPS URL")
     if parsed.username or parsed.password or parsed.fragment:
         raise EndpointError("URL must not contain credentials or a fragment")
     try:
+        port = parsed.port or 443
+    except ValueError as exc:
+        raise EndpointError("URL contains an invalid port") from exc
+    try:
         addresses = {
             result[4][0]
             for result in socket.getaddrinfo(
                 parsed.hostname,
-                parsed.port or 443,
+                port,
                 type=socket.SOCK_STREAM,
             )
         }
@@ -45,10 +97,61 @@ def validate_public_https_url(value: str) -> str:
         raise EndpointError(f"DNS resolution failed: {exc}") from exc
     if not addresses:
         raise EndpointError("DNS resolution returned no addresses")
-    unsafe = [address for address in addresses if not ipaddress.ip_address(address).is_global]
-    if unsafe:
+    parsed_addresses = [ipaddress.ip_address(address) for address in addresses]
+    if any(not address.is_global for address in parsed_addresses):
         raise EndpointError("URL resolves to a non-public address")
-    return value.strip()
+    selected = min(
+        parsed_addresses,
+        key=lambda address: (address.version != 4, int(address)),
+    )
+    request_target = parsed.path or "/"
+    if parsed.query:
+        request_target = f"{request_target}?{parsed.query}"
+    return PublicHTTPSDestination(
+        url=url,
+        hostname=parsed.hostname,
+        port=port,
+        address=str(selected),
+        request_target=request_target,
+        host_header=_host_header(parsed.hostname, port),
+    )
+
+
+def pinned_https_get(
+    destination: PublicHTTPSDestination,
+    *,
+    headers: dict[str, str],
+    timeout: float,
+) -> PinnedHTTPSResponse:
+    """Connect to the validated IP while verifying TLS for the URL hostname."""
+
+    pool = urllib3.HTTPSConnectionPool(
+        destination.address,
+        port=destination.port,
+        cert_reqs="CERT_REQUIRED",
+        ca_certs=requests.certs.where(),
+        assert_hostname=destination.hostname,
+        server_hostname=destination.hostname,
+        maxsize=1,
+        block=True,
+    )
+    request_headers = dict(headers)
+    request_headers["Host"] = destination.host_header
+    try:
+        response = pool.urlopen(
+            "GET",
+            destination.request_target,
+            headers=request_headers,
+            timeout=urllib3.Timeout(connect=timeout, read=timeout),
+            redirect=False,
+            retries=False,
+            preload_content=False,
+            assert_same_host=False,
+        )
+    except Exception:
+        pool.close()
+        raise
+    return PinnedHTTPSResponse(response, pool)
 
 
 def parse_date(value: Any) -> datetime | None:
@@ -88,7 +191,7 @@ def lookup_json_path(data: Any, path: str) -> Any:
     return current
 
 
-def compute_age(source: str, headers: requests.structures.CaseInsensitiveDict, body: bytes):
+def compute_age(source: str, headers: Any, body: bytes):
     now = datetime.now(timezone.utc)
     if source == "age_header":
         raw = headers.get("Age")
@@ -129,7 +232,7 @@ def compute_age(source: str, headers: requests.structures.CaseInsensitiveDict, b
     return None, None, "unsupported freshness source"
 
 
-def read_bounded(response: requests.Response) -> bytes:
+def read_bounded(response: PinnedHTTPSResponse) -> bytes:
     body = bytearray()
     for chunk in response.iter_content(chunk_size=65536):
         body.extend(chunk)
@@ -138,11 +241,12 @@ def read_bounded(response: requests.Response) -> bytes:
     return bytes(body)
 
 
-def probe_endpoint(spec: dict[str, Any], session: requests.Session) -> dict[str, Any]:
+def probe_endpoint(spec: dict[str, Any]) -> dict[str, Any]:
     name = str(spec.get("name") or "endpoint")[:MAX_NAME_LENGTH]
+    raw_url = str(spec.get("url") or "")
     result = {
         "name": name,
-        "url": str(spec.get("url") or "")[:2048],
+        "url": raw_url[:MAX_URL_LENGTH],
         "source": str(spec.get("source") or "age_header")[:1024],
         "ok": False,
         "error": None,
@@ -150,18 +254,16 @@ def probe_endpoint(spec: dict[str, Any], session: requests.Session) -> dict[str,
         "age_seconds": None,
         "detail": None,
     }
+    response: PinnedHTTPSResponse | None = None
     try:
-        url = validate_public_https_url(result["url"])
+        destination = validate_public_https_url(raw_url)
         timeout = float(spec.get("timeout", 15.0))
         if not 0.5 <= timeout <= 60:
             raise EndpointError("timeout must be between 0.5 and 60 seconds")
-        response = session.get(
-            url,
+        response = pinned_https_get(
+            destination,
             headers={"User-Agent": "checkmk-endpoint-age/2.0"},
             timeout=timeout,
-            verify=True,
-            allow_redirects=False,
-            stream=True,
         )
         result["http_status"] = response.status_code
         if response.is_redirect:
@@ -173,8 +275,11 @@ def probe_endpoint(spec: dict[str, Any], session: requests.Session) -> dict[str,
         if error:
             raise EndpointError(error)
         result.update(ok=True, age_seconds=age, detail=str(detail)[:1024])
-    except (EndpointError, requests.RequestException, ValueError) as exc:
+    except (EndpointError, urllib3.exceptions.HTTPError, OSError, ValueError) as exc:
         result["error"] = str(exc)[:1024]
+    finally:
+        if response is not None:
+            response.close()
     return result
 
 
@@ -191,15 +296,13 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_arguments(argv)
-    session = requests.Session()
-    session.trust_env = False
     print("<<<endpoint_age:sep(0)>>>")
     for raw in args.endpoint:
         try:
             spec = json.loads(raw)
             if not isinstance(spec, dict):
                 raise ValueError("endpoint spec must be a JSON object")
-            result = probe_endpoint(spec, session)
+            result = probe_endpoint(spec)
         except (json.JSONDecodeError, ValueError) as exc:
             result = {"name": "invalid endpoint", "ok": False, "error": str(exc)[:1024]}
         print(json.dumps(result, sort_keys=True))
