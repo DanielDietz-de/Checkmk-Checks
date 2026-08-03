@@ -1,6 +1,11 @@
 from cmk.rulesets.v1 import Help, Title
 from cmk.rulesets.v1.form_specs import DefaultValue, DictElement, Dictionary, Float, List, String
-from cmk.rulesets.v1.form_specs.validators import LengthInRange, Url, UrlProtocol
+from cmk.rulesets.v1.form_specs.validators import (
+    LengthInRange,
+    NumberInRange,
+    Url,
+    UrlProtocol,
+)
 from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
 
@@ -21,7 +26,10 @@ def _feed_form():
             "url": DictElement(
                 parameter_form=String(
                     title=Title("Public HTTPS feed URL"),
-                    custom_validate=(Url(protocols=[UrlProtocol.HTTPS]),),
+                    custom_validate=(
+                        LengthInRange(min_value=1, max_value=2048),
+                        Url(protocols=[UrlProtocol.HTTPS]),
+                    ),
                 ),
                 required=True,
             ),
@@ -50,6 +58,9 @@ def _form_special_agent_status_feed():
                     title=Title("HTTPS timeout"),
                     unit_symbol="s",
                     prefill=DefaultValue(15.0),
+                    custom_validate=(
+                        NumberInRange(min_value=0.5, max_value=60.0),
+                    ),
                 ),
                 required=False,
             ),
