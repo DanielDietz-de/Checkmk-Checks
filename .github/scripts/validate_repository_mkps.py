@@ -19,6 +19,22 @@ _PACKAGE_COMMAND_TIMEOUT = 180
 _MANUAL_COMMAND_TIMEOUT = 60
 _GLOBAL_COMMAND_TIMEOUT = 300
 _TIMEOUT_EXIT_CODE = 124
+_KNOWN_CHECKMK_RULESET_WARNING_VERSION = "2.5.0p9"
+_KNOWN_CHECKMK_RULESET_WARNING = " ".join(
+    (
+        "Agent based plugins loading succeeded,",
+        "Active checks loading succeeded,",
+        "Special agents loading succeeded,",
+        "Rule specs loading succeeded,",
+        "Rule specs forms creation succeeded,",
+        "Referenced rule specs validation succeeded,",
+        "Loaded rule specs usage failed",
+        "CheckParameters rule set 'alertmanager_rule_state' is not used anywhere.",
+        "Ensure the correct spelling at the referencing plug-in or deprecate the ruleset",
+        "CheckParameters rule set 'alertmanager_rule_state_summary' is not used anywhere.",
+        "Ensure the correct spelling at the referencing plug-in or deprecate the ruleset",
+    )
+)
 
 
 @dataclass(frozen=True)
@@ -93,6 +109,25 @@ def _run(command: list[str], *, timeout: int) -> CommandResult:
     if completed.returncode != 0 and output:
         print(output, end="" if output.endswith("\n") else "\n", flush=True)
     return CommandResult(returncode=completed.returncode, output=output)
+
+
+def _is_known_checkmk_builtin_ruleset_warning(
+    result: CommandResult,
+    target: str,
+) -> bool:
+    """Accept one exact warning emitted by the pinned Checkmk 2.5 base image.
+
+    Checkmk 2.5.0p9 registers two built-in Alertmanager parameter rulesets that
+    are not referenced by its own check plug-ins. The validator exits with code
+    2 even when every repository plug-in loads successfully. Keep this exception
+    deliberately exact so that any changed output, extra warning, or other
+    validation failure remains fatal.
+    """
+
+    if target != _KNOWN_CHECKMK_RULESET_WARNING_VERSION or result.returncode != 2:
+        return False
+    normalized = " ".join(result.output.replace("(!!)", "").split())
+    return normalized == _KNOWN_CHECKMK_RULESET_WARNING
 
 
 def _manifest(package_path: Path) -> dict[str, Any]:
@@ -225,8 +260,19 @@ def main() -> None:
 
     for command, timeout in global_commands:
         result = _run(command, timeout=timeout)
-        if result.returncode != 0:
-            _record_failure(failures, global_package, command, result)
+        if result.returncode == 0:
+            continue
+        if command == ["cmk-validate-plugins"] and _is_known_checkmk_builtin_ruleset_warning(
+            result,
+            args.checkmk_version,
+        ):
+            print(
+                "Accepted exact Checkmk 2.5.0p9 built-in Alertmanager ruleset warning; "
+                "all repository plug-in loading and reference checks succeeded.",
+                flush=True,
+            )
+            continue
+        _record_failure(failures, global_package, command, result)
 
     if failures:
         _print_failures(failures, args.checkmk_version)
