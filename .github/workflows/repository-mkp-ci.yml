@@ -27,19 +27,22 @@ jobs:
           ref: agent/fix-generated-mkp-checkmk-25
           fetch-depth: 0
 
-      - name: Merge master and restore final workflow
+      - name: Restore current master and final workflow
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch --no-tags origin master
-          git merge --no-commit --no-ff origin/master || true
+
+          # The synthetic merge commit resolves history only. Restore the full
+          # current-master Oxidized implementation, while retaining this PR's
+          # canonical repository manifest for regeneration below.
+          cp oxidized_backup/src/info /tmp/oxidized_backup-info
+          git checkout origin/master -- oxidized_backup
+          install -D -m 0644 /tmp/oxidized_backup-info oxidized_backup/src/info
           git rm -f .github/workflows/oxidized_backup-ci.yml 2>/dev/null || true
-          if git ls-files --unmerged | grep -q .; then
-            git status --short >&2
-            exit 1
-          fi
+
           mv .github/workflows/repository-mkp-ci.final.yml \
             .github/workflows/repository-mkp-ci.yml
 
@@ -66,6 +69,29 @@ jobs:
           Path('/tmp/pr22_repair.py').write_text('\n'.join(body) + '\n', encoding='utf-8')
           EXTRACT
           python /tmp/pr22_repair.py
+
+          python - <<'DOCS'
+          from pathlib import Path
+
+          path = Path('oxidized_backup/PACKAGING.md')
+          text = path.read_text(encoding='utf-8')
+          start = text.find('## Build and persistence workflow')
+          end = text.find('## Versioning rule', start)
+          if start != -1 and end != -1:
+              replacement = '''## Repository-wide build and persistence workflow
+
+The repository-wide MKP workflow runs the package tests, builds the deterministic archive, installs the complete supported package set into clean Checkmk 2.4 and 2.5 sites, and validates plug-in registration, manuals, and core reloads. Pull-request runs are read-only.
+
+After a successful non-bot push to `master`, the same workflow persists the exact validated MKP and checksum set, regenerates repository metadata, and refuses publication when package inputs changed after the build started.
+
+'''
+              text = text[:start] + replacement + text[end:]
+          text = text.replace(
+              'requires a new `PACKAGE_VERSION` in `.github/workflows/oxidized_backup-ci.yml`.',
+              'requires a version update in the canonical `oxidized_backup/src/info` manifest.',
+          )
+          path.write_text(text, encoding='utf-8')
+          DOCS
 
       - name: Validate repaired tree
         shell: bash
