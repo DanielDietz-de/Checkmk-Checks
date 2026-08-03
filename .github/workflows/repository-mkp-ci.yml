@@ -86,13 +86,12 @@ jobs:
             --packaged-version 2.5.0p9 \
             --usable-until 2.5.99
 
-      - name: Publish repaired branch
+      - name: Publish repaired source tree
         shell: bash
         run: |
           set -euo pipefail
-          git rm -f \
-            .github/workflows/pr22-repair.yml \
-            .github/repository-mkp-ci.final.yml 2>/dev/null || true
+          git checkout origin/agent/fix-generated-mkp-checkmk-25 -- .github/workflows
+          git rm -f .github/repository-mkp-ci.final.yml
           git add -A
           git diff --cached --check
           git commit -m "fix(ci): resolve repository MKP validation and security issues"
