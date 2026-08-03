@@ -105,7 +105,7 @@ def send_sms(
         901: "GSM modem was not detected",
         902: "SIM card is locked",
     }
-    if response.status_code not in {200, 201, 202, 204}:
+    if not 200 <= response.status_code < 300:
         raise KentixError(errors.get(response.status_code, f"HTTP {response.status_code}"))
     print("Kentix SMS request accepted.")
     return 0
