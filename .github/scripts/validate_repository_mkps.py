@@ -19,7 +19,7 @@ _PACKAGE_COMMAND_TIMEOUT = 180
 _MANUAL_COMMAND_TIMEOUT = 60
 _GLOBAL_COMMAND_TIMEOUT = 300
 _TIMEOUT_EXIT_CODE = 124
-_KNOWN_CHECKMK_RULESET_WARNING_VERSION = "2.5.0p9"
+_KNOWN_CHECKMK_RULESET_WARNING_VERSIONS = frozenset(("2.4.0p34", "2.5.0p9"))
 _KNOWN_CHECKMK_RULESET_WARNING = " ".join(
     (
         "Agent based plugins loading succeeded,",
@@ -115,16 +115,17 @@ def _is_known_checkmk_builtin_ruleset_warning(
     result: CommandResult,
     target: str,
 ) -> bool:
-    """Accept one exact warning emitted by the pinned Checkmk 2.5 base image.
+    """Accept one exact warning emitted by the two pinned Checkmk base images.
 
-    Checkmk 2.5.0p9 registers two built-in Alertmanager parameter rulesets that
-    are not referenced by its own check plug-ins. The validator exits with code
-    2 even when every repository plug-in loads successfully. Keep this exception
-    deliberately exact so that any changed output, extra warning, or other
-    validation failure remains fatal.
+    The pinned Checkmk 2.4.0p34 and 2.5.0p9 images register two built-in
+    Alertmanager parameter rulesets that are not referenced by their own check
+    plug-ins. The validator exits with code 2 even when every repository plug-in
+    loads successfully. Keep this exception deliberately exact so that any
+    changed output, extra warning, other version, or other validation failure
+    remains fatal.
     """
 
-    if target != _KNOWN_CHECKMK_RULESET_WARNING_VERSION or result.returncode != 2:
+    if target not in _KNOWN_CHECKMK_RULESET_WARNING_VERSIONS or result.returncode != 2:
         return False
     normalized = " ".join(result.output.replace("(!!)", "").split())
     return normalized == _KNOWN_CHECKMK_RULESET_WARNING
@@ -267,8 +268,8 @@ def main() -> None:
             args.checkmk_version,
         ):
             print(
-                "Accepted exact Checkmk 2.5.0p9 built-in Alertmanager ruleset warning; "
-                "all repository plug-in loading and reference checks succeeded.",
+                f"Accepted exact Checkmk {args.checkmk_version} built-in Alertmanager "
+                "ruleset warning; all repository plug-in loading and reference checks succeeded.",
                 flush=True,
             )
             continue

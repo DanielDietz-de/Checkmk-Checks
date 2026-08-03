@@ -30,6 +30,7 @@ def test_accepts_only_exact_pinned_checkmk_builtin_warning() -> None:
     validator = _load_validator()
     result = validator.CommandResult(returncode=2, output=_known_warning_output())
 
+    assert validator._is_known_checkmk_builtin_ruleset_warning(result, "2.4.0p34")
     assert validator._is_known_checkmk_builtin_ruleset_warning(result, "2.5.0p9")
 
 
@@ -37,7 +38,7 @@ def test_rejects_known_warning_on_other_checkmk_versions() -> None:
     validator = _load_validator()
     result = validator.CommandResult(returncode=2, output=_known_warning_output())
 
-    assert not validator._is_known_checkmk_builtin_ruleset_warning(result, "2.4.0p34")
+    assert not validator._is_known_checkmk_builtin_ruleset_warning(result, "2.4.0p35")
     assert not validator._is_known_checkmk_builtin_ruleset_warning(result, "2.5.0p10")
 
 
