@@ -1,3 +1,5 @@
+import ast
+import json
 import sys
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
@@ -5,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-MODULE_PATH = Path(__file__).parents[1] / "src" / "endpoint_age" / "libexec" / "agent_endpoint_age"
+PACKAGE_ROOT = Path(__file__).parents[1]
+MODULE_PATH = PACKAGE_ROOT / "src" / "endpoint_age" / "libexec" / "agent_endpoint_age"
 loader = SourceFileLoader("agent_endpoint_age_secure", str(MODULE_PATH))
 spec = spec_from_loader(loader.name, loader)
 module = module_from_spec(spec)
@@ -115,3 +118,13 @@ def test_response_size_is_bounded():
 
     with pytest.raises(module.EndpointError, match="1 MiB"):
         module.read_bounded(Response())
+
+
+def test_package_metadata_representations_match():
+    python_info = ast.literal_eval(
+        (PACKAGE_ROOT / "src" / "info").read_text(encoding="utf-8")
+    )
+    json_info = json.loads(
+        (PACKAGE_ROOT / "src" / "info.json").read_text(encoding="utf-8")
+    )
+    assert python_info == json_info
