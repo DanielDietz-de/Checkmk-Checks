@@ -4,62 +4,118 @@
 ![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.4.0b1-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.5.0-blue)
 <!-- compatibility-badges:end -->
 
-Monitors Bacula / Bareos backup jobs by querying the catalog database directly on the Director host. One Checkmk service per job name reports the most recent job state and the age of the last backup, with configurable allow / deny state lists and age thresholds.
+Monitors Bacula or Bareos jobs by querying the catalog database directly on the Director host. One Checkmk service per job reports the latest state and backup age.
 
-## How it works
+## Configuration security
 
-1. The Linux agent plugin [`bacula_jobs`](src/agents/plugins/bacula_jobs) reads `bacula.cfg` from `/etc/check_mk` (or uses defaults: MySQL backend, database `bacula`, user `bacula`, host `localhost`).
-2. Depending on `backend_type` it queries MySQL/MariaDB or PostgreSQL:
-   ```sql
-   SELECT JobId, Name, JobStatus, EndTime FROM Job
-   WHERE EndTime BETWEEN NOW() - 30 days AND NOW();
-   ```
-   For MySQL it uses `/root/.my.cnf` for credentials; for PostgreSQL it calls `psql` via `sudo -u <dbuser>`.
-3. Output is emitted under `<<<bacula_jobs:sep(9)>>>`.
-4. The check [`bacula_jobs`](src/checks/bacula_jobs) parses the rows, keeps only the newest entry per job name, and yields two results: current state (OK / WARN / CRIT based on the configured state lists) and age of the last backup (compared to `max_age` thresholds). One service `Job <name>` is created per job seen in the 30 day window.
+Version 3.1 replaces the shell-sourced `bacula.cfg` with `$MK_CONFDIR/bacula_jobs.json`.
+
+- The configuration is parsed as bounded JSON and is never executed.
+- Database names, users, hosts, ports and timeouts are validated.
+- Database clients are started with `subprocess.run()` argument arrays; no shell is invoked.
+- The SQL statement is fixed in the plug-in and cannot be changed through the rule.
+- Passwords are not written into the bakery configuration.
+- MySQL credentials may be referenced through an existing absolute `0600` client defaults file.
+- PostgreSQL credentials may be referenced through an existing absolute `0600` pgpass file.
+- PostgreSQL peer authentication may optionally use a validated local operating-system account through `runuser --user ... -- psql`; no sudoers entry or shell command is generated.
+- The process environment is reduced before database clients are executed.
+- Query execution and output size are bounded.
+
+The historical hard-coded `/root/.my.cnf` and `/etc/check_mk` paths have been removed.
+
+## Agent Bakery
+
+The package uses the current Checkmk Agent Bakery API. The bakery deploys:
+
+- the Python agent plug-in `bacula_jobs`;
+- a JSON configuration named `bacula_jobs.json`.
+
+Existing historical `(deployment, config)` rule values are migrated as plain data. Legacy names such as `backend_type`, `dbname`, `dbuser`, and `dbhost` are translated without interpreting their contents as shell syntax.
+
+## Configuration fields
+
+Rule: **Setup → Agents → Agent rules → Bacula/Bareos jobs collector**
+
+| Field | Meaning |
+| --- | --- |
+| `deployment` | Synchronous, cached, or not deployed. |
+| `backend` | `mysql` or `postgresql`. |
+| `database` | Catalog database name, default `bacula`. |
+| `user` | Database user, default `bacula`. |
+| `host` | Database host, default `localhost`. |
+| `port` | Database port; use 3306 for MySQL or 5432 for PostgreSQL unless changed. |
+| `timeout` | Database connection/query timeout, 1–120 seconds. |
+| `mysql_defaults_file` | Optional protected MySQL client file. |
+| `postgres_passfile` | Optional protected PostgreSQL pgpass file. |
+| `postgres_os_user` | Optional local account for PostgreSQL peer authentication. |
+
+Credential files must be absolute regular files, may not be symlinks, and must not be readable by group or others.
+
+Example MySQL client file:
+
+```ini
+[client]
+password=replace-me
+```
+
+Protect it on the monitored host:
+
+```bash
+chown root:root /etc/check_mk/bacula_mysql.cnf
+chmod 0600 /etc/check_mk/bacula_mysql.cnf
+```
+
+Example manual JSON configuration:
+
+```json
+{
+  "backend": "mysql",
+  "database": "bacula",
+  "user": "bacula_monitor",
+  "host": "localhost",
+  "port": 3306,
+  "timeout": 15,
+  "mysql_defaults_file": "/etc/check_mk/bacula_mysql.cnf"
+}
+```
+
+## Query and output
+
+The collector executes a fixed query for jobs whose `EndTime` is within the last 30 days and emits tab-separated rows below:
+
+```text
+<<<bacula_jobs:sep(9)>>>
+```
+
+The check keeps the newest row per job name. Jobs absent for more than 30 days can disappear from discovery; this behavior is unchanged.
+
+## Service parameters
+
+Rule: **Setup → Service monitoring rules → Bacula Jobs**
+
+| Parameter | Meaning |
+| --- | --- |
+| `max_age` | WARN/CRIT thresholds for the latest job age; default 5/7 days. |
+| `ok_states` | Bacula job states considered OK; default `T`, `R`. |
+| `crit_states` | States considered CRIT; default `E`, `f`. |
+
+States not present in either list become WARN.
+
+## Migration from 3.0.x
+
+1. Remove or archive `/etc/check_mk/bacula.cfg`; it is no longer read.
+2. Do not place database passwords in the Bakery rule.
+3. Create a protected MySQL defaults or PostgreSQL pgpass file where password authentication is required.
+4. Configure the current Bakery rule and bake a new agent.
+5. Remove obsolete sudoers permissions that allowed the old shell plug-in to execute `psql`.
 
 ## Package contents
 
 | Path | Purpose |
 | --- | --- |
-| `src/agents/plugins/bacula_jobs` | Shell agent plugin run on the Bacula / Bareos Director host. |
-| `src/agents/bakery/bacula` | Agent Bakery hook that deploys the plugin and writes `bacula.cfg`. |
-| `src/checks/bacula_jobs` | Legacy check (`check_info`-style) with parser, discovery and check logic. |
-| `src/checkman/bacula_jobs` | Check manual page. |
-| `src/web/plugins/wato/bacula.py` | Legacy WATO rules: bakery deployment and per-job thresholds. |
-
-## Installation
-
-1. Install the MKP on the Checkmk site.
-2. Deploy the agent plugin to the Director host:
-   - **With Bakery:** configure *Agent Plugins -> Bacula Jobs (Linux)*, choose the backend type and DB credentials if they differ from the defaults, then bake the agent.
-   - **Without Bakery:** copy `src/agents/plugins/bacula_jobs` to `/usr/lib/check_mk_agent/plugins/` and create `/etc/check_mk/bacula.cfg` with the variables `backend_type`, `dbhost`, `dbname`, `dbuser`.
-3. Make sure the user running the Checkmk agent can read the catalog:
-   - MySQL: `/root/.my.cnf` with matching credentials.
-   - PostgreSQL: sudoers entry allowing `sudo -u <dbuser> psql`.
-4. Run service discovery on the Director host.
-
-## Configuration
-
-Rule: **Setup -> Service monitoring rules -> Applications, Processes & Services -> Bacula Jobs**
-
-| Parameter | Type | Meaning |
-| --- | --- | --- |
-| `max_age` | `(warn, crit)` Age | Warning / critical thresholds on the age of the last backup (default 5 / 7 days). |
-| `ok_states` | List of state codes | Bacula status codes reported as OK (default `T`, `R`). |
-| `crit_states` | List of state codes | Bacula status codes reported as CRIT (default `E`, `f`). States not in either list become WARN. |
-
-Known state codes: `T` terminated normally, `R` running, `E` terminated in error, `f` fatal error, `W` terminated with warning, `A` canceled, `C` created, `B` blocked, plus various waiting states.
-
-## Services & metrics
-
-- **Service:** `Job <name>` — one per distinct job name seen in the past 30 days.
-- **State logic:** worst of state-lookup and age evaluation.
-- **Metrics:** none.
-
-## Known limitations
-
-- Uses the legacy pre-2.3 check and WATO APIs (`check_info`, `register_rule`, `register_check_parameters`). Still loads on 2.3 / 2.4 as long as these APIs remain available.
-- The plugin is hardcoded to look in `/etc/check_mk/bacula.cfg` (regardless of `MK_CONFDIR`).
-- MySQL credentials are read from `/root/.my.cnf`, which means the agent user effectively needs root-equivalent access to that file.
-- Jobs that have not run in the last 30 days disappear from discovery.
+| `src/agents/plugins/bacula_jobs` | JSON-based Python database collector. |
+| `src/bacula_jobs/agent_based/bakery.py` | Current Agent Bakery deployment. |
+| `src/bacula_jobs/rulesets/bakery.py` | Bakery configuration and legacy data migration. |
+| `src/bacula_jobs/agent_based/bacula_jobs.py` | Parser, discovery and check. |
+| `src/bacula_jobs/rulesets/bacula_jobs.py` | Job state and age parameters. |
+| `tests/test_bacula_collector.py` | Configuration and command-execution security tests. |
