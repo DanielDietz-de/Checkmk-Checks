@@ -15,7 +15,15 @@ sys.modules.setdefault("cmk", cmk)
 sys.modules.setdefault("cmk.notification_plugins", notification_plugins)
 sys.modules.setdefault("cmk.notification_plugins.utils", utils)
 
-MODULE_PATH = Path(__file__).parents[1] / "src" / "notifications" / "kentix"
+PACKAGE_ROOT = Path(__file__).parents[1]
+MODULE_PATH = PACKAGE_ROOT / "src" / "notifications" / "kentix"
+RULESET_PATH = (
+    PACKAGE_ROOT
+    / "src"
+    / "kentix_sms_gateway"
+    / "rulesets"
+    / "kentix.py"
+)
 loader = SourceFileLoader("kentix", str(MODULE_PATH))
 spec = spec_from_loader(loader.name, loader)
 module = module_from_spec(spec)
@@ -24,13 +32,16 @@ loader.exec_module(module)
 
 
 class Response:
-    status_code = 202
     is_redirect = False
+
+    def __init__(self, status_code=202):
+        self.status_code = status_code
 
 
 class Session:
-    def __init__(self, error=None):
+    def __init__(self, error=None, status_code=202):
         self.error = error
+        self.status_code = status_code
         self.calls = []
         self.trust_env = True
 
@@ -38,7 +49,7 @@ class Session:
         self.calls.append((url, kwargs))
         if self.error:
             raise self.error
-        return Response()
+        return Response(self.status_code)
 
 
 def test_gateway_path_is_fixed_and_https():
@@ -93,3 +104,25 @@ def test_phone_and_message_are_normalized_and_bounded():
     assert len(module.normalize_message("x" * 500)) == 320
     with pytest.raises(module.KentixError):
         module.normalize_pager_number("not-a-number")
+
+
+def test_all_successful_2xx_responses_are_accepted():
+    for status_code in (200, 203, 206, 226, 299):
+        assert module.send_sms(
+            gateway="gateway.example",
+            key="key",
+            pager_number="+49123456789",
+            text="Message",
+            timeout=10,
+            verify=True,
+            session=Session(status_code=status_code),
+        ) == 0
+
+
+def test_timeout_form_is_optional_and_matches_runtime_bounds():
+    source = RULESET_PATH.read_text(encoding="utf-8")
+    timeout_block = source.split('"timeout": DictElement(', 1)[1].split(
+        '"ca_bundle": DictElement(', 1
+    )[0]
+    assert "required=False" in timeout_block
+    assert "NumberInRange(min_value=0.5, max_value=120.0)" in timeout_block
