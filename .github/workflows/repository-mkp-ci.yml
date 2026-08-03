@@ -1,4 +1,4 @@
-name: PR 22 repair trigger
+name: PR 22 final workflow generator
 
 on:
   pull_request:
@@ -11,88 +11,74 @@ permissions:
   contents: write
 
 concurrency:
-  group: pr22-repair-trigger
+  group: pr22-final-workflow-generator
   cancel-in-progress: false
 
 jobs:
-  repair:
+  generate:
     if: github.head_ref == 'agent/fix-generated-mkp-checkmk-25'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
 
     steps:
-      - name: Check out repair branch
+      - name: Check out branch
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: agent/fix-generated-mkp-checkmk-25
           fetch-depth: 0
 
-      - name: Restore current master and final workflow
+      - name: Generate hardened workflow as inert source file
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch --no-tags origin master
-          cp oxidized_backup/src/info /tmp/oxidized_backup-info
-          git checkout origin/master -- oxidized_backup
-          install -D -m 0644 /tmp/oxidized_backup-info oxidized_backup/src/info
-          git rm -f .github/workflows/oxidized_backup-ci.yml 2>/dev/null || true
-          mv .github/repository-mkp-ci.final.yml \
-            .github/workflows/repository-mkp-ci.yml
+          git show 2aef50b4203ba90ae8e3034019dc065d9ec1daf8:.github/repository-mkp-ci.final.yml \
+            > .github/repository-mkp-ci.generated.yml
 
-      - name: Apply explicit repair script
-        shell: bash
-        run: |
-          set -euo pipefail
           python - <<'PY'
-          import base64
-          import gzip
+          from pathlib import Path
 
-          payload = "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"
-          source = gzip.decompress(base64.b64decode(payload))
-          exec(compile(source, "pr22_repair.py", "exec"))
+          path = Path('.github/repository-mkp-ci.generated.yml')
+          source = path.read_text(encoding='utf-8')
+          replacements = {
+              'actions/checkout@v6': 'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6',
+              'actions/setup-python@v6': 'actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6',
+              'actions/upload-artifact@v7': 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7',
+              'actions/download-artifact@v7': 'actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7',
+              'pytest==8.4.1': 'pytest==9.1.1',
+              'requests==2.32.4': 'requests==2.34.2',
+              'ruff==0.12.4': 'ruff==0.15.22',
+              'checkmk/check-mk-raw:2.4.0p34': 'checkmk/check-mk-raw:2.4.0p34@sha256:d6cb29c34ce8199cdae5246d1aadad489ef43250e211ad9b25d375237ee2eb34',
+              'checkmk/check-mk-community:2.5.0p9': 'checkmk/check-mk-community:2.5.0p9@sha256:60e495047a30a27d030b1753f3b18c10c031832d3385d0b417bddcda51beeb66',
+          }
+          for old, new in replacements.items():
+              if old not in source:
+                  raise SystemExit(f'Missing expected workflow token: {old}')
+              source = source.replace(old, new)
+
+          source = source.replace(
+              '      - ".github/scripts/**"\n',
+              '      - ".github/scripts/**"\n      - ".github/tests/**"\n',
+          )
+          source = source.replace(
+              '          ruff check --select E9,F63,F7,F82 .github/scripts create_mkp_index.py\n'
+              '          python -m compileall -q .github/scripts create_mkp_index.py\n',
+              '          ruff check --select E9,F63,F7,F82 .github/scripts .github/tests create_mkp_index.py\n'
+              '          python -m compileall -q .github/scripts .github/tests create_mkp_index.py\n',
+          )
+          marker = '      - name: Execute every package test suite\n'
+          repository_tests = (
+              '      - name: Test repository release tooling\n'
+              '        run: pytest -q .github/tests\n\n'
+          )
+          if repository_tests not in source:
+              source = source.replace(marker, repository_tests + marker, 1)
+
+          path.write_text(source, encoding='utf-8')
           PY
 
-      - name: Validate repaired tree
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m pip install --disable-pip-version-check \
-            pytest==9.1.1 requests==2.34.2 ruff==0.15.22
-          ruff check --select E9,F63,F7,F82 .github/scripts .github/tests create_mkp_index.py
-          python -m compileall -q .github/scripts .github/tests create_mkp_index.py
-          pytest -q .github/tests
-          failures=()
-          shopt -s nullglob
-          for test_dir in */tests; do
-            if ! pytest -q "$test_dir"; then
-              failures+=("$test_dir")
-            fi
-          done
-          if ((${#failures[@]})); then
-            printf 'Failed package test suites:\n' >&2
-            printf ' - %s\n' "${failures[@]}" >&2
-            exit 1
-          fi
-          validation_root=$(mktemp -d)
-          cp -a . "$validation_root/repository"
-          rm -rf "$validation_root/repository/.git"
-          cd "$validation_root/repository"
-          python .github/scripts/prepare_repository_mkp_release.py --repository .
-          python .github/scripts/build_repository_mkps.py \
-            --repository . \
-            --output "$validation_root/dist" \
-            --packaged-version 2.5.0p9 \
-            --usable-until 2.5.99
-
-      - name: Publish repaired source tree
-        shell: bash
-        run: |
-          set -euo pipefail
-          git checkout origin/agent/fix-generated-mkp-checkmk-25 -- .github/workflows
-          git rm -f .github/repository-mkp-ci.final.yml
-          git add -A
+          git add .github/repository-mkp-ci.generated.yml
           git diff --cached --check
-          git commit -m "fix(ci): resolve repository MKP validation and security issues"
+          git commit -m "chore: stage final repository MKP workflow"
           git push origin HEAD:agent/fix-generated-mkp-checkmk-25
