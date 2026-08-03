@@ -1,12 +1,10 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Special behavior is to use contact groups to enrich the call '
-                'to service now.\n'
-                '\n',
- 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
+ 'description': 'Creates and closes ServiceNow incidents through a verified HTTPS middleware endpoint with defensive assignment-group handling.\n',
+ 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/service_now_notify',
  'files': {'cmk_addons_plugins': ['service_now_notify/rulesets/service_now_notify.py'],
            'notifications': ['service_now_notify']},
  'name': 'service_now_notify',
- 'title': 'Service Now Notification',
- 'version': '2.1.1',
+ 'title': 'ServiceNow notification',
+ 'version': '2.2.0',
  'version.min_required': '2.4.0',
  'version.packaged': '2.5.0'}
