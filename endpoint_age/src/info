@@ -1,10 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Generic HTTP endpoint freshness check. Probes an HTTP '
-                'endpoint and derives an age in seconds from a response '
-                'header (Age, Last-Modified, ...) or from a dotted path '
-                'into the JSON response body, then applies WARN/CRIT '
-                'thresholds.',
- 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks',
+ 'description': 'Monitor freshness of public HTTPS endpoints with DNS/IP SSRF protection, bounded responses and strict JSON/header parsing.\n',
+ 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/endpoint_age',
  'files': {'cmk_addons_plugins': ['endpoint_age/agent_based/endpoint_age.py',
                                   'endpoint_age/checkman/endpoint_age',
                                   'endpoint_age/libexec/agent_endpoint_age',
@@ -12,7 +8,7 @@
                                   'endpoint_age/rulesets/endpoint_age.py',
                                   'endpoint_age/server_side_calls/agent.py']},
  'name': 'endpoint_age',
- 'title': 'HTTP endpoint freshness monitoring',
- 'version': '0.0.1',
+ 'title': 'Public HTTPS endpoint freshness monitoring',
+ 'version': '0.1.0',
  'version.min_required': '2.3.0',
  'version.packaged': '2.4.0'}
