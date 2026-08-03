@@ -24,12 +24,37 @@ from cmk.rulesets.v1.form_specs import (
 from cmk.rulesets.v1.form_specs.validators import LengthInRange, NumberInRange
 from cmk.rulesets.v1.rule_specs import AgentConfig, Topic
 
+_DEPLOYMENT_MODES = {"sync", "cached", "do_not_deploy"}
 
-def _migrate(value: Any) -> dict[str, Any]:
+
+def _migrate_deployment(value: Any) -> tuple[str, Any]:
+    """Translate both current choices and historical Bakery sentinels safely."""
+
+    if value is None:
+        return "do_not_deploy", None
+    if isinstance(value, Mapping):
+        # The legacy dropdown represented "deploy" as an empty dictionary.
+        return "sync", None
+    if isinstance(value, (tuple, list)) and value:
+        mode = str(value[0])
+        if mode in _DEPLOYMENT_MODES:
+            interval = value[1] if len(value) > 1 else None
+            return mode, interval
+        return "do_not_deploy", None
+    if isinstance(value, str) and value in _DEPLOYMENT_MODES:
+        return value, None
+    return "do_not_deploy", None
+
+
+def _migrate(value: Any) -> dict[str, Any] | Any:
     if isinstance(value, Mapping) and "settings" in value:
-        return dict(value)
+        migrated = dict(value)
+        migrated["deployment"] = _migrate_deployment(
+            migrated.get("deployment", ("cached", 300.0))
+        )
+        return migrated
     if isinstance(value, (tuple, list)) and len(value) >= 2:
-        deployment = value[0]
+        deployment = _migrate_deployment(value[0])
         old = value[1] if isinstance(value[1], Mapping) else {}
         settings = {
             "backend": "postgresql"
@@ -184,7 +209,9 @@ def _agent_config_bacula_jobs() -> Dictionary:
 
 
 rule_spec_bacula_jobs_agent = AgentConfig(
-    name="bacula_jobs",
+    # Keep the historical identifier so existing agent_config:bacula rules are
+    # loaded and passed through the migration function during upgrades.
+    name="bacula",
     title=Title("Bacula/Bareos jobs collector"),
     topic=Topic.APPLICATIONS,
     parameter_form=_agent_config_bacula_jobs,
