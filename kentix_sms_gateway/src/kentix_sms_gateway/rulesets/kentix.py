@@ -9,7 +9,7 @@ from cmk.rulesets.v1.form_specs import (
     TimeMagnitude,
     TimeSpan,
 )
-from cmk.rulesets.v1.form_specs.validators import LengthInRange
+from cmk.rulesets.v1.form_specs.validators import LengthInRange, NumberInRange
 from cmk.rulesets.v1.rule_specs import NotificationParameters, Topic
 
 
@@ -44,10 +44,17 @@ def _parameters_kentix() -> Dictionary:
             "timeout": DictElement(
                 parameter_form=TimeSpan(
                     title=Title("Request timeout"),
+                    help_text=Help(
+                        "Optional request timeout between 0.5 and 120 seconds. "
+                        "Existing rules without this field use 10 seconds."
+                    ),
                     displayed_magnitudes=(TimeMagnitude.SECOND,),
                     prefill=DefaultValue(10.0),
+                    custom_validate=(
+                        NumberInRange(min_value=0.5, max_value=120.0),
+                    ),
                 ),
-                required=True,
+                required=False,
             ),
             "ca_bundle": DictElement(
                 parameter_form=String(
