@@ -61,9 +61,96 @@ jobs:
                   body.append(line[10:] if line.startswith('          ') else line)
           if not body:
               raise SystemExit('Embedded repair program was not found')
-          Path('/tmp/pr22_repair.py').write_text('\n'.join(body) + '\n', encoding='utf-8')
+          program = '\n'.join(body) + '\n'
+          substitutions = {
+              'if marker not in build:\n    raise RuntimeError("Unable to locate manifest validation block")\nbuild = build.replace(marker, validation, 1)':
+                  'if marker in build:\n    build = build.replace(marker, validation, 1)',
+              'if old_symlink not in build:\n    raise RuntimeError("Unable to locate symlink validation block")\nbuild = build.replace(old_symlink, new_symlink, 1)':
+                  'if old_symlink in build:\n    build = build.replace(old_symlink, new_symlink, 1)',
+              'if old_members not in build:\n    raise RuntimeError("Unable to locate archive inventory block")\nbuild = build.replace(old_members, new_members, 1)':
+                  'if old_members in build:\n    build = build.replace(old_members, new_members, 1)',
+          }
+          for old, new in substitutions.items():
+              program = program.replace(old, new)
+          Path('/tmp/pr22_repair.py').write_text(program, encoding='utf-8')
           EXTRACT
           python /tmp/pr22_repair.py
+
+          python - <<'HARDEN'
+          from pathlib import Path
+
+          path = Path('.github/scripts/build_repository_mkps.py')
+          text = path.read_text(encoding='utf-8')
+          if 'import re\n' not in text:
+              text = text.replace('import pprint\n', 'import pprint\nimport re\n', 1)
+          if '_SAFE_PACKAGE_TOKEN = re.compile' not in text:
+              text = text.replace(
+                  'USABLE_UNTIL = "2.5.99"\n',
+                  'USABLE_UNTIL = "2.5.99"\n_SAFE_PACKAGE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")\n',
+                  1,
+              )
+
+          function_start = text.index('def read_manifest(')
+          function_end = text.index('\ndef _safe_relative_path', function_start)
+          manifest_function = text[function_start:function_end]
+          if 'unsafe {field} value' not in manifest_function:
+              anchor = '    manifest = dict(manifest)\n'
+              validation = '\n'.join([
+                  '    for field in ("name", "version", "version.min_required"):',
+                  '        value = manifest[field]',
+                  '        if not isinstance(value, str) or not _SAFE_PACKAGE_TOKEN.fullmatch(value):',
+                  '            raise ValueError(f"{info_path}: unsafe {field} value {value!r}")',
+                  '',
+              ])
+              position = text.index(anchor, function_start)
+              text = text[:position] + validation + text[position:]
+
+          source_start = text.index('        if source.is_symlink():', text.index('def _source_path'))
+          source_end = text.index('        return source', source_start)
+          symlink_block = '\n'.join([
+              '        if source.is_symlink():',
+              '            parent = source.parent.resolve()',
+              '            if not parent.is_relative_to(resolved_root):',
+              '                raise ValueError(f"{source}: symlink parent escapes package source root")',
+              '            target = Path(os.readlink(source))',
+              '            if target.is_absolute():',
+              '                raise ValueError(f"{source}: absolute symlink target is not allowed")',
+              '            resolved_target = (source.parent / target).resolve(strict=False)',
+              '            if not resolved_target.is_relative_to(resolved_root):',
+              '                raise ValueError(f"{source}: symlink target escapes package source root")',
+              '        elif not source.resolve().is_relative_to(resolved_root):',
+              '            raise ValueError(f"{source}: source path escapes package source root")',
+              '',
+          ])
+          text = text[:source_start] + symlink_block + text[source_end:]
+          text = text.replace(
+              '    info.mode = stat.S_IMODE(st.st_mode)\n',
+              '    info.mode = stat.S_IMODE(st.st_mode) & 0o777\n',
+              1,
+          )
+
+          verify_start = text.index('    with tarfile.open(package_path, mode="r:gz") as outer:')
+          metadata_start = text.index('        info_file = outer.extractfile', verify_start)
+          inventory = '\n'.join([
+              '    with tarfile.open(package_path, mode="r:gz") as outer:',
+              '        outer_members = outer.getmembers()',
+              '        outer_names = [member.name for member in outer_members]',
+              '        if len(outer_names) != len(set(outer_names)):',
+              '            raise ValueError(f"{package_path}: duplicate outer archive members")',
+              '        if any(PurePosixPath(name).name != name for name in outer_names):',
+              '            raise ValueError(f"{package_path}: nested outer archive member")',
+              '        members = {member.name: member for member in outer_members}',
+              '        required = {"info", "info.json"} | {f"{part}.tar" for part in expected["files"]}',
+              '        unexpected = sorted(set(members) ^ required)',
+              '        if unexpected:',
+              '            raise ValueError(',
+              '                f"{package_path}: unexpected outer member inventory {unexpected}"',
+              '            )',
+              '',
+          ])
+          text = text[:verify_start] + inventory + text[metadata_start:]
+          path.write_text(text, encoding='utf-8')
+          HARDEN
 
       - name: Validate repaired tree
         shell: bash
