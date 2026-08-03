@@ -1,0 +1,726 @@
+name: One-time PR 22 repair
+
+on:
+  push:
+    branches:
+      - agent/fix-generated-mkp-checkmk-25
+    paths:
+      - .github/workflows/pr22-repair.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr22-one-time-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repair branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/fix-generated-mkp-checkmk-25
+          fetch-depth: 0
+
+      - name: Merge current master
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --no-tags origin master
+          git merge --no-commit --no-ff origin/master || true
+
+          # PR #22 intentionally replaces package-specific validation with the
+          # repository-wide workflow. Resolve the only expected modify/delete
+          # conflict in favour of the repository-wide design.
+          git rm -f .github/workflows/oxidized_backup-ci.yml 2>/dev/null || true
+
+          if git ls-files --unmerged | grep -q .; then
+            echo "Unexpected merge conflicts remain:" >&2
+            git status --short >&2
+            exit 1
+          fi
+
+      - name: Apply validation and security repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from __future__ import annotations
+
+          import ast
+          import pprint
+          import re
+          from pathlib import Path
+
+          root = Path.cwd()
+
+          # Preserve Alertmanager's separate add-on namespace and custom rule
+          # identifiers. Checkmk rejects duplicate public rule-spec names; a
+          # local add-on cannot replace the built-in rule registry entry.
+          prepare_path = root / ".github/scripts/prepare_repository_mkp_release.py"
+          prepare = prepare_path.read_text(encoding="utf-8")
+          prepare = prepare.replace(
+              '_ALERTMANAGER_OVERRIDE_RULESET = Path("src/alertmanager/rulesets/alertmanager.py")\n',
+              "",
+          )
+          prepare = prepare.replace(
+              '_ALERTMANAGER_OVERRIDE_MANIFEST_ENTRY = "alertmanager/rulesets/alertmanager.py"\n',
+              "",
+          )
+          prepare = re.sub(
+              r"_ALERTMANAGER_RULESET_REFERENCES = \{.*?\}\n",
+              "",
+              prepare,
+              count=1,
+              flags=re.DOTALL,
+          )
+          prepare = re.sub(
+              r"_ALERTMANAGER_RULESET_DECLARATIONS = \{.*?\}\n",
+              "",
+              prepare,
+              count=1,
+              flags=re.DOTALL,
+          )
+          start = prepare.index("def _normalize_alertmanager_override(")
+          end = prepare.index("\ndef main()", start)
+          replacement = '''def _normalize_alertmanager_override(
+              package_dir: Path,
+              manifest: dict[str, Any],
+          ) -> list[str]:
+              """Keep the extended Alertmanager rules isolated from built-ins.
+
+              Checkmk registers rule-spec names globally and rejects duplicate
+              identifiers. The extension therefore keeps its ``kr_alertmanager``
+              add-on namespace and ``*_custom`` rule names while its check plug-in
+              explicitly references those names. Only accidental debug output is
+              removed during release preparation.
+              """
+
+              if package_dir.name != _ALERTMANAGER_PACKAGE:
+                  return []
+
+              plugin_path = package_dir / _ALERTMANAGER_PLUGIN
+              ruleset_path = package_dir / _ALERTMANAGER_LEGACY_RULESET
+              if not plugin_path.is_file():
+                  raise FileNotFoundError(f"{package_dir}: Alertmanager check plug-in is missing")
+              if not ruleset_path.is_file():
+                  raise FileNotFoundError(f"{package_dir}: Alertmanager custom ruleset is missing")
+
+              files = manifest.setdefault("files", {})
+              addons = list(files.get("cmk_addons_plugins", []))
+              if _ALERTMANAGER_LEGACY_MANIFEST_ENTRY not in addons:
+                  raise ValueError(
+                      f"{package_dir}: manifest must retain "
+                      f"{_ALERTMANAGER_LEGACY_MANIFEST_ENTRY!r}"
+                  )
+              if "alertmanager/rulesets/alertmanager.py" in addons:
+                  raise ValueError(
+                      f"{package_dir}: built-in Alertmanager namespace must not be packaged"
+                  )
+
+              ruleset_content = ruleset_path.read_text(encoding="utf-8")
+              plugin_content = plugin_path.read_text(encoding="utf-8")
+              for identifier in (
+                  "alertmanager_rule_state_custom",
+                  "alertmanager_rule_state_summary_custom",
+              ):
+                  if f'name="{identifier}"' not in ruleset_content:
+                      raise ValueError(f"{ruleset_path}: missing custom rule declaration {identifier}")
+                  if f'check_ruleset_name="{identifier}"' not in plugin_content:
+                      raise ValueError(f"{plugin_path}: missing custom rule reference {identifier}")
+
+              for built_in in (
+                  "alertmanager_rule_state",
+                  "alertmanager_rule_state_summary",
+              ):
+                  if f'name="{built_in}"' in ruleset_content:
+                      raise ValueError(
+                          f"{ruleset_path}: duplicate built-in rule declaration {built_in}"
+                      )
+                  if f'check_ruleset_name="{built_in}"' in plugin_content:
+                      raise ValueError(
+                          f"{plugin_path}: duplicate built-in rule reference {built_in}"
+                      )
+
+              removed_debug = 0
+              for debug_line in _ALERTMANAGER_DEBUG_PRINTS:
+                  if debug_line in plugin_content:
+                      plugin_content = plugin_content.replace(debug_line, "")
+                      removed_debug += 1
+              if removed_debug:
+                  plugin_path.write_text(plugin_content, encoding="utf-8")
+                  return [f"removed {removed_debug} debug print statements"]
+              return []
+          '''
+          prepare = prepare[:start] + replacement + prepare[end:]
+          prepare_path.write_text(prepare, encoding="utf-8")
+
+          # Use valid public-form identifiers and migrate already-saved values.
+          hci_ruleset = root / "hci_cluster/src/hci_cluster/rulesets/bakery.py"
+          hci_ruleset.write_text(
+              '''#!/usr/bin/env python3
+          """Agent bakery rule for HCI cluster monitoring."""
+
+          from cmk.rulesets.v1 import Help, Title
+          from cmk.rulesets.v1.form_specs import (
+              CascadingSingleChoice,
+              CascadingSingleChoiceElement,
+              DefaultValue,
+              DictElement,
+              Dictionary,
+              FixedValue,
+              SingleChoice,
+              SingleChoiceElement,
+              String,
+          )
+          from cmk.rulesets.v1.form_specs.validators import LengthInRange
+          from cmk.rulesets.v1.rule_specs import AgentConfig, Topic
+
+          _LEGACY_FILTER_TYPES = {
+              "None": "none",
+              "Inclusion": "inclusion",
+              "Exclusion": "exclusion",
+          }
+
+
+          def _migrate_deployment_parameters(raw_value: object) -> dict[str, object]:
+              if not isinstance(raw_value, dict):
+                  raise TypeError("HCI Cluster deployment parameters must be a dictionary")
+              migrated = dict(raw_value)
+              filter_type = migrated.get("filter_type")
+              if isinstance(filter_type, str):
+                  migrated["filter_type"] = _LEGACY_FILTER_TYPES.get(filter_type, filter_type)
+              return migrated
+
+
+          def _deployment_parameters() -> Dictionary:
+              return Dictionary(
+                  title=Title("Deploy HCI Cluster plug-in"),
+                  migrate=_migrate_deployment_parameters,
+                  elements={
+                      "domain": DictElement(
+                          required=True,
+                          parameter_form=String(
+                              title=Title("Domain"),
+                              custom_validate=(LengthInRange(min_value=1),),
+                          ),
+                      ),
+                      "filter_type": DictElement(
+                          required=True,
+                          parameter_form=SingleChoice(
+                              title=Title("Filter type"),
+                              help_text=Help(
+                                  "Choose whether the filter pattern includes or excludes matches."
+                              ),
+                              elements=(
+                                  SingleChoiceElement(name="none", title=Title("No filter")),
+                                  SingleChoiceElement(
+                                      name="inclusion", title=Title("Inclusion filter")
+                                  ),
+                                  SingleChoiceElement(
+                                      name="exclusion", title=Title("Exclusion filter")
+                                  ),
+                              ),
+                              prefill=DefaultValue("none"),
+                          ),
+                      ),
+                      "filter_pattern": DictElement(
+                          required=False,
+                          parameter_form=String(
+                              title=Title("Filter pattern"),
+                              help_text=Help(
+                                  "Optional cluster resource filter, for example HCI."
+                              ),
+                          ),
+                      ),
+                  },
+              )
+
+
+          def _parameter_form_hci_cluster() -> Dictionary:
+              return Dictionary(
+                  help_text=Help(
+                      "Deploys the Windows HCI Cluster agent plug-in for monitoring cluster "
+                      "nodes, resources, storage pools, virtual disks, volumes, and jobs."
+                  ),
+                  elements={
+                      "deployment": DictElement(
+                          required=True,
+                          parameter_form=CascadingSingleChoice(
+                              title=Title("Deployment"),
+                              elements=(
+                                  CascadingSingleChoiceElement(
+                                      name="deploy",
+                                      title=Title("Deploy the plug-in"),
+                                      parameter_form=_deployment_parameters(),
+                                  ),
+                                  CascadingSingleChoiceElement(
+                                      name="do_not_deploy",
+                                      title=Title("Do not deploy the plug-in"),
+                                      parameter_form=FixedValue(value=None),
+                                  ),
+                              ),
+                              prefill=DefaultValue("deploy"),
+                          ),
+                      ),
+                  },
+              )
+
+
+          rule_spec_hci_cluster = AgentConfig(
+              name="hci_cluster",
+              title=Title("HCI Cluster Monitoring (Windows)"),
+              topic=Topic.OPERATING_SYSTEM,
+              parameter_form=_parameter_form_hci_cluster,
+          )
+          '''.replace("          ", ""),
+              encoding="utf-8",
+          )
+
+          hci_bakery = root / "hci_cluster/src/hci_cluster/agent_based/bakery.py"
+          hci_bakery.write_text(
+              '''#!/usr/bin/env python3
+          """Agent bakery hook for HCI cluster monitoring."""
+
+          from pathlib import Path
+          from typing import Any
+
+          from cmk.base.cee.plugins.bakery.bakery_api.v1 import (
+              FileGenerator,
+              OS,
+              Plugin,
+              PluginConfig,
+              register,
+          )
+
+          _FILTER_TYPE_TO_AGENT = {
+              "none": "None",
+              "inclusion": "Inclusion",
+              "exclusion": "Exclusion",
+              "None": "None",
+              "Inclusion": "Inclusion",
+              "Exclusion": "Exclusion",
+          }
+
+
+          def _deployment_configuration(conf: Any) -> dict[str, Any] | None:
+              if not isinstance(conf, dict):
+                  return None
+
+              deployment = conf.get("deployment")
+              if isinstance(deployment, tuple) and len(deployment) == 2:
+                  mode, parameters = deployment
+                  if mode != "deploy" or not isinstance(parameters, dict):
+                      return None
+                  return parameters
+
+              # Preserve rules saved by the legacy WATO rulespec during migration.
+              if "domain" in conf:
+                  return conf
+              return None
+
+
+          def _powershell_literal(value: Any) -> str:
+              return "'" + str(value).replace("'", "''") + "'"
+
+
+          def _filter_type_for_agent(value: Any) -> str:
+              return _FILTER_TYPE_TO_AGENT.get(str(value), "None")
+
+
+          def _get_lines(conf: dict[str, Any]) -> list[str]:
+              return [
+                  f"$domain = {_powershell_literal(conf['domain'])}",
+                  f"$FilterTyp = {_powershell_literal(_filter_type_for_agent(conf.get('filter_type', 'none')))}",
+                  f"$FilterPattern = {_powershell_literal(conf.get('filter_pattern', ''))}",
+              ]
+
+
+          def get_hci_cluster_files(conf: Any) -> FileGenerator:
+              parameters = _deployment_configuration(conf)
+              if parameters is None:
+                  return
+
+              yield Plugin(
+                  base_os=OS.WINDOWS,
+                  source=Path("hci_cluster.ps1"),
+              )
+              yield PluginConfig(
+                  base_os=OS.WINDOWS,
+                  lines=_get_lines(parameters),
+                  target=Path("hci_cluster.cfg.ps1"),
+              )
+
+
+          register.bakery_plugin(
+              name="hci_cluster",
+              files_function=get_hci_cluster_files,
+          )
+          '''.replace("          ", ""),
+              encoding="utf-8",
+          )
+
+          # Harden deterministic package construction against output path
+          # injection, escaping symlinks, special permission bits, and malformed
+          # archive member inventories.
+          build_path = root / ".github/scripts/build_repository_mkps.py"
+          build = build_path.read_text(encoding="utf-8")
+          build = build.replace("import pprint\nimport stat\n", "import pprint\nimport re\nimport stat\n")
+          build = build.replace(
+              'USABLE_UNTIL = "2.5.99"\n',
+              'USABLE_UNTIL = "2.5.99"\n_SAFE_PACKAGE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")\n',
+          )
+          marker = '    if not isinstance(manifest["files"], dict):\n        raise ValueError(f"{info_path}: files must be a dictionary")\n\n'
+          validation = '''    if not isinstance(manifest["files"], dict):
+              raise ValueError(f"{info_path}: files must be a dictionary")
+
+              for field in ("name", "version", "version.min_required"):
+                  value = manifest[field]
+                  if not isinstance(value, str) or not _SAFE_PACKAGE_TOKEN.fullmatch(value):
+                      raise ValueError(f"{info_path}: unsafe {field} value {value!r}")
+
+          '''.replace("          ", "")
+          if marker not in build:
+              raise RuntimeError("Unable to locate manifest validation block")
+          build = build.replace(marker, validation, 1)
+          old_symlink = '''        if source.is_symlink():
+                      # Symlinks are archived as symlinks; only their location must remain
+                      # inside the selected package source root.
+                      parent = source.parent.resolve()
+                      if not parent.is_relative_to(resolved_root):
+                          raise ValueError(f"{source}: symlink parent escapes package source root")
+                  elif not source.resolve().is_relative_to(resolved_root):
+          '''.replace("          ", "")
+          new_symlink = '''        if source.is_symlink():
+                      parent = source.parent.resolve()
+                      if not parent.is_relative_to(resolved_root):
+                          raise ValueError(f"{source}: symlink parent escapes package source root")
+                      target = Path(os.readlink(source))
+                      if target.is_absolute():
+                          raise ValueError(f"{source}: absolute symlink target is not allowed")
+                      resolved_target = (source.parent / target).resolve(strict=False)
+                      if not resolved_target.is_relative_to(resolved_root):
+                          raise ValueError(f"{source}: symlink target escapes package source root")
+                  elif not source.resolve().is_relative_to(resolved_root):
+          '''.replace("          ", "")
+          if old_symlink not in build:
+              raise RuntimeError("Unable to locate symlink validation block")
+          build = build.replace(old_symlink, new_symlink, 1)
+          build = build.replace(
+              "    info.mode = stat.S_IMODE(st.st_mode)\n",
+              "    info.mode = stat.S_IMODE(st.st_mode) & 0o777\n",
+              1,
+          )
+          old_members = '''    with tarfile.open(package_path, mode="r:gz") as outer:
+                  members = {PurePosixPath(member.name).name: member for member in outer.getmembers()}
+                  required = {"info", "info.json"} | {f"{part}.tar" for part in expected["files"]}
+                  missing = sorted(required - members.keys())
+                  if missing:
+                      raise ValueError(f"{package_path}: missing outer members {missing}")
+
+          '''.replace("          ", "")
+          new_members = '''    with tarfile.open(package_path, mode="r:gz") as outer:
+                  outer_members = outer.getmembers()
+                  outer_names = [member.name for member in outer_members]
+                  if len(outer_names) != len(set(outer_names)):
+                      raise ValueError(f"{package_path}: duplicate outer archive members")
+                  if any(PurePosixPath(name).name != name for name in outer_names):
+                      raise ValueError(f"{package_path}: nested outer archive member")
+                  members = {member.name: member for member in outer_members}
+                  required = {"info", "info.json"} | {f"{part}.tar" for part in expected["files"]}
+                  unexpected = sorted(set(members) ^ required)
+                  if unexpected:
+                      raise ValueError(
+                          f"{package_path}: unexpected outer member inventory {unexpected}"
+                      )
+
+          '''.replace("          ", "")
+          if old_members not in build:
+              raise RuntimeError("Unable to locate archive inventory block")
+          build = build.replace(old_members, new_members, 1)
+          build_path.write_text(build, encoding="utf-8")
+
+          # Keep the newer Oxidized Bakery implementation from master in the
+          # repository-wide release manifest, deriving its inventory directly
+          # from the version-controlled source tree.
+          oxidized_root = root / "oxidized_backup"
+          old_manifest = ast.literal_eval(
+              (oxidized_root / "src/info").read_text(encoding="utf-8")
+          )
+          addon_root = oxidized_root / "src/oxidized_backup"
+          lib_root = oxidized_root / "src/lib"
+          old_manifest.update(
+              {
+                  "description": (
+                      "Verifies Oxidized collection, Git backup artifacts, repository "
+                      "integrity, remote Git synchronization, and supports Checkmk "
+                      "Agent Bakery deployment."
+                  ),
+                  "version": "1.1.1",
+                  "version.min_required": "2.4.0b1",
+                  "version.packaged": "2.5.0p9",
+                  "version.usable_until": "2.5.99",
+                  "files": {
+                      "agents": ["plugins/oxidized_backup"],
+                      "cmk_addons_plugins": sorted(
+                          path.relative_to(oxidized_root / "src").as_posix()
+                          for path in addon_root.rglob("*")
+                          if path.is_file()
+                          and "__pycache__" not in path.parts
+                          and path.suffix != ".pyc"
+                      ),
+                      "lib": sorted(
+                          path.relative_to(lib_root).as_posix()
+                          for path in lib_root.rglob("*")
+                          if path.is_file()
+                          and "__pycache__" not in path.parts
+                          and path.suffix != ".pyc"
+                      ),
+                  },
+              }
+          )
+          (oxidized_root / "src/info").write_text(
+              pprint.pformat(old_manifest, sort_dicts=False, width=120) + "\n",
+              encoding="utf-8",
+          )
+
+          # Pin third-party Actions and validation images to immutable digests,
+          # refresh test tools, and exercise repository-level regression tests.
+          workflow_path = root / ".github/workflows/repository-mkp-ci.yml"
+          workflow = workflow_path.read_text(encoding="utf-8")
+          replacements = {
+              "actions/checkout@v6": "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6",
+              "actions/setup-python@v6": "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6",
+              "actions/upload-artifact@v7": "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7",
+              "actions/download-artifact@v7": "actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7",
+              "pytest==8.4.1": "pytest==9.1.1",
+              "requests==2.32.4": "requests==2.34.2",
+              "ruff==0.12.4": "ruff==0.15.22",
+              "checkmk/check-mk-raw:2.4.0p34": "checkmk/check-mk-raw:2.4.0p34@sha256:d6cb29c34ce8199cdae5246d1aadad489ef43250e211ad9b25d375237ee2eb34",
+              "checkmk/check-mk-community:2.5.0p9": "checkmk/check-mk-community:2.5.0p9@sha256:60e495047a30a27d030b1753f3b18c10c031832d3385d0b417bddcda51beeb66",
+          }
+          for old, new in replacements.items():
+              workflow = workflow.replace(old, new)
+          workflow = workflow.replace(
+              '      - ".github/scripts/**"\n',
+              '      - ".github/scripts/**"\n      - ".github/tests/**"\n',
+          )
+          package_step = "      - name: Execute every package test suite\n"
+          repository_test_step = '''      - name: Test repository release tooling
+                  run: pytest -q .github/tests
+
+          '''.replace("          ", "")
+          if repository_test_step not in workflow:
+              workflow = workflow.replace(package_step, repository_test_step + package_step, 1)
+          workflow_path.write_text(workflow, encoding="utf-8")
+
+          tests = root / ".github/tests"
+          tests.mkdir(parents=True, exist_ok=True)
+          (tests / "test_repository_release.py").write_text(
+              '''from __future__ import annotations
+
+          import ast
+          import importlib.util
+          import os
+          from pathlib import Path
+
+          import pytest
+
+          REPOSITORY = Path(__file__).resolve().parents[2]
+
+
+          def _load(name: str, path: Path):
+              spec = importlib.util.spec_from_file_location(name, path)
+              assert spec is not None and spec.loader is not None
+              module = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(module)
+              return module
+
+
+          def _minimal_manifest(name: str = "safe_package") -> dict[str, object]:
+              return {
+                  "name": name,
+                  "title": "Test",
+                  "author": "Test",
+                  "description": "Test",
+                  "version": "1.0.0",
+                  "version.min_required": "2.4.0",
+                  "files": {"agents": ["plugins/test"]},
+              }
+
+
+          def test_manifest_rejects_output_path_injection(tmp_path: Path) -> None:
+              build = _load(
+                  "build_repository_mkps",
+                  REPOSITORY / ".github/scripts/build_repository_mkps.py",
+              )
+              package = tmp_path / "package"
+              (package / "src").mkdir(parents=True)
+              (package / "src/info").write_text(
+                  repr(_minimal_manifest("../escape")), encoding="utf-8"
+              )
+              with pytest.raises(ValueError, match="unsafe name"):
+                  build.read_manifest(package, "2.5.0p9", "2.5.99")
+
+
+          def test_symlink_target_must_stay_in_package(tmp_path: Path) -> None:
+              build = _load(
+                  "build_repository_mkps_symlink",
+                  REPOSITORY / ".github/scripts/build_repository_mkps.py",
+              )
+              package = tmp_path / "package"
+              plugins = package / "src/agents/plugins"
+              plugins.mkdir(parents=True)
+              target = tmp_path / "outside"
+              target.write_text("secret", encoding="utf-8")
+              os.symlink(target, plugins / "escape")
+              with pytest.raises(ValueError, match="absolute symlink target"):
+                  build._source_path(package, "agents", "plugins/escape")
+
+
+          def test_archive_modes_strip_special_bits(tmp_path: Path) -> None:
+              build = _load(
+                  "build_repository_mkps_mode",
+                  REPOSITORY / ".github/scripts/build_repository_mkps.py",
+              )
+              source = tmp_path / "plugin"
+              source.write_text("#!/bin/sh\n", encoding="utf-8")
+              source.chmod(0o4755)
+              info, file_object = build._tarinfo_for(source, "plugin")
+              try:
+                  assert info.mode == 0o755
+              finally:
+                  assert file_object is not None
+                  file_object.close()
+
+
+          def test_alertmanager_release_keeps_custom_rule_namespace(tmp_path: Path) -> None:
+              prepare = _load(
+                  "prepare_repository_mkp_release",
+                  REPOSITORY / ".github/scripts/prepare_repository_mkp_release.py",
+              )
+              package = tmp_path / "alertmanager_extended"
+              plugin = package / "src/cmk_plugins/collection/agent_based/alertmanager.py"
+              ruleset = package / "src/kr_alertmanager/rulesets/alertmanager.py"
+              plugin.parent.mkdir(parents=True)
+              ruleset.parent.mkdir(parents=True)
+              plugin.write_text(
+                  'check_ruleset_name="alertmanager_rule_state_custom"\n'
+                  'check_ruleset_name="alertmanager_rule_state_summary_custom"\n'
+                  '                print("got severity: %s" % severity)\n',
+                  encoding="utf-8",
+              )
+              ruleset.write_text(
+                  'name="alertmanager_rule_state_custom"\n'
+                  'name="alertmanager_rule_state_summary_custom"\n',
+                  encoding="utf-8",
+              )
+              manifest = {
+                  "files": {
+                      "cmk_addons_plugins": [
+                          "kr_alertmanager/rulesets/alertmanager.py"
+                      ]
+                  }
+              }
+              prepare._normalize_alertmanager_override(package, manifest)
+              assert ruleset.is_file()
+              assert not (package / "src/alertmanager/rulesets/alertmanager.py").exists()
+              assert "_custom" in plugin.read_text(encoding="utf-8")
+              assert "print(" not in plugin.read_text(encoding="utf-8")
+
+
+          def test_hci_choice_identifiers_are_valid() -> None:
+              source = (
+                  REPOSITORY / "hci_cluster/src/hci_cluster/rulesets/bakery.py"
+              ).read_text(encoding="utf-8")
+              tree = ast.parse(source)
+              names: list[str] = []
+              for node in ast.walk(tree):
+                  if not isinstance(node, ast.Call):
+                      continue
+                  function = node.func
+                  function_name = (
+                      function.id
+                      if isinstance(function, ast.Name)
+                      else function.attr
+                      if isinstance(function, ast.Attribute)
+                      else ""
+                  )
+                  if function_name != "SingleChoiceElement":
+                      continue
+                  for keyword in node.keywords:
+                      if keyword.arg == "name" and isinstance(keyword.value, ast.Constant):
+                          names.append(keyword.value.value)
+              assert names
+              assert all(isinstance(name, str) and name.isidentifier() for name in names)
+              assert {"none", "inclusion", "exclusion"}.issubset(names)
+
+
+          def test_workflow_dependencies_are_immutable() -> None:
+              workflow = (
+                  REPOSITORY / ".github/workflows/repository-mkp-ci.yml"
+              ).read_text(encoding="utf-8")
+              assert "actions/checkout@v6" not in workflow
+              assert "actions/setup-python@v6" not in workflow
+              assert "actions/upload-artifact@v7" not in workflow
+              assert "actions/download-artifact@v7" not in workflow
+              assert "@sha256:" in workflow
+          '''.replace("          ", ""),
+              encoding="utf-8",
+          )
+
+          (root / ".github/workflows/tmp-permanent-validator-log.yml").unlink(
+              missing_ok=True
+          )
+          PY
+
+      - name: Run local validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check \
+            pytest==9.1.1 requests==2.34.2 ruff==0.15.22
+          ruff check --select E9,F63,F7,F82 .github/scripts .github/tests create_mkp_index.py
+          python -m compileall -q .github/scripts .github/tests create_mkp_index.py
+          pytest -q .github/tests
+
+          failures=()
+          shopt -s nullglob
+          for test_dir in */tests; do
+            if ! pytest -q "$test_dir"; then
+              failures+=("$test_dir")
+            fi
+          done
+          if ((${#failures[@]})); then
+            printf 'Failed package test suites:\n' >&2
+            printf ' - %s\n' "${failures[@]}" >&2
+            exit 1
+          fi
+
+          validation_root=$(mktemp -d)
+          cp -a . "$validation_root/repository"
+          rm -rf "$validation_root/repository/.git"
+          cd "$validation_root/repository"
+          python .github/scripts/prepare_repository_mkp_release.py --repository .
+          python .github/scripts/build_repository_mkps.py \
+            --repository . \
+            --output "$validation_root/dist" \
+            --packaged-version 2.5.0p9 \
+            --usable-until 2.5.99
+
+      - name: Publish repaired branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm -f .github/workflows/pr22-repair.yml
+          git add -A
+          git diff --cached --check
+          git status --short
+          git commit -m "fix(ci): resolve repository MKP validation and security issues"
+          git push origin HEAD:agent/fix-generated-mkp-checkmk-25
