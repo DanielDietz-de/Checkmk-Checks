@@ -1,0 +1,12 @@
+{
+  "bump_versions": true,
+  "completed": false,
+  "expected_package_count": 95,
+  "packaged_version": "2.5.0p9",
+  "preserve_versions": [
+    "acgateway",
+    "switch_port_sync"
+  ],
+  "release": "checkmk-2.5.0p9-repository-refresh",
+  "usable_until": "2.5.99"
+}

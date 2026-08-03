@@ -1,37 +1,28 @@
 #!/usr/bin/env python3
-
-"""
-Kuhn & Rueß GmbH
-Consulting and Development
-https://kuhn-ruess.de
-"""
+"""SNMP check for Sidecooler cold-water temperatures."""
 
 from typing import NamedTuple
 
 from cmk.agent_based.v2 import (
+    CheckPlugin,
     Service,
-    Result,
-    State,
-    Metric,
     SimpleSNMPSection,
     SNMPTree,
-    exists,
-    CheckPlugin,
     check_levels,
+    exists,
 )
 
+
 class SidecoolerColdwater(NamedTuple):
-    water_supply: int
-    water_return: int
+    water_supply: float
+    water_return: float
 
 
 def parse_sidecooler_coldwater(string_table):
     if not string_table:
         return None
-
-    snmp_data = [int(s) / 10 for s in string_table[0]]
-
-    return SidecoolerColdwater(*snmp_data)
+    values = [int(value) / 10 for value in string_table[0]]
+    return SidecoolerColdwater(*values)
 
 
 def discover_sidecooler_coldwater(section):
@@ -43,41 +34,40 @@ def check_sidecooler_coldwater(params, section):
         value=section.water_supply,
         levels_upper=params["water_supply"],
         metric_name="coldwater_supply",
-        render_func=lambda v: "%.1f°C" % v,
+        render_func=lambda value: f"{value:.1f}°C",
         label="Coldwater supply",
     )
-
     yield from check_levels(
         value=section.water_return,
         levels_upper=params["water_return"],
         metric_name="coldwater_return",
-        render_func=lambda v: "%.1f°C" % v,
+        render_func=lambda value: f"{value:.1f}°C",
         label="Coldwater return",
     )
 
 
 snmp_section_sidecooler_coldwater = SimpleSNMPSection(
-    name = "sidecooler_coldwater",
-    parse_function = parse_sidecooler_coldwater,
-    fetch = SNMPTree(
-        base = ".1.3.6.1.4.1.46984.17.3",
-        oids = [
-            "10",   # SideCoolerMib::tempColdwaterSupply
-            "11",   # SideCoolerMib::tempColdwaterReturn
+    name="sidecooler_coldwater",
+    parse_function=parse_sidecooler_coldwater,
+    fetch=SNMPTree(
+        base=".1.3.6.1.4.1.46984.17.3",
+        oids=[
+            "10",  # SideCoolerMib::tempColdwaterSupply
+            "11",  # SideCoolerMib::tempColdwaterReturn
         ],
     ),
-    detect = exists(".1.3.6.1.4.1.46984.17.3.*"),
+    detect=exists(".1.3.6.1.4.1.46984.17.3.*"),
 )
 
 
 check_plugin_sidecooler_coldwater = CheckPlugin(
-    name = "sidecooler_coldwater",
-    service_name = "Sidecooler coldwater",
-    discovery_function = discover_sidecooler_coldwater,
-    check_function = check_sidecooler_coldwater,
+    name="sidecooler_coldwater",
+    service_name="Sidecooler coldwater",
+    discovery_function=discover_sidecooler_coldwater,
+    check_function=check_sidecooler_coldwater,
     check_ruleset_name="sidecooler_coldwater",
     check_default_parameters={
-        "water_supply": ("fixed", (20, 25)),
-        "water_return": ("fixed", (25, 30)),
+        "water_supply": ("fixed", (20.0, 25.0)),
+        "water_return": ("fixed", (25.0, 30.0)),
     },
 )

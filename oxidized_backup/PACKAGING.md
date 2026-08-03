@@ -106,22 +106,13 @@ CI does not treat successful archive creation as sufficient. It also uses Checkm
 4. compile the installed Python files;
 5. run `cmk-validate-plugins`, the manual lookup, and `cmk -R`.
 
-## Build and persistence workflow
 
-The `oxidized_backup checks` workflow:
+## Repository-wide build and persistence workflow
 
-1. runs Python, security, Bakery-contract, and deterministic-package tests;
-2. validates the check and rule registration on Checkmk 2.4.0p5 and 2.4.0p34;
-3. validates the commercial Bakery API v1 callbacks through an isolated contract test because Raw does not ship the commercial Bakery runtime;
-4. builds the deterministic MKP and checksum;
-5. performs the clean Checkmk inspection, installation, activation, and registration checks;
-6. independently verifies the `agents`, `cmk_addons_plugins`, and `lib` component archives;
-7. uploads the package and checksum as a workflow artifact.
+The repository-wide MKP workflow runs the package tests, builds the deterministic archive, installs the complete supported package set into clean Checkmk 2.4 and 2.5 sites, and validates plug-in registration, manuals, and core reloads. Pull-request runs are read-only.
 
-After a successful push build on `master`, the `Persist oxidized_backup MKP` workflow downloads that exact artifact, verifies its checksum, and commits both files into `oxidized_backup/`.
-
-Pull-request and manually dispatched builds remain read-only. Stale artifacts are rejected when package sources or the build workflow changed after the originating build started.
+After a successful non-bot push to `master`, the same workflow persists the exact validated MKP and checksum set, regenerates repository metadata, and refuses publication when package inputs changed after the build started.
 
 ## Versioning rule
 
-Any change to the check, agent plug-in, Bakery rule, Bakery implementation, generated configuration model, hook reference, deployment templates, package builder, or package layout requires a new `PACKAGE_VERSION` in `.github/workflows/oxidized_backup-ci.yml`.
+Any change to the check, agent plug-in, Bakery rule, Bakery implementation, generated configuration model, hook reference, deployment templates, package builder, or package layout requires a version update in the canonical `oxidized_backup/src/info` manifest.
