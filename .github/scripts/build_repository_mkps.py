@@ -96,13 +96,27 @@ def read_manifest(package_dir: Path, packaged_version: str, usable_until: str) -
     manifest = dict(manifest)
     manifest["version"] = str(manifest["version"])
     manifest["version.min_required"] = str(manifest["version.min_required"])
-    for field in ("name", "version", "version.min_required"):
+    explicit_usable_until = manifest.get("version.usable_until")
+    if explicit_usable_until is not None:
+        manifest["version.usable_until"] = str(explicit_usable_until)
+    for field in (
+        "name",
+        "version",
+        "version.min_required",
+        "version.usable_until",
+    ):
+        if field not in manifest:
+            continue
         value = manifest[field]
         if not isinstance(value, str) or not _SAFE_PACKAGE_TOKEN.fullmatch(value):
             raise ValueError(f"{info_path}: unsafe {field} value {value!r}")
 
     manifest["version.packaged"] = packaged_version
-    manifest["version.usable_until"] = usable_until
+    # The workflow-wide value is a default for packages without an explicit
+    # compatibility cap. An evidence-based lower cap in canonical metadata must
+    # survive packaging unchanged; broadening it would create a false support
+    # claim in the distributable itself.
+    manifest.setdefault("version.usable_until", usable_until)
     manifest["download_url"] = (
         "https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/"
         f"{package_dir.name}"
@@ -121,6 +135,7 @@ def read_manifest(package_dir: Path, packaged_version: str, usable_until: str) -
         normalized_files[component] = sorted(dict.fromkeys(entries))
     manifest["files"] = dict(sorted(normalized_files.items()))
     return manifest
+
 
 def _safe_relative_path(value: str) -> PurePosixPath:
     relative = PurePosixPath(value)
@@ -159,6 +174,7 @@ def _source_path(package_dir: Path, component: str, relative: str) -> Path:
         f"checked {[str(path) for path in candidates]}"
     )
 
+
 def _tarinfo_for(source: Path, arcname: str) -> tuple[tarfile.TarInfo, io.BufferedReader | None]:
     info = tarfile.TarInfo(arcname)
     st = source.lstat()
@@ -179,6 +195,7 @@ def _tarinfo_for(source: Path, arcname: str) -> tuple[tarfile.TarInfo, io.Buffer
     info.type = tarfile.REGTYPE
     info.size = st.st_size
     return info, source.open("rb")
+
 
 def _component_tar(package_dir: Path, component: str, files: list[str]) -> bytes:
     buffer = io.BytesIO()
@@ -279,6 +296,7 @@ def verify_package(package_path: Path, expected: dict[str, Any]) -> None:
                     f"expected={sorted(expected_files)}, actual={actual}"
                 )
 
+
 def main() -> None:
     args = _parse_args()
     repository = args.repository.resolve()
@@ -296,6 +314,7 @@ def main() -> None:
                 "name": manifest["name"],
                 "version": manifest["version"],
                 "min_required": manifest["version.min_required"],
+                "usable_until": manifest["version.usable_until"],
                 "filename": package_path.name,
                 "path": relative_output.as_posix(),
             }

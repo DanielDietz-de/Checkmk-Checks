@@ -186,6 +186,14 @@ def _normalize_alertmanager_override(
         return [f"removed {removed_debug} debug print statements"]
     return []
 
+
+def _release_usable_until(manifest: dict[str, Any], default: str) -> str:
+    """Use the workflow cap only when the package has no explicit evidence cap."""
+
+    explicit = manifest.get("version.usable_until")
+    return default if explicit is None else str(explicit)
+
+
 def main() -> None:
     args = _parse_args()
     repository = args.repository.resolve()
@@ -226,7 +234,10 @@ def main() -> None:
         else:
             manifest["version"] = old_version
         manifest["version.packaged"] = packaged_version
-        manifest["version.usable_until"] = usable_until
+        manifest["version.usable_until"] = _release_usable_until(
+            manifest,
+            usable_until,
+        )
         manifest["download_url"] = (
             "https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/"
             f"{package_dir.name}"

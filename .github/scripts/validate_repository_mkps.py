@@ -71,8 +71,9 @@ def _version_key(value: str) -> tuple[int, int, int, int, int]:
     return major, minor, patch, rank, suffix_number
 
 
-def _supports_target(min_required: str, target: str) -> bool:
-    return _version_key(min_required) <= _version_key(target)
+def _supports_target(min_required: str, usable_until: str, target: str) -> bool:
+    target_key = _version_key(target)
+    return _version_key(min_required) <= target_key <= _version_key(usable_until)
 
 
 def _timeout_output(exc: subprocess.TimeoutExpired) -> str:
@@ -206,17 +207,29 @@ def main() -> None:
     failures: list[CommandFailure] = []
 
     for package in metadata:
-        if not _supports_target(package["min_required"], args.checkmk_version):
+        min_required = package["min_required"]
+        usable_until = package["usable_until"]
+        if not _supports_target(min_required, usable_until, args.checkmk_version):
+            target_key = _version_key(args.checkmk_version)
+            if target_key < _version_key(min_required):
+                reason = f"requires at least {min_required}"
+            else:
+                reason = f"supports releases only through {usable_until}"
             print(
-                f"Skipping {package['name']} {package['version']} on {args.checkmk_version}: "
-                f"requires {package['min_required']}",
+                f"Skipping {package['name']} {package['version']} on "
+                f"{args.checkmk_version}: {reason}",
                 flush=True,
             )
             continue
 
         package_path = dist / package["path"]
         manifest = _manifest(package_path)
-        if manifest.get("name") != package["name"] or str(manifest.get("version")) != package["version"]:
+        if (
+            manifest.get("name") != package["name"]
+            or str(manifest.get("version")) != package["version"]
+            or str(manifest.get("version.min_required")) != min_required
+            or str(manifest.get("version.usable_until")) != usable_until
+        ):
             raise ValueError(f"{package_path}: metadata index mismatch")
 
         print(
