@@ -10,6 +10,7 @@ import json
 import re
 import socket
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -17,11 +18,13 @@ from urllib.parse import urlsplit
 from xml.etree import ElementTree as ET
 
 import requests
+import urllib3
 
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 MAX_FEEDS = 100
 MAX_ITEMS = 1000
 MAX_TEXT_LENGTH = 4096
+MAX_URL_LENGTH = 2048
 
 ACTIVE_KEYWORDS = (
     "investigating", "identified", "monitoring", "degraded", "degradation",
@@ -38,28 +41,129 @@ class FeedError(RuntimeError):
     """Raised when a feed target or document is unsafe."""
 
 
-def validate_public_https_url(value: str) -> str:
-    parsed = urlsplit(value.strip())
+@dataclass(frozen=True)
+class PublicHTTPSDestination:
+    """A public HTTPS URL pinned to one address from its validated DNS answer."""
+
+    url: str
+    hostname: str
+    port: int
+    address: str
+    request_target: str
+    host_header: str
+
+
+class PinnedHTTPSResponse:
+    """Small response adapter for a single pinned urllib3 connection pool."""
+
+    def __init__(
+        self,
+        response: urllib3.response.BaseHTTPResponse,
+        pool: urllib3.HTTPSConnectionPool,
+    ) -> None:
+        self._response = response
+        self._pool = pool
+        self.status_code = response.status
+        self.headers = response.headers
+
+    @property
+    def is_redirect(self) -> bool:
+        return 300 <= self.status_code < 400
+
+    def iter_content(self, chunk_size: int = 65536):
+        yield from self._response.stream(amt=chunk_size, decode_content=True)
+
+    def close(self) -> None:
+        self._response.release_conn()
+        self._pool.close()
+
+
+def _host_header(hostname: str, port: int) -> str:
+    rendered = f"[{hostname}]" if ":" in hostname else hostname
+    return rendered if port == 443 else f"{rendered}:{port}"
+
+
+def validate_public_https_url(value: str) -> PublicHTTPSDestination:
+    url = value.strip()
+    if len(url) > MAX_URL_LENGTH:
+        raise FeedError(f"feed URL must not exceed {MAX_URL_LENGTH} characters")
+    parsed = urlsplit(url)
     if parsed.scheme != "https" or not parsed.hostname:
         raise FeedError("feed URL must be an absolute HTTPS URL")
     if parsed.username or parsed.password or parsed.fragment:
         raise FeedError("feed URL must not contain credentials or a fragment")
     try:
+        port = parsed.port or 443
+    except ValueError as exc:
+        raise FeedError("feed URL contains an invalid port") from exc
+    try:
         addresses = {
             result[4][0]
             for result in socket.getaddrinfo(
                 parsed.hostname,
-                parsed.port or 443,
+                port,
                 type=socket.SOCK_STREAM,
             )
         }
     except socket.gaierror as exc:
         raise FeedError(f"DNS resolution failed: {exc}") from exc
-    if not addresses or any(
-        not ipaddress.ip_address(address).is_global for address in addresses
-    ):
+    if not addresses:
+        raise FeedError("DNS resolution returned no addresses")
+    parsed_addresses = [ipaddress.ip_address(address) for address in addresses]
+    if any(not address.is_global for address in parsed_addresses):
         raise FeedError("feed URL resolves to a non-public address")
-    return value.strip()
+    selected = min(
+        parsed_addresses,
+        key=lambda address: (address.version != 4, int(address)),
+    )
+    request_target = parsed.path or "/"
+    if parsed.query:
+        request_target = f"{request_target}?{parsed.query}"
+    return PublicHTTPSDestination(
+        url=url,
+        hostname=parsed.hostname,
+        port=port,
+        address=str(selected),
+        request_target=request_target,
+        host_header=_host_header(parsed.hostname, port),
+    )
+
+
+def pinned_https_get(
+    destination: PublicHTTPSDestination,
+    *,
+    headers: dict[str, str],
+    timeout: float,
+) -> PinnedHTTPSResponse:
+    """Connect to the validated IP while verifying TLS for the feed hostname."""
+
+    pool = urllib3.HTTPSConnectionPool(
+        destination.address,
+        port=destination.port,
+        cert_reqs="CERT_REQUIRED",
+        ca_certs=requests.certs.where(),
+        assert_hostname=destination.hostname,
+        server_hostname=destination.hostname,
+        maxsize=1,
+        block=True,
+    )
+    request_headers = dict(headers)
+    request_headers["Host"] = destination.host_header
+    try:
+        response = pool.urlopen(
+            "GET",
+            destination.request_target,
+            headers=request_headers,
+            timeout=urllib3.Timeout(connect=timeout, read=timeout),
+            redirect=False,
+            retries=False,
+            preload_content=False,
+            assert_same_host=False,
+        )
+    except Exception:
+        pool.close()
+        raise
+    return PinnedHTTPSResponse(response, pool)
 
 
 def parse_date(value: str | None) -> datetime | None:
@@ -99,7 +203,7 @@ def classify_state(title: str, summary: str) -> str:
 
 
 def extract_items(xml_bytes: bytes) -> list[dict[str, str]]:
-    upper = xml_bytes[:4096].upper()
+    upper = xml_bytes.upper()
     if b"<!DOCTYPE" in upper or b"<!ENTITY" in upper:
         raise FeedError("DTD and entity declarations are not allowed")
     try:
@@ -146,7 +250,7 @@ def extract_items(xml_bytes: bytes) -> list[dict[str, str]]:
     return items
 
 
-def read_bounded(response: requests.Response) -> bytes:
+def read_bounded(response: PinnedHTTPSResponse) -> bytes:
     body = bytearray()
     for chunk in response.iter_content(chunk_size=65536):
         body.extend(chunk)
@@ -160,11 +264,10 @@ def probe_feed(
     url: str,
     timeout: float,
     user_agent: str,
-    session: requests.Session,
 ) -> dict[str, Any]:
     result: dict[str, Any] = {
         "name": clean_text(name, 256),
-        "url": url[:2048],
+        "url": url[:MAX_URL_LENGTH],
         "ok": False,
         "error": None,
         "items": 0,
@@ -175,15 +278,13 @@ def probe_feed(
         "latest_state": None,
         "http_status": None,
     }
+    response: PinnedHTTPSResponse | None = None
     try:
-        target = validate_public_https_url(url)
-        response = session.get(
-            target,
+        destination = validate_public_https_url(url)
+        response = pinned_https_get(
+            destination,
             headers={"User-Agent": clean_text(user_agent, 256)},
             timeout=timeout,
-            verify=True,
-            allow_redirects=False,
-            stream=True,
         )
         result["http_status"] = response.status_code
         if response.is_redirect:
@@ -207,8 +308,11 @@ def probe_feed(
                     0,
                     int((datetime.now(timezone.utc) - parsed).total_seconds()),
                 )
-    except (FeedError, requests.RequestException, ValueError) as exc:
+    except (FeedError, urllib3.exceptions.HTTPError, OSError, ValueError) as exc:
         result["error"] = str(exc)[:1024]
+    finally:
+        if response is not None:
+            response.close()
     return result
 
 
@@ -238,13 +342,11 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_arguments(argv)
-    session = requests.Session()
-    session.trust_env = False
     print("<<<status_feed:sep(0)>>>")
     for spec in args.feed:
         try:
             name, url = split_feed(spec)
-            result = probe_feed(name, url, args.timeout, args.user_agent, session)
+            result = probe_feed(name, url, args.timeout, args.user_agent)
         except ValueError as exc:
             result = {"name": clean_text(spec, 256), "url": "", "ok": False, "error": str(exc)}
         print(json.dumps(result, sort_keys=True))
