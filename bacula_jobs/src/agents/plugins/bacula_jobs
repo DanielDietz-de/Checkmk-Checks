@@ -7,10 +7,12 @@ import json
 import os
 import pwd
 import re
+import selectors
 import shutil
 import stat
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +26,9 @@ QUERY_POSTGRES = (
 )
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,127}$")
 HOST_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,255}$")
+MAX_OUTPUT_BYTES = 10 * 1024 * 1024
+MAX_ERROR_BYTES = 64 * 1024
+READ_CHUNK_BYTES = 64 * 1024
 
 
 class BaculaConfigError(RuntimeError):
@@ -132,7 +137,6 @@ def mysql_command(config: dict[str, Any]) -> tuple[list[str], dict[str, str]]:
     command = [executable("mysql")]
     defaults_file = config.get("mysql_defaults_file")
     if defaults_file:
-        # MySQL requires this option before the remaining command options.
         command.append(f"--defaults-extra-file={defaults_file}")
     command.extend(
         [
@@ -187,33 +191,98 @@ def clean_environment() -> dict[str, str]:
     return {key: value for key, value in os.environ.items() if key in allowed}
 
 
+def _stop_process(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    process.kill()
+    try:
+        process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        process.terminate()
+        process.wait()
+
+
+def _run_bounded(
+    command: list[str],
+    environment: dict[str, str],
+    *,
+    timeout: float,
+) -> tuple[int, bytes, bytes]:
+    """Drain both pipes incrementally and stop at the stdout byte limit."""
+
+    process = subprocess.Popen(
+        command,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=environment,
+    )
+    if process.stdout is None or process.stderr is None:
+        _stop_process(process)
+        raise BaculaConfigError("database client pipes could not be created")
+
+    selector = selectors.DefaultSelector()
+    selector.register(process.stdout, selectors.EVENT_READ, "stdout")
+    selector.register(process.stderr, selectors.EVENT_READ, "stderr")
+    output = bytearray()
+    error_output = bytearray()
+    deadline = time.monotonic() + timeout
+
+    try:
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                _stop_process(process)
+                raise BaculaConfigError("database query timed out")
+            for key, _ in selector.select(timeout=min(remaining, 0.25)):
+                chunk = os.read(key.fileobj.fileno(), READ_CHUNK_BYTES)
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                if key.data == "stdout":
+                    if len(output) + len(chunk) > MAX_OUTPUT_BYTES:
+                        _stop_process(process)
+                        raise BaculaConfigError("database result exceeds 10 MiB")
+                    output.extend(chunk)
+                elif len(error_output) < MAX_ERROR_BYTES:
+                    remaining_error = MAX_ERROR_BYTES - len(error_output)
+                    error_output.extend(chunk[:remaining_error])
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            _stop_process(process)
+            raise BaculaConfigError("database query timed out")
+        try:
+            returncode = process.wait(timeout=remaining)
+        except subprocess.TimeoutExpired as exc:
+            _stop_process(process)
+            raise BaculaConfigError("database query timed out") from exc
+        return returncode, bytes(output), bytes(error_output)
+    finally:
+        if process.poll() is None:
+            _stop_process(process)
+        selector.close()
+        process.stdout.close()
+        process.stderr.close()
+
+
 def collect(config: dict[str, Any]) -> str:
     command, environment = (
         mysql_command(config)
         if config["backend"] == "mysql"
         else postgresql_command(config)
     )
-    try:
-        result = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            env=environment,
-            timeout=config["timeout"] + 5,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise BaculaConfigError("database query timed out") from exc
-    if result.returncode != 0:
-        error = " ".join(result.stderr.split())[:500]
+    returncode, stdout, stderr = _run_bounded(
+        command,
+        environment,
+        timeout=config["timeout"] + 5,
+    )
+    if returncode != 0:
+        error = " ".join(stderr.decode("utf-8", errors="replace").split())[:500]
         raise BaculaConfigError(
-            f"database client exited with {result.returncode}: {error or 'no error output'}"
+            f"database client exited with {returncode}: {error or 'no error output'}"
         )
-    if len(result.stdout.encode("utf-8")) > 10 * 1024 * 1024:
-        raise BaculaConfigError("database result exceeds 10 MiB")
-    return result.stdout
+    return stdout.decode("utf-8", errors="replace")
 
 
 def main() -> int:
