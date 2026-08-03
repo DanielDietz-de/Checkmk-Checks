@@ -1,10 +1,10 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Notifications via Kentix SMS Gateway',
- 'download_url': 'https://kuhn-ruess.de/en/checkmk_checks.html',
+ 'description': 'Sends single or bulk Checkmk notifications through a Kentix SMS gateway using a confidential single-attempt HTTPS POST.\n',
+ 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/kentix_sms_gateway',
  'files': {'cmk_addons_plugins': ['kentix_sms_gateway/rulesets/kentix.py'],
            'notifications': ['kentix']},
  'name': 'kentix_sms_gateway',
  'title': 'Kentix SMS Gateway notification',
- 'version': '2.0.1',
+ 'version': '2.1.0',
  'version.min_required': '2.4.0b1',
  'version.packaged': '2.5.0'}
