@@ -1,3 +1,5 @@
+import ast
+import json
 import sys
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
@@ -5,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-MODULE_PATH = Path(__file__).parents[1] / "src" / "status_feed" / "libexec" / "agent_status_feed"
+PACKAGE_ROOT = Path(__file__).parents[1]
+MODULE_PATH = PACKAGE_ROOT / "src" / "status_feed" / "libexec" / "agent_status_feed"
 loader = SourceFileLoader("agent_status_feed_secure", str(MODULE_PATH))
 spec = spec_from_loader(loader.name, loader)
 module = module_from_spec(spec)
@@ -87,12 +90,14 @@ def test_dns_result_is_pinned_with_original_tls_hostname(monkeypatch):
 
 
 def test_rejects_dtd_and_entity_documents():
+    declaration = b"<!DOCTYPE rss [<!ENTITY marker 'value'>]><rss></rss>"
     with pytest.raises(module.FeedError, match="DTD"):
-        module.extract_items(b"<!DOCTYPE rss [<!ENTITY x 'boom'>]><rss></rss>")
+        module.extract_items(declaration)
 
 
 def test_rejects_declaration_after_large_prefix():
-    document = b" " * 5000 + b"<!DOCTYPE rss [<!ENTITY x 'boom'>]><rss></rss>"
+    declaration = b"<!DOCTYPE rss [<!ENTITY marker 'value'>]><rss></rss>"
+    document = b" " * 5000 + declaration
     with pytest.raises(module.FeedError, match="DTD"):
         module.extract_items(document)
 
@@ -112,3 +117,13 @@ def test_proxy_options_are_removed():
 def test_html_and_control_characters_are_bounded():
     assert module.clean_text("<b>Hello</b>\nworld\x00") == "Hello world"
     assert len(module.clean_text("x" * 5000)) == module.MAX_TEXT_LENGTH
+
+
+def test_package_metadata_representations_match():
+    python_info = ast.literal_eval(
+        (PACKAGE_ROOT / "src" / "info").read_text(encoding="utf-8")
+    )
+    json_info = json.loads(
+        (PACKAGE_ROOT / "src" / "info.json").read_text(encoding="utf-8")
+    )
+    assert python_info == json_info
