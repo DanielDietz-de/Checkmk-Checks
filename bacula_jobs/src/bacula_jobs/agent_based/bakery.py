@@ -16,6 +16,29 @@ from cmk.base.cee.plugins.bakery.bakery_api.v1 import (
     register,
 )
 
+_DEPLOYMENT_MODES = {"sync", "cached", "do_not_deploy"}
+
+
+def _normalize_deployment(value: Any) -> tuple[str, Any]:
+    """Translate current choices and historical deploy/disable sentinels."""
+
+    if value is None:
+        return "do_not_deploy", None
+    if isinstance(value, Mapping):
+        # The historical deployment dropdown used an empty dictionary for
+        # "deploy". Treat mapping values as synchronous deployment rather than
+        # stringifying them or accidentally enabling a disabled rule.
+        return "sync", None
+    if isinstance(value, (tuple, list)) and value:
+        mode = str(value[0])
+        if mode in _DEPLOYMENT_MODES:
+            interval = value[1] if len(value) > 1 else None
+            return mode, interval
+        return "do_not_deploy", None
+    if isinstance(value, str) and value in _DEPLOYMENT_MODES:
+        return value, None
+    return "do_not_deploy", None
+
 
 def _normalize(conf: Any) -> tuple[str, dict[str, Any]]:
     """Accept the new dictionary and the historical (deployment, config) tuple."""
@@ -26,15 +49,10 @@ def _normalize(conf: Any) -> tuple[str, dict[str, Any]]:
         deployment = conf[0]
         settings = dict(conf[1]) if isinstance(conf[1], Mapping) else {}
     else:
-        deployment = ("do_not_deploy", None)
+        deployment = None
         settings = {}
 
-    if isinstance(deployment, (tuple, list)) and deployment:
-        mode = str(deployment[0])
-        interval = deployment[1] if len(deployment) > 1 else None
-    else:
-        mode = str(deployment)
-        interval = None
+    mode, interval = _normalize_deployment(deployment)
 
     # Map historical field names without interpreting them as shell content.
     normalized = {
@@ -84,6 +102,7 @@ def get_files(conf: Any) -> FileGenerator:
 
 
 register.bakery_plugin(
-    name="bacula_jobs",
+    # Match the historical agent_config:bacula ruleset identifier.
+    name="bacula",
     files_function=get_files,
 )
