@@ -16,6 +16,7 @@ import io
 import json
 import os
 import pprint
+import re
 import stat
 import tarfile
 from pathlib import Path, PurePosixPath
@@ -23,6 +24,7 @@ from typing import Any
 
 PACKAGED_VERSION = "2.5.0p9"
 USABLE_UNTIL = "2.5.99"
+_SAFE_PACKAGE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 # Source roots below <package>/src for each Checkmk package component. Some
 # packages retain the older cmk/plugins source layout while their MKP component
@@ -94,6 +96,11 @@ def read_manifest(package_dir: Path, packaged_version: str, usable_until: str) -
     manifest = dict(manifest)
     manifest["version"] = str(manifest["version"])
     manifest["version.min_required"] = str(manifest["version.min_required"])
+    for field in ("name", "version", "version.min_required"):
+        value = manifest[field]
+        if not isinstance(value, str) or not _SAFE_PACKAGE_TOKEN.fullmatch(value):
+            raise ValueError(f"{info_path}: unsafe {field} value {value!r}")
+
     manifest["version.packaged"] = packaged_version
     manifest["version.usable_until"] = usable_until
     manifest["download_url"] = (
@@ -105,12 +112,15 @@ def read_manifest(package_dir: Path, packaged_version: str, usable_until: str) -
     for component, entries in manifest["files"].items():
         if component not in _COMPONENT_SOURCE_ROOTS:
             raise ValueError(f"{info_path}: unsupported package component {component!r}")
-        if not isinstance(entries, list) or not all(isinstance(entry, str) for entry in entries):
-            raise ValueError(f"{info_path}: component {component!r} must contain a list of paths")
+        if not isinstance(entries, list) or not all(
+            isinstance(entry, str) for entry in entries
+        ):
+            raise ValueError(
+                f"{info_path}: component {component!r} must contain a list of paths"
+            )
         normalized_files[component] = sorted(dict.fromkeys(entries))
     manifest["files"] = dict(sorted(normalized_files.items()))
     return manifest
-
 
 def _safe_relative_path(value: str) -> PurePosixPath:
     relative = PurePosixPath(value)
@@ -131,11 +141,15 @@ def _source_path(package_dir: Path, component: str, relative: str) -> Path:
 
         resolved_root = root.resolve()
         if source.is_symlink():
-            # Symlinks are archived as symlinks; only their location must remain
-            # inside the selected package source root.
             parent = source.parent.resolve()
             if not parent.is_relative_to(resolved_root):
                 raise ValueError(f"{source}: symlink parent escapes package source root")
+            target = Path(os.readlink(source))
+            if target.is_absolute():
+                raise ValueError(f"{source}: absolute symlink target is not allowed")
+            resolved_target = (source.parent / target).resolve(strict=False)
+            if not resolved_target.is_relative_to(resolved_root):
+                raise ValueError(f"{source}: symlink target escapes package source root")
         elif not source.resolve().is_relative_to(resolved_root):
             raise ValueError(f"{source}: source path escapes package source root")
         return source
@@ -145,7 +159,6 @@ def _source_path(package_dir: Path, component: str, relative: str) -> Path:
         f"checked {[str(path) for path in candidates]}"
     )
 
-
 def _tarinfo_for(source: Path, arcname: str) -> tuple[tarfile.TarInfo, io.BufferedReader | None]:
     info = tarfile.TarInfo(arcname)
     st = source.lstat()
@@ -154,7 +167,7 @@ def _tarinfo_for(source: Path, arcname: str) -> tuple[tarfile.TarInfo, io.Buffer
     info.gid = 0
     info.uname = "root"
     info.gname = "root"
-    info.mode = stat.S_IMODE(st.st_mode)
+    info.mode = stat.S_IMODE(st.st_mode) & 0o777
 
     if source.is_symlink():
         info.type = tarfile.SYMTYPE
@@ -166,7 +179,6 @@ def _tarinfo_for(source: Path, arcname: str) -> tuple[tarfile.TarInfo, io.Buffer
     info.type = tarfile.REGTYPE
     info.size = st.st_size
     return info, source.open("rb")
-
 
 def _component_tar(package_dir: Path, component: str, files: list[str]) -> bytes:
     buffer = io.BytesIO()
@@ -220,11 +232,21 @@ def build_package(package_dir: Path, output_root: Path, manifest: dict[str, Any]
 
 def verify_package(package_path: Path, expected: dict[str, Any]) -> None:
     with tarfile.open(package_path, mode="r:gz") as outer:
-        members = {PurePosixPath(member.name).name: member for member in outer.getmembers()}
-        required = {"info", "info.json"} | {f"{part}.tar" for part in expected["files"]}
-        missing = sorted(required - members.keys())
-        if missing:
-            raise ValueError(f"{package_path}: missing outer members {missing}")
+        outer_members = outer.getmembers()
+        outer_names = [member.name for member in outer_members]
+        if len(outer_names) != len(set(outer_names)):
+            raise ValueError(f"{package_path}: duplicate outer archive members")
+        if any(PurePosixPath(name).name != name for name in outer_names):
+            raise ValueError(f"{package_path}: nested outer archive member")
+        members = {member.name: member for member in outer_members}
+        required = {"info", "info.json"} | {
+            f"{part}.tar" for part in expected["files"]
+        }
+        unexpected = sorted(set(members) ^ required)
+        if unexpected:
+            raise ValueError(
+                f"{package_path}: unexpected outer member inventory {unexpected}"
+            )
 
         info_file = outer.extractfile(members["info"])
         json_file = outer.extractfile(members["info.json"])
@@ -240,9 +262,15 @@ def verify_package(package_path: Path, expected: dict[str, Any]) -> None:
             if component_file is None:
                 raise ValueError(f"{package_path}: unreadable {component}.tar")
             with tarfile.open(fileobj=component_file, mode="r:") as inner:
+                inner_members = inner.getmembers()
+                inner_names = [member.name.removeprefix("./") for member in inner_members]
+                if len(inner_names) != len(set(inner_names)):
+                    raise ValueError(
+                        f"{package_path}: duplicate members in {component}.tar"
+                    )
                 actual = sorted(
-                    member.name.removeprefix("./")
-                    for member in inner.getmembers()
+                    name
+                    for name, member in zip(inner_names, inner_members, strict=True)
                     if member.isfile() or member.issym()
                 )
             if actual != sorted(expected_files):
@@ -250,7 +278,6 @@ def verify_package(package_path: Path, expected: dict[str, Any]) -> None:
                     f"{package_path}: {component} inventory mismatch; "
                     f"expected={sorted(expected_files)}, actual={actual}"
                 )
-
 
 def main() -> None:
     args = _parse_args()

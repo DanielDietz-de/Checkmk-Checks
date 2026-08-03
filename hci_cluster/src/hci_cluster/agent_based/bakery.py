@@ -12,6 +12,15 @@ from cmk.base.cee.plugins.bakery.bakery_api.v1 import (
     register,
 )
 
+_FILTER_TYPE_TO_AGENT = {
+    "none": "None",
+    "inclusion": "Inclusion",
+    "exclusion": "Exclusion",
+    "None": "None",
+    "Inclusion": "Inclusion",
+    "Exclusion": "Exclusion",
+}
+
 
 def _deployment_configuration(conf: Any) -> dict[str, Any] | None:
     if not isinstance(conf, dict):
@@ -34,10 +43,14 @@ def _powershell_literal(value: Any) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
+def _filter_type_for_agent(value: Any) -> str:
+    return _FILTER_TYPE_TO_AGENT.get(str(value), "None")
+
+
 def _get_lines(conf: dict[str, Any]) -> list[str]:
     return [
         f"$domain = {_powershell_literal(conf['domain'])}",
-        f"$FilterTyp = {_powershell_literal(conf.get('filter_type', 'None'))}",
+        f"$FilterTyp = {_powershell_literal(_filter_type_for_agent(conf.get('filter_type', 'none')))}",
         f"$FilterPattern = {_powershell_literal(conf.get('filter_pattern', ''))}",
     ]
 

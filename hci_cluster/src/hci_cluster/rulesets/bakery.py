@@ -16,10 +16,27 @@ from cmk.rulesets.v1.form_specs import (
 from cmk.rulesets.v1.form_specs.validators import LengthInRange
 from cmk.rulesets.v1.rule_specs import AgentConfig, Topic
 
+_LEGACY_FILTER_TYPES = {
+    "None": "none",
+    "Inclusion": "inclusion",
+    "Exclusion": "exclusion",
+}
+
+
+def _migrate_deployment_parameters(raw_value: object) -> dict[str, object]:
+    if not isinstance(raw_value, dict):
+        raise TypeError("HCI Cluster deployment parameters must be a dictionary")
+    migrated = dict(raw_value)
+    filter_type = migrated.get("filter_type")
+    if isinstance(filter_type, str):
+        migrated["filter_type"] = _LEGACY_FILTER_TYPES.get(filter_type, filter_type)
+    return migrated
+
 
 def _deployment_parameters() -> Dictionary:
     return Dictionary(
         title=Title("Deploy HCI Cluster plug-in"),
+        migrate=_migrate_deployment_parameters,
         elements={
             "domain": DictElement(
                 required=True,
@@ -32,20 +49,28 @@ def _deployment_parameters() -> Dictionary:
                 required=True,
                 parameter_form=SingleChoice(
                     title=Title("Filter type"),
-                    help_text=Help("Choose whether the filter pattern includes or excludes matches."),
-                    elements=(
-                        SingleChoiceElement(name="None", title=Title("No filter")),
-                        SingleChoiceElement(name="Inclusion", title=Title("Inclusion filter")),
-                        SingleChoiceElement(name="Exclusion", title=Title("Exclusion filter")),
+                    help_text=Help(
+                        "Choose whether the filter pattern includes or excludes matches."
                     ),
-                    prefill=DefaultValue("None"),
+                    elements=(
+                        SingleChoiceElement(name="none", title=Title("No filter")),
+                        SingleChoiceElement(
+                            name="inclusion", title=Title("Inclusion filter")
+                        ),
+                        SingleChoiceElement(
+                            name="exclusion", title=Title("Exclusion filter")
+                        ),
+                    ),
+                    prefill=DefaultValue("none"),
                 ),
             ),
             "filter_pattern": DictElement(
                 required=False,
                 parameter_form=String(
                     title=Title("Filter pattern"),
-                    help_text=Help("Optional cluster resource filter, for example HCI."),
+                    help_text=Help(
+                        "Optional cluster resource filter, for example HCI."
+                    ),
                 ),
             ),
         },
