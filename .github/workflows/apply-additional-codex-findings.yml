@@ -1,0 +1,218 @@
+name: Apply additional Codex findings
+
+on:
+  push:
+    branches:
+      - agent/repository-wide-security-documentation-audit
+    paths:
+      - .github/workflows/apply-additional-codex-findings.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-additional-codex-findings
+  cancel-in-progress: false
+
+jobs:
+  remediate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out pull-request branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Expand source discovery and regression coverage
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          audit_path = Path("tools/ci/full_repository_audit.py")
+          audit = audit_path.read_text(encoding="utf-8")
+          old_suffixes = 'SOURCE_SUFFIXES = {".py", ".sh", ".bash", ".php", ".rb", ".ps1"}\n'
+          new_suffixes = '''SOURCE_SUFFIXES = {
+              ".py",
+              ".sh",
+              ".bash",
+              ".ksh",
+              ".zsh",
+              ".php",
+              ".rb",
+              ".pl",
+              ".ps1",
+              ".cmd",
+              ".bat",
+          }
+          SHEBANG_INTERPRETERS = (
+              "python",
+              "/sh",
+              "bash",
+              "ksh",
+              "zsh",
+              "ruby",
+              "php",
+              "perl",
+              "powershell",
+              "pwsh",
+          )
+          '''
+          old_function = '''def source_language(path: Path) -> str | None:
+              if path.suffix.lower() in SOURCE_SUFFIXES:
+                  return path.suffix.lower()
+              if path.suffix:
+                  return None
+              try:
+                  with path.open("rb") as handle:
+                      first = handle.readline(512).decode("utf-8", errors="replace").lower()
+              except OSError:
+                  return None
+              return "script" if first.startswith("#!") and any(item in first for item in ("python", "/sh", "bash", "ruby", "php")) else None
+          '''
+          new_function = '''def source_language(path: Path) -> str | None:
+              """Classify known scripts and shebang-driven platform variants."""
+              suffix = path.suffix.lower()
+              if suffix in SOURCE_SUFFIXES:
+                  return suffix
+              try:
+                  with path.open("rb") as handle:
+                      first = handle.readline(512).decode("utf-8", errors="replace").lower()
+              except OSError:
+                  return None
+              if first.startswith("#!") and any(
+                  interpreter in first for interpreter in SHEBANG_INTERPRETERS
+              ):
+                  return "script"
+              return None
+          '''
+          for old, new, label in (
+              (old_suffixes, new_suffixes, "source suffixes"),
+              (old_function, new_function, "source_language"),
+          ):
+              if audit.count(old) != 1:
+                  raise SystemExit(f"expected exactly one {label} block")
+              audit = audit.replace(old, new)
+          audit_path.write_text(audit, encoding="utf-8")
+
+          tests_path = Path("tests/test_ci_repository_consistency.py")
+          tests = tests_path.read_text(encoding="utf-8")
+          old_import = '''syntax = load_module(
+              ROOT / "tools" / "ci" / "check_python_syntax.py",
+              "syntax_test",
+          )
+          builder = load_module(
+          '''
+          new_import = '''syntax = load_module(
+              ROOT / "tools" / "ci" / "check_python_syntax.py",
+              "syntax_test",
+          )
+          full_audit = load_module(
+              ROOT / "tools" / "ci" / "full_repository_audit.py",
+              "full_repository_audit_test",
+          )
+          builder = load_module(
+          '''
+          old_anchor = '''    def test_all_manifest_sources_resolve(self):
+          '''
+          new_tests = '''    def test_audit_includes_platform_suffix_and_shebang_scripts(self):
+              with tempfile.TemporaryDirectory() as temporary:
+                  root = Path(temporary)
+                  scripts = root / "package/src/package/agents/plugins"
+                  scripts.mkdir(parents=True)
+                  linux = scripts / "discover_os_labels.linux"
+                  aix = scripts / "discover_os_labels.aix"
+                  solaris = scripts / "discover_os_labels.solaris"
+                  windows = scripts / "check_ping.cmd"
+                  linux.write_text("#!/bin/sh\\necho linux\\n", encoding="utf-8")
+                  aix.write_text("#!/usr/bin/ksh\\necho aix\\n", encoding="utf-8")
+                  solaris.write_text("#!/usr/bin/perl\\nprint 'solaris';\\n", encoding="utf-8")
+                  windows.write_text("@echo off\\r\\necho windows\\r\\n", encoding="utf-8")
+
+                  discovered = set(full_audit.source_files(root, []))
+                  self.assertEqual(discovered, {linux, aix, solaris, windows})
+
+              def test_audit_applies_python_rules_to_unknown_suffix_shebangs(self):
+                  with tempfile.TemporaryDirectory() as temporary:
+                      root = Path(temporary)
+                      script = root / "agent.linux"
+                      script.write_text(
+                          "#!/usr/bin/env python3\\nAPI_TOKEN = 'actual-secret-value'\\n",
+                          encoding="utf-8",
+                      )
+                      findings = full_audit.audit_source(root, script)
+                      self.assertTrue(
+                          any(
+                              item.rule_id == "security.hardcoded-credential"
+                              for item in findings
+                          )
+                      )
+
+              def test_all_manifest_sources_resolve(self):
+          '''
+          if tests.count(old_import) != 1:
+              raise SystemExit("expected exactly one audit import anchor")
+          if tests.count(old_anchor) != 1:
+              raise SystemExit("expected exactly one test insertion anchor")
+          tests = tests.replace(old_import, new_import).replace(old_anchor, new_tests)
+          tests_path.write_text(tests, encoding="utf-8")
+
+          readme_path = Path("pure/README.md")
+          readme = readme_path.read_text(encoding="utf-8")
+          replacements = {
+              "using the `purestorage` Python client":
+                  "using the tested `purestorage==1.19.0` Python client",
+              "| `src/pure/server_side_calls/pure.py` | Server-side call wiring: passes `-i <ip> -t <token>` to the agent. |":
+                  "| `src/pure/server_side_calls/pure.py` | Server-side call wiring: preserves the Checkmk token reference and forwards timeout and TLS controls. |",
+              "1. Install the `purestorage` Python package into the Checkmk site:\n   `pip3 install --no-deps purestorage`":
+                  "1. Install the tested `purestorage` client into the Checkmk site:\n   `pip3 install --no-deps purestorage==1.19.0`",
+              "| `token` | `Password` (required, non-empty) | FlashArray API token passed to `agent_pure` via `-t`. |":
+                  "| `token` | `Password` (required, non-empty) | FlashArray API token retained as a Checkmk password-store reference until the agent resolves it. |\n| `timeout` | `Float` | Bounded request timeout in seconds; default 30. |\n| `ca_file` | `String` | Optional CA bundle path for private PKI verification. |\n| `no_cert_check` | `BooleanChoice` | Explicit temporary verification opt-out; mutually exclusive with `ca_file`. |",
+              "- Requires `purestorage` to be manually installed in the site - it is not\n  shipped with the MKP.":
+                  "- Requires the tested `purestorage==1.19.0` client to be installed manually in the site; it is not shipped with the MKP. The agent validates the required constructor interface before connecting.",
+          }
+          for old, new in replacements.items():
+              if readme.count(old) != 1:
+                  raise SystemExit(f"README replacement did not match exactly: {old[:60]!r}")
+              readme = readme.replace(old, new)
+          readme_path.write_text(readme, encoding="utf-8")
+          PY
+
+      - name: Install pinned validation dependencies
+        run: >-
+          python3 -m pip install --disable-pip-version-check
+          pytest==9.1.1
+          requests==2.34.2
+          ruff==0.15.22
+
+      - name: Regenerate and validate code-derived state
+        run: |
+          set -euo pipefail
+          python3 tools/ci/generate_package_reference.py --write
+          python3 tools/ci/sync_repository_facts.py
+          python3 tools/ci/sync_package_metadata.py
+          python3 tools/ci/generate_package_reference.py
+          python3 tools/ci/manage_module_docstrings.py
+          python3 tools/ci/check_python_syntax.py
+          python3 tools/ci/full_repository_audit.py --fail-on low
+          python3 tools/ci/pin_supply_chain.py --check
+          ruff check --select E9,F63,F7,F82 tools/ci tests pure
+          pytest -q tests/test_ci_repository_consistency.py pure/tests/test_pure_integrity.py
+          git diff --check
+
+      - name: Commit validated fixes and remove temporary workflow
+        run: |
+          set -euo pipefail
+          rm .github/workflows/apply-additional-codex-findings.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix: close additional Codex audit gaps"
+          git push origin HEAD:agent/repository-wide-security-documentation-audit
