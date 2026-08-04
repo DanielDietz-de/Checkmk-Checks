@@ -1,4 +1,4 @@
-name: Diagnose current master integration
+name: Integrate and validate current master
 
 on:
   pull_request:
@@ -7,54 +7,835 @@ on:
       - ".github/workflows/merge-current-master.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: diagnose-master-integration-${{ github.event.pull_request.number }}
+  group: integrate-current-master-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
-  diagnose:
+  integrate:
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.head_ref == 'agent/repository-wide-security-documentation-audit'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 35
 
     steps:
-      - name: Check out integration checkpoint
+      - name: Check out integration branch
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
 
-      - name: Inspect exact master-delta conflicts
+      - name: Integrate current master code and resolve audited boundaries
         env:
-          EXPECTED_PARENT: 51f9996178676382a5bdb30e357c0899b1d506c5
+          EXPECTED_PARENT: ec62cd4beb3b9a1bd905160320d50772d77c145d
           EXPECTED_MASTER: 7972e92c2cf612342608bd4f674e2e8f6a9ab8f9
           MERGE_BASE: 5f70214a6070cb4e765cefe4eacf4321ae587617
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
           git merge-base --is-ancestor "$EXPECTED_MASTER" HEAD
+
           git diff --binary "$MERGE_BASE" "$EXPECTED_MASTER" > /tmp/current-master.patch
           set +e
           git apply --3way --index /tmp/current-master.patch
           apply_rc=$?
           set -e
-          echo "Apply return code: $apply_rc"
-          echo "Unmerged paths:"
-          git diff --name-only --diff-filter=U || true
-          for path in \
-            arcgis_portal/src/arcgis_portal/libexec/agent_arcgis_portal \
-            palo_alto/README.md; do
-            echo "===== BASE: $path ====="
-            git show ":1:$path" || true
-            echo "===== AUDITED BRANCH: $path ====="
-            git show ":2:$path" || true
-            echo "===== CURRENT MASTER: $path ====="
-            git show ":3:$path" || true
-          done
-          exit 1
+          test "$apply_rc" -eq 1
+
+          expected_conflicts="$(cat <<'EOF'
+          arcgis_portal/src/arcgis_portal/libexec/agent_arcgis_portal
+          arcgis_portal/src/info.json
+          mkp_index.json
+          palo_alto/README.md
+          EOF
+          )"
+          actual_conflicts="$(git diff --name-only --diff-filter=U | sort)"
+          test "$actual_conflicts" = "$expected_conflicts"
+
+          cat > arcgis_portal/src/arcgis_portal/libexec/agent_arcgis_portal <<'PY'
+          #!/usr/bin/env python3
+          """Executable data-collection helper for the arcgis_portal integration."""
+
+          import argparse
+          import sys
+          from pathlib import Path
+          from urllib.parse import urlsplit, urlunsplit
+
+          import requests
+
+
+          def _resolve_secret_reference(reference: str) -> str:
+              """Resolve a Checkmk password-store reference without exposing it in argv."""
+              try:
+                  secret_id, store_path = reference.split(":", 1)
+              except ValueError as exc:
+                  raise ValueError("invalid Checkmk password-store reference") from exc
+              from cmk.utils.password_store import lookup
+
+              return lookup(Path(store_path), secret_id)
+
+
+          def _safe_request_url(value: str) -> str:
+              """Remove query parameters and fragments before diagnostic logging."""
+              parts = urlsplit(value)
+              return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+
+
+          def parse_arguments():
+              parser = argparse.ArgumentParser(description="Arcgis Portal Monitoring")
+              parser.add_argument(
+                  "--host-name",
+                  required=True,
+                  help="ArcGIS Portal host name from the monitored Checkmk host",
+              )
+              parser.add_argument(
+                  "--username",
+                  required=True,
+                  help="Portal username for generateToken authentication",
+              )
+              password_group = parser.add_mutually_exclusive_group(required=True)
+              password_group.add_argument(
+                  "--password",
+                  help="Portal password for direct command-line testing only",
+              )
+              password_group.add_argument(
+                  "--password-id",
+                  help="Checkmk password-store reference",
+              )
+              parser.add_argument(
+                  "--proxy-url",
+                  help="Proxy URL (e.g., http://proxy.example.com:8080)",
+              )
+              parser.add_argument(
+                  "--debug",
+                  action="store_true",
+                  help="Print sanitized request metadata to stderr",
+              )
+              args = parser.parse_args()
+              args.password = (
+                  args.password
+                  if args.password is not None
+                  else _resolve_secret_reference(args.password_id)
+              )
+              return args
+
+
+          class SpecialAgent:
+              """Collect ArcGIS federation and certificate responses."""
+
+              portal_url = None
+              generate_token_url = None
+              username = None
+              password = None
+              proxy_url = None
+              debug = False
+              access_token = False
+
+              def _debug(self, label, response):
+                  """Log bounded request metadata without response bodies or query secrets."""
+                  if not self.debug:
+                      return
+                  request = getattr(response, "request", None)
+                  method = getattr(request, "method", "?")
+                  safe_url = _safe_request_url(str(getattr(response, "url", "")))
+                  body_size = len(getattr(response, "content", b"") or b"")
+                  sys.stderr.write(
+                      f"[debug] {label}: {method} {safe_url} -> "
+                      f"HTTP {response.status_code}; response_bytes={body_size}\n"
+                  )
+
+              def get_token(self):
+                  """Generate and cache a portal access token."""
+                  if self.access_token:
+                      return self.access_token
+                  proxies = (
+                      {"http": self.proxy_url, "https": self.proxy_url}
+                      if self.proxy_url
+                      else None
+                  )
+                  data = {
+                      "f": "pjson",
+                      "username": self.username,
+                      "password": self.password,
+                      "client": "requestip",
+                  }
+                  response = requests.post(
+                      self.generate_token_url,
+                      data=data,
+                      proxies=proxies,
+                      timeout=30,
+                  )
+                  self._debug("generateToken", response)
+                  response.raise_for_status()
+                  payload = response.json()
+                  token = payload.get("token")
+                  if not token:
+                      raise RuntimeError("Token generation failed without a token")
+                  self.access_token = token
+                  return self.access_token
+
+              def _get_portal_resource(self, label: str, path: str):
+                  """Retrieve one authenticated portal resource with bounded transport."""
+                  proxies = (
+                      {"http": self.proxy_url, "https": self.proxy_url}
+                      if self.proxy_url
+                      else None
+                  )
+                  response = requests.get(
+                      f"{self.portal_url}{path}",
+                      params={"f": "pjson", "token": self.get_token()},
+                      proxies=proxies,
+                      timeout=30,
+                  )
+                  self._debug(label, response)
+                  response.raise_for_status()
+                  print(response.text)
+
+              def get_federation(self):
+                  """Retrieve federation settings from the ArcGIS Portal."""
+                  self._get_portal_resource(
+                      "federation",
+                      "/sharing/rest/portals/self/idp/federation",
+                  )
+
+              def get_certificates(self):
+                  """Retrieve IdP certificate information from the ArcGIS Portal."""
+                  self._get_portal_resource(
+                      "certificates",
+                      "/sharing/rest/portals/self/idp/certificates",
+                  )
+
+
+          if __name__ == "__main__":
+              arguments = parse_arguments()
+              agent = SpecialAgent()
+              agent.portal_url = f"https://{arguments.host_name}"
+              agent.generate_token_url = (
+                  f"https://{arguments.host_name}/portal/sharing/rest/generateToken"
+              )
+              agent.username = arguments.username
+              agent.password = arguments.password
+              agent.proxy_url = arguments.proxy_url
+              agent.debug = arguments.debug
+              agent.get_federation()
+              agent.get_certificates()
+          PY
+
+          cat > arcgis_portal/src/arcgis_portal/server_side_calls/agent.py <<'PY'
+          """Server-side command construction for the arcgis_portal integration."""
+
+          from pydantic import BaseModel
+
+          from cmk.server_side_calls.v1 import (
+              HostConfig,
+              Secret,
+              SpecialAgentCommand,
+              SpecialAgentConfig,
+          )
+
+
+          class ConfigParser(BaseModel):
+              """Validated ArcGIS special-agent configuration."""
+
+              username: str
+              password: Secret
+              proxy_url: str | None = None
+              debug: bool = False
+
+
+          def agent_arguments(params: ConfigParser, host_config: HostConfig):
+              """Build a secret-aware special-agent command line."""
+              args: list[str | Secret] = [
+                  "--host-name",
+                  host_config.name,
+                  "--username",
+                  params.username,
+                  "--password-id",
+                  params.password,
+              ]
+              if params.proxy_url:
+                  args.extend(["--proxy-url", params.proxy_url])
+              if params.debug:
+                  args.append("--debug")
+              yield SpecialAgentCommand(command_arguments=args)
+
+
+          special_agent_agent = SpecialAgentConfig(
+              name="arcgis_portal",
+              parameter_parser=ConfigParser.model_validate,
+              commands_function=agent_arguments,
+          )
+          PY
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("arcgis_portal/src/arcgis_portal/rulesets/agent.py")
+          text = path.read_text(encoding="utf-8")
+          text = text.replace(
+              'label=Label("Print request URLs, HTTP status and raw responses to stderr"),',
+              'label=Label("Print sanitized request metadata to stderr"),',
+          )
+          text = text.replace(
+              '"Useful for troubleshooting IdP/ADFS certificate retrieval. "\n'
+              '                        "Diagnostic output appears in the special agent\'s stderr."',
+              '"Useful for troubleshooting IdP/ADFS certificate retrieval. "\n'
+              '                        "Only the request method, URL without query parameters, "\n'
+              '                        "HTTP status, and response size are logged; response "\n'
+              '                        "bodies and credentials are excluded."',
+          )
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          git checkout --ours -- arcgis_portal/src/info.json mkp_index.json
+          git checkout --theirs -- palo_alto/README.md
+
+          sed -i 's#^lib/$#/lib/#' .gitignore
+          git checkout "$EXPECTED_MASTER" -- cisco_ucs_detect/src/cmk/plugins/lib/cisco_ucs.py
+
+          python3 - <<'PY'
+          import ast
+          import pprint
+          from pathlib import Path
+
+          for package in ("adfs_certificates", "ucp_health"):
+              path = Path(package) / "src" / "info"
+              data = ast.literal_eval(path.read_text(encoding="utf-8"))
+              data["version.usable_until"] = None
+              path.write_text(
+                  pprint.pformat(data, sort_dicts=False, width=120) + "\n",
+                  encoding="utf-8",
+              )
+
+          server = Path("ucp_health/src/ucp_health/server_side_calls/agent.py")
+          text = server.read_text(encoding="utf-8").replace(
+              "no_verify_ssl: bool = True",
+              "no_verify_ssl: bool = False",
+          )
+          server.write_text(text, encoding="utf-8")
+
+          ruleset = Path("ucp_health/src/ucp_health/rulesets/agent.py")
+          text = ruleset.read_text(encoding="utf-8")
+          start = text.index('            "no_verify_ssl": DictElement(')
+          end = text.index('            "client_cert": DictElement(', start)
+          block = '''            "no_verify_ssl": DictElement(
+              parameter_form=BooleanChoice(
+                  title=Title("Ignore TLS certificate"),
+                  label=Label("Do not verify the TLS certificate of the _ping endpoint"),
+                  help_text=Help(
+                      "Keep certificate verification enabled in production. Disable "
+                      "it only for an isolated endpoint while its certificate or "
+                      "private-CA trust is corrected. With verification enabled, "
+                      "the Checkmk server system trust store or REQUESTS_CA_BUNDLE "
+                      "is used."
+                  ),
+                  prefill=DefaultValue(False),
+              ),
+              required=False,
+          ),
+          '''
+          ruleset.write_text(text[:start] + block + text[end:], encoding="utf-8")
+          PY
+
+          test ! -e adfs_certificates/README.md
+          test ! -e ucp_health/README.md
+          printf '# ADFS Certificate Monitoring\n' > adfs_certificates/README.md
+          printf '# UCP / MKE Health Monitoring\n' > ucp_health/README.md
+
+          mkdir -p adfs_certificates/tests ucp_health/tests
+          cp a10_loadbalancer/tests/test_a10_loadbalancer_integrity.py \
+            adfs_certificates/tests/test_adfs_certificates_integrity.py
+          cp a10_loadbalancer/tests/test_a10_loadbalancer_integrity.py \
+            ucp_health/tests/test_ucp_health_integrity.py
+
+          cat > arcgis_portal/tests/test_arcgis_portal_secret_command_arguments.py <<'PY'
+          """Regression tests for ArcGIS secret handling and safe diagnostics."""
+
+          import ast
+          from pathlib import Path
+
+
+          PACKAGE = Path(__file__).parents[1]
+          AGENT = PACKAGE / "src/arcgis_portal/libexec/agent_arcgis_portal"
+          SERVER = PACKAGE / "src/arcgis_portal/server_side_calls/agent.py"
+          RULESET = PACKAGE / "src/arcgis_portal/rulesets/agent.py"
+
+
+          def test_server_side_call_preserves_secret_object() -> None:
+              text = SERVER.read_text(encoding="utf-8")
+              tree = ast.parse(text)
+              assert not any(
+                  isinstance(node, ast.Call)
+                  and isinstance(node.func, ast.Attribute)
+                  and node.func.attr == "unsafe"
+                  for node in ast.walk(tree)
+              )
+              assert "Secret" in text
+              assert '"--password-id"' in text
+
+
+          def test_agent_resolves_password_store_reference() -> None:
+              text = AGENT.read_text(encoding="utf-8")
+              assert "cmk.utils.password_store" in text
+              assert '"--password-id"' in text
+              assert "_resolve_secret_reference" in text
+
+
+          def test_debug_output_excludes_bodies_and_query_secrets() -> None:
+              text = AGENT.read_text(encoding="utf-8")
+              tree = ast.parse(text)
+              debug = next(
+                  node
+                  for node in ast.walk(tree)
+                  if isinstance(node, ast.FunctionDef) and node.name == "_debug"
+              )
+              rendered = ast.unparse(debug)
+              assert ".text" not in rendered
+              assert "_safe_request_url" in rendered
+              assert "response_bytes" in rendered
+              rules = RULESET.read_text(encoding="utf-8")
+              assert "raw responses" not in rules
+              assert "response bodies and credentials are excluded" in rules
+          PY
+
+          cat > ucp_health/tests/test_ucp_health_security_defaults.py <<'PY'
+          """Security regression tests for UCP / MKE transport defaults."""
+
+          import ast
+          from pathlib import Path
+
+
+          PACKAGE = Path(__file__).parents[1]
+          AGENT = PACKAGE / "src/ucp_health/libexec/agent_ucp_health"
+          SERVER = PACKAGE / "src/ucp_health/server_side_calls/agent.py"
+          RULESET = PACKAGE / "src/ucp_health/rulesets/agent.py"
+
+
+          def test_tls_verification_is_enabled_by_default() -> None:
+              assert "no_verify_ssl: bool = False" in SERVER.read_text(encoding="utf-8")
+              rules = RULESET.read_text(encoding="utf-8")
+              assert "prefill=DefaultValue(False)" in rules
+              assert "enabled in production" in rules
+
+
+          def test_all_http_requests_have_timeouts() -> None:
+              tree = ast.parse(AGENT.read_text(encoding="utf-8"))
+              calls = [
+                  node
+                  for node in ast.walk(tree)
+                  if isinstance(node, ast.Call)
+                  and isinstance(node.func, ast.Attribute)
+                  and node.func.attr in {"get", "post", "request"}
+              ]
+              assert calls
+              assert all(any(keyword.arg == "timeout" for keyword in call.keywords) for call in calls)
+          PY
+
+          cat > adfs_certificates/tests/test_adfs_certificates_transport.py <<'PY'
+          """Transport regression tests for ADFS certificate collection."""
+
+          import ast
+          from pathlib import Path
+
+
+          AGENT = Path(__file__).parents[1] / "src/adfs_certificates/libexec/agent_adfs_certificates"
+
+
+          def test_all_http_requests_have_timeouts() -> None:
+              tree = ast.parse(AGENT.read_text(encoding="utf-8"))
+              calls = [
+                  node
+                  for node in ast.walk(tree)
+                  if isinstance(node, ast.Call)
+                  and isinstance(node.func, ast.Attribute)
+                  and node.func.attr in {"get", "post", "request"}
+              ]
+              assert calls
+              assert all(any(keyword.arg == "timeout" for keyword in call.keywords) for call in calls)
+
+
+          def test_tls_verification_is_not_disabled_unconditionally() -> None:
+              tree = ast.parse(AGENT.read_text(encoding="utf-8"))
+              assert not any(
+                  isinstance(node, ast.keyword)
+                  and node.arg == "verify"
+                  and isinstance(node.value, ast.Constant)
+                  and node.value.value is False
+                  for node in ast.walk(tree)
+              )
+          PY
+
+          cat > tools/ci/sync_repository_facts.py <<'PY'
+          #!/usr/bin/env python3
+          """Synchronize repository-level package counts from canonical manifests."""
+
+          from __future__ import annotations
+
+          import argparse
+          import re
+          import sys
+          from pathlib import Path
+
+
+          TARGETS = (
+              (
+                  Path("README.md"),
+                  re.compile(r"(currently discovers \*\*)\d+( active packages\*\*)"),
+              ),
+              (
+                  Path("docs/REPOSITORY_AUDIT.md"),
+                  re.compile(r"(covers \*\*)\d+( active packages\*\*)"),
+              ),
+          )
+
+
+          def active_package_count(root: Path) -> int:
+              """Count active packages from canonical top-level manifests."""
+              return sum(1 for path in root.glob("*/src/info") if path.is_file())
+
+
+          def run(root: Path, *, write: bool) -> list[str]:
+              """Validate or rewrite every repository-level package-count claim."""
+              count = active_package_count(root)
+              stale: list[str] = []
+              for relative, pattern in TARGETS:
+                  path = root / relative
+                  text = path.read_text(encoding="utf-8")
+                  expected, replacements = pattern.subn(rf"\g<1>{count}\g<2>", text)
+                  if replacements != 1:
+                      stale.append(f"{relative}: expected exactly one package-count marker")
+                      continue
+                  if text == expected:
+                      continue
+                  if write:
+                      path.write_text(expected, encoding="utf-8")
+                  else:
+                      stale.append(
+                          f"{relative}: package count is stale; expected {count} active packages"
+                      )
+              return stale
+
+
+          def main(argv: list[str] | None = None) -> int:
+              """Run the repository-fact synchronization command."""
+              parser = argparse.ArgumentParser(description=__doc__)
+              parser.add_argument("--root", type=Path, default=Path.cwd())
+              parser.add_argument("--write", action="store_true")
+              args = parser.parse_args(argv)
+              stale = run(args.root.resolve(), write=args.write)
+              if stale:
+                  print("\n".join(stale), file=sys.stderr)
+                  return 1
+              return 0
+
+
+          if __name__ == "__main__":
+              raise SystemExit(main())
+          PY
+          chmod +x tools/ci/sync_repository_facts.py
+
+          cat > tests/test_ci_repository_consistency.py <<'PY'
+          """Tests for deterministic metadata, documentation, and packaging gates."""
+
+          from __future__ import annotations
+
+          import ast
+          import importlib.util
+          import json
+          import sys
+          import tempfile
+          import unittest
+          from pathlib import Path
+
+
+          def load_module(path: Path, name: str):
+              spec = importlib.util.spec_from_file_location(name, path)
+              assert spec is not None and spec.loader is not None
+              module = importlib.util.module_from_spec(spec)
+              sys.modules[name] = module
+              spec.loader.exec_module(module)
+              return module
+
+
+          ROOT = Path(__file__).parents[1]
+          metadata_sync = load_module(
+              ROOT / "tools" / "ci" / "sync_package_metadata.py",
+              "metadata_sync_test",
+          )
+          reference = load_module(
+              ROOT / "tools" / "ci" / "generate_package_reference.py",
+              "reference_test",
+          )
+          facts = load_module(
+              ROOT / "tools" / "ci" / "sync_repository_facts.py",
+              "facts_test",
+          )
+          docstrings = load_module(
+              ROOT / "tools" / "ci" / "manage_module_docstrings.py",
+              "docstrings_test",
+          )
+          syntax = load_module(
+              ROOT / "tools" / "ci" / "check_python_syntax.py",
+              "syntax_test",
+          )
+          builder = load_module(
+              ROOT / ".github" / "scripts" / "build_repository_mkps.py",
+              "builder_test",
+          )
+
+
+          class RepositoryConsistencyTests(unittest.TestCase):
+              """Exercise code-derived repository consistency mechanisms."""
+
+              def make_package(self, temporary: str) -> Path:
+                  root = Path(temporary)
+                  package = root / "example"
+                  source = package / "src" / "example" / "agent_based"
+                  source.mkdir(parents=True)
+                  data = {
+                      "name": "example",
+                      "title": "Example",
+                      "description": "Example integration",
+                      "version": "1.0.0",
+                      "version.min_required": "2.4.0",
+                      "version.packaged": "2.5.0",
+                      "version.usable_until": None,
+                      "files": {
+                          "cmk_addons_plugins": ["example/agent_based/plugin.py"]
+                      },
+                  }
+                  (package / "src" / "info").write_text(
+                      repr(data),
+                      encoding="utf-8",
+                  )
+                  (package / "src" / "info.json").write_text("{}\n", encoding="utf-8")
+                  (package / "README.md").write_text("# Example\n", encoding="utf-8")
+                  (source / "plugin.py").write_text("VALUE = 1\n", encoding="utf-8")
+                  return root
+
+              def test_metadata_mirror_is_exactly_regenerated(self):
+                  with tempfile.TemporaryDirectory() as temporary:
+                      root = self.make_package(temporary)
+                      self.assertTrue(metadata_sync.run(root, write=False))
+                      self.assertEqual(metadata_sync.run(root, write=True), [])
+                      canonical = ast.literal_eval(
+                          (root / "example/src/info").read_text(encoding="utf-8")
+                      )
+                      mirrored = json.loads(
+                          (root / "example/src/info.json").read_text(encoding="utf-8")
+                      )
+                      self.assertEqual(mirrored, canonical)
+                      self.assertEqual(metadata_sync.run(root, write=False), [])
+
+              def test_code_derived_reference_detects_and_repairs_staleness(self):
+                  with tempfile.TemporaryDirectory() as temporary:
+                      root = self.make_package(temporary)
+                      self.assertTrue(reference.run(root, write=False))
+                      self.assertEqual(reference.run(root, write=True), [])
+                      self.assertEqual(reference.run(root, write=False), [])
+                      readme = root / "example/README.md"
+                      self.assertIn(reference.START, readme.read_text(encoding="utf-8"))
+
+              def test_repository_facts_are_derived_from_manifests(self):
+                  with tempfile.TemporaryDirectory() as temporary:
+                      root = Path(temporary)
+                      (root / "docs").mkdir()
+                      for name in ("one", "two"):
+                          (root / name / "src").mkdir(parents=True)
+                          (root / name / "src" / "info").write_text(
+                              "{}",
+                              encoding="utf-8",
+                          )
+                      (root / "README.md").write_text(
+                          "The repository-wide release workflow currently discovers "
+                          "**0 active packages**.\n",
+                          encoding="utf-8",
+                      )
+                      (root / "docs/REPOSITORY_AUDIT.md").write_text(
+                          "The report covers **0 active packages**.\n",
+                          encoding="utf-8",
+                      )
+                      self.assertTrue(facts.run(root, write=False))
+                      self.assertEqual(facts.run(root, write=True), [])
+                      self.assertEqual(facts.run(root, write=False), [])
+                      self.assertIn(
+                          "**2 active packages**",
+                          (root / "README.md").read_text(encoding="utf-8"),
+                      )
+
+              def test_module_docstring_gate_repairs_missing_docstring(self):
+                  with tempfile.TemporaryDirectory() as temporary:
+                      root = self.make_package(temporary)
+                      self.assertTrue(docstrings.run(root, write=False))
+                      self.assertEqual(docstrings.run(root, write=True), [])
+                      self.assertEqual(docstrings.run(root, write=False), [])
+                      module = root / "example/src/example/agent_based/plugin.py"
+                      self.assertIsNotNone(
+                          ast.get_docstring(
+                              ast.parse(module.read_text(encoding="utf-8"))
+                          )
+                      )
+
+              def test_repository_syntax_gate_covers_legacy_extensionless_checks(self):
+                  with tempfile.TemporaryDirectory() as temporary:
+                      root = Path(temporary)
+                      checks = root / "archiv" / "legacy" / "src" / "checks"
+                      checks.mkdir(parents=True)
+                      broken = checks / "legacy_check"
+                      broken.write_text("def broken(:\n", encoding="utf-8")
+                      errors = syntax.validate(root)
+                      self.assertTrue(any("legacy_check" in error for error in errors))
+                      broken.write_text(
+                          "def valid():\n    return True\n",
+                          encoding="utf-8",
+                      )
+                      self.assertEqual(syntax.validate(root), [])
+
+              def test_all_manifest_sources_resolve(self):
+                  for package in builder.discover_package_dirs(ROOT, []):
+                      manifest = builder.read_manifest(package, "2.5.0")
+                      for component, entries in manifest["files"].items():
+                          for entry in entries:
+                              source = builder._source_path(package, component, entry)
+                              self.assertTrue(source.exists(), source)
+
+              def test_package_lib_directories_are_not_globally_ignored(self):
+                  ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+                  self.assertNotIn("\nlib/\n", "\n" + ignore)
+                  self.assertTrue(
+                      (
+                          ROOT
+                          / "cisco_ucs_detect/src/cmk/plugins/lib/cisco_ucs.py"
+                      ).is_file()
+                  )
+
+
+          if __name__ == "__main__":
+              unittest.main()
+          PY
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              Path("README.md"): (
+                  "python3 tools/ci/sync_package_metadata.py\n",
+                  "python3 tools/ci/sync_repository_facts.py\n"
+                  "python3 tools/ci/sync_package_metadata.py\n",
+              ),
+              Path("CONTRIBUTING.md"): (
+                  "python3 tools/ci/sync_package_metadata.py\n",
+                  "python3 tools/ci/sync_repository_facts.py\n"
+                  "python3 tools/ci/sync_package_metadata.py\n",
+              ),
+              Path("docs/REPOSITORY_AUDIT.md"): (
+                  "- `tools/ci/sync_package_metadata.py` treats `src/info` as canonical",
+                  "- `tools/ci/sync_repository_facts.py` derives repository-level package counts from canonical manifests.\n"
+                  "- `tools/ci/sync_package_metadata.py` treats `src/info` as canonical",
+              ),
+          }
+          for path, (old, new) in replacements.items():
+              text = path.read_text(encoding="utf-8")
+              if old not in text:
+                  raise SystemExit(f"documentation marker missing in {path}")
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          workflow = Path(".github/workflows/repository-guard.yml")
+          text = workflow.read_text(encoding="utf-8")
+          old = "      - name: Verify canonical metadata mirrors\n        run: python3 tools/ci/sync_package_metadata.py\n"
+          new = (
+              "      - name: Verify code-derived repository facts\n"
+              "        run: python3 tools/ci/sync_repository_facts.py\n\n"
+              + old
+          )
+          if old not in text:
+              raise SystemExit("repository guard insertion marker missing")
+          workflow.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
+          git add -A
+          test -z "$(git diff --name-only --diff-filter=U)"
+          test "$(find . -mindepth 2 -maxdepth 3 -path '*/src/info' -type f | wc -l)" -eq 97
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install validation tools
+        run: >-
+          python -m pip install --disable-pip-version-check
+          pytest==9.1.1
+          requests==2.34.2
+          ruff==0.15.22
+
+      - name: Regenerate all code-derived repository state
+        run: |
+          set -euo pipefail
+          python3 tools/ci/sync_package_metadata.py --write
+          python3 tools/ci/manage_module_docstrings.py --write
+          python3 tools/ci/generate_package_reference.py --write
+          python3 create_mkp_index.py
+          python3 tools/ci/sync_repository_facts.py --write
+
+      - name: Create exact integrated candidate commit
+        run: |
+          set -euo pipefail
+          rm .github/workflows/merge-current-master.yml
+          find . -type d -name __pycache__ -prune -exec rm -rf {} +
+          find . -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
+          rm -rf .pytest_cache
+          git add -A
+          test -z "$(git diff --name-only --diff-filter=U)"
+          test ! -e .github/workflows/merge-current-master.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "repository: integrate current code and regenerate audited documentation"
+          echo "Candidate commit: $(git rev-parse HEAD)"
+          echo "Candidate tree: $(git rev-parse 'HEAD^{tree}')"
+
+      - name: Validate exact integrated candidate
+        env:
+          EXPECTED_MASTER: 7972e92c2cf612342608bd4f674e2e8f6a9ab8f9
+        run: |
+          set -euo pipefail
+          test "$(git status --porcelain)" = ""
+          git merge-base --is-ancestor "$EXPECTED_MASTER" HEAD
+          python3 tools/ci/pin_supply_chain.py --check
+          python3 tools/ci/repository_guard.py --base "$EXPECTED_MASTER" --head HEAD
+          python3 tools/ci/sync_repository_facts.py
+          python3 tools/ci/sync_package_metadata.py
+          python3 tools/ci/generate_package_reference.py
+          python3 tools/ci/manage_module_docstrings.py
+          python3 tools/ci/check_python_syntax.py
+          python3 tools/ci/full_repository_audit.py \
+            --fail-on low \
+            --output /tmp/repository-audit.json
+          ruff check --select E9,F63,F7,F82 .github/scripts .github/tests create_mkp_index.py tools/ci
+          python3 -m pytest -q tests .github/tests */tests
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("/tmp/repository-audit.json").read_text(encoding="utf-8"))
+          assert report["active_packages"] == 97, report
+          assert report["summary"]["all"] == {
+              "critical": 0,
+              "high": 0,
+              "medium": 0,
+              "low": 0,
+          }, report["summary"]
+          print(json.dumps(report["summary"], sort_keys=True))
+          PY
+
+      - name: Publish exact validated candidate
+        run: |
+          set -euo pipefail
+          echo "FINAL_COMMIT=$(git rev-parse HEAD)"
+          echo "FINAL_TREE=$(git rev-parse 'HEAD^{tree}')"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
