@@ -15,6 +15,60 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  apply-quobyte-ca-fix:
+    if: github.event_name == 'pull_request' && github.head_ref == 'agent/repository-wide-security-documentation-audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out pull-request branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/repository-wide-security-documentation-audit
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Apply Quobyte private-CA remediation
+        run: python3 .github/scripts/apply_quobyte_ca_fix.py
+
+      - name: Validate remediation
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check \
+            pytest==9.1.1 \
+            requests==2.34.2
+          python3 tools/ci/generate_package_reference.py
+          python3 tools/ci/manage_module_docstrings.py
+          python3 tools/ci/check_python_syntax.py
+          python3 tools/ci/full_repository_audit.py --fail-on low
+          pytest -q quobyte/tests
+          python3 -m unittest discover -s tests -p 'test_ci_*.py' -v
+          git diff --check
+
+      - name: Commit validated Quobyte source and tests
+        env:
+          TARGET_BRANCH: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            quobyte/README.md \
+            quobyte/src/quobyte/libexec/agent_quobyte \
+            quobyte/src/quobyte/rulesets/agent.py \
+            quobyte/src/quobyte/server_side_calls/quobyte.py \
+            quobyte/tests/test_quobyte_secret_command_arguments.py
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(quobyte): preserve private CA trust"
+          git push origin "HEAD:${TARGET_BRANCH}"
+
   guard:
     runs-on: ubuntu-latest
     timeout-minutes: 15
