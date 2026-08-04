@@ -1,0 +1,263 @@
+#!/usr/bin/env python3
+"""Temporarily apply the reviewed repository credential-scan remediation."""
+
+from pathlib import Path
+
+
+def replace_once(path: Path, old: str, new: str, label: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    if text.count(old) != 1:
+        raise SystemExit(f"expected exactly one {label} block in {path}")
+    path.write_text(text.replace(old, new), encoding="utf-8")
+
+
+audit_path = Path("tools/ci/full_repository_audit.py")
+replace_once(
+    audit_path,
+    "import re\nimport sys\n",
+    "import re\nimport subprocess\nimport sys\n",
+    "subprocess import",
+)
+replace_once(
+    audit_path,
+    'EXCLUDED_SOURCE_PARTS = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", "dist", "tests", "testdata"}\nCREDENTIAL_NAME_RE',
+    'EXCLUDED_SOURCE_PARTS = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", "dist", "tests", "testdata"}\nEXCLUDED_REPOSITORY_PARTS = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", "dist"}\nCREDENTIAL_NAME_RE',
+    "repository exclusion set",
+)
+replace_once(
+    audit_path,
+    'PRIVATE_KEYS = ("-----BEGIN PRIVATE KEY-----", "-----BEGIN RSA PRIVATE KEY-----", "-----BEGIN OPENSSH PRIVATE KEY-----", "-----BEGIN EC PRIVATE KEY-----")\n',
+    '''PRIVATE_KEYS = (
+    "-----BEGIN " + "PRIVATE KEY-----",
+    "-----BEGIN RSA " + "PRIVATE KEY-----",
+    "-----BEGIN OPENSSH " + "PRIVATE KEY-----",
+    "-----BEGIN EC " + "PRIVATE KEY-----",
+)
+''',
+    "private key markers",
+)
+replace_once(
+    audit_path,
+    '''def call_name(node: ast.AST) -> str:
+''',
+    '''def repository_files(root: Path) -> Iterable[Path]:
+    """Yield tracked repository files, with a deterministic fallback for test roots."""
+    git_metadata = root / ".git"
+    if git_metadata.exists():
+        try:
+            completed = subprocess.run(
+                ["git", "-C", str(root), "ls-files", "-z"],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise AuditError(f"cannot enumerate tracked repository files: {exc}") from exc
+        candidates = (
+            root / entry.decode("utf-8", errors="surrogateescape")
+            for entry in completed.stdout.split(b"\\0")
+            if entry
+        )
+    else:
+        candidates = root.rglob("*")
+    for path in sorted(candidates):
+        if not path.is_file() or path.is_symlink():
+            continue
+        relative = path.relative_to(root)
+        if any(part in EXCLUDED_REPOSITORY_PARTS for part in relative.parts):
+            continue
+        yield path
+
+
+def audit_credential_material(root: Path, path: Path) -> list[Finding]:
+    """Scan every tracked repository file for committed key or token material."""
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        return [
+            finding(
+                "high",
+                "code.unreadable",
+                root,
+                path,
+                1,
+                f"cannot read {path}: {exc}",
+                "store repository content in a readable file",
+            )
+        ]
+    text = data.decode("utf-8", errors="replace")
+    result = []
+    for marker in PRIVATE_KEYS:
+        if marker in text:
+            line = text[: text.index(marker)].count("\\n") + 1
+            result.append(
+                finding(
+                    "critical",
+                    "security.private-key-material",
+                    root,
+                    path,
+                    line,
+                    "private-key material appears to be committed",
+                    "revoke and remove the key from history",
+                )
+            )
+    for pattern, label in TOKEN_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            line = text[: match.start()].count("\\n") + 1
+            result.append(
+                finding(
+                    "critical",
+                    "security.token-material",
+                    root,
+                    path,
+                    line,
+                    f"possible committed {label}",
+                    "revoke and remove the credential from history",
+                )
+            )
+    return result
+
+
+def call_name(node: ast.AST) -> str:
+''',
+    "repository credential scanner",
+)
+replace_once(
+    audit_path,
+    '''    if policy:
+        return result
+    for marker in PRIVATE_KEYS:
+        if marker in text:
+            line = text[: text.index(marker)].count("\\n") + 1
+            result.append(finding("critical", "security.private-key-material", root, path, line, "private-key material appears to be committed", "revoke and remove the key from history"))
+    for pattern, label in TOKEN_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            line = text[: match.start()].count("\\n") + 1
+            result.append(finding("critical", "security.token-material", root, path, line, f"possible committed {label}", "revoke and remove the credential from history"))
+    return result
+''',
+    '''    return result
+''',
+    "script-only text audit",
+)
+replace_once(
+    audit_path,
+    '''    sources = list(source_files(root, active))
+    for path in sources:
+        findings += audit_source(root, path)
+    findings += audit_hygiene(root)
+''',
+    '''    credential_paths = list(repository_files(root))
+    for path in credential_paths:
+        findings += audit_credential_material(root, path)
+    sources = list(source_files(root, active))
+    for path in sources:
+        findings += audit_source(root, path)
+    findings += audit_hygiene(root)
+''',
+    "report credential scan",
+)
+replace_once(
+    audit_path,
+    '''    return {"schema_version": SCHEMA_VERSION, "active_packages": len(active), "source_files": len(sources), "summary": {"all": all_counts, "new": new_counts, "total": len(unique)}, "findings": [item.render(baseline) for item in unique]}
+''',
+    '''    return {
+    "schema_version": SCHEMA_VERSION,
+    "active_packages": len(active),
+    "source_files": len(sources),
+    "credential_files": len(credential_paths),
+    "summary": {"all": all_counts, "new": new_counts, "total": len(unique)},
+    "findings": [item.render(baseline) for item in unique],
+}
+''',
+    "report metrics",
+)
+
+test_path = Path("tests/test_ci_full_repository_audit.py")
+replace_once(
+    test_path,
+    '''    def test_detects_dynamic_execution_tls_and_private_key(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self.make_root(temporary)
+            source = root / "example" / "src" / "example" / "plugin.py"
+            source.write_text(
+                '\"\"\"Unsafe example.\"\"\"\\n'
+                "import requests\\n"
+                "eval('1')\\n"
+                "requests.get('https://example.invalid', verify=False)\\n"
+                "KEY = '-----BEGIN PRIVATE KEY-----'\\n",
+                encoding="utf-8",
+            )
+            report = audit.build_report(root, set())
+            rules = {item["rule_id"] for item in report["findings"]}
+            self.assertIn("security.dynamic-code-execution", rules)
+            self.assertIn("security.tls-verification-disabled", rules)
+            self.assertIn("security.private-key-material", rules)
+
+''',
+    '''    def test_detects_dynamic_execution_tls_and_private_key(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self.make_root(temporary)
+            source = root / "example" / "src" / "example" / "plugin.py"
+            marker = "-----BEGIN " + "PRIVATE KEY-----"
+            source.write_text(
+                '\"\"\"Unsafe example.\"\"\"\\n'
+                "import requests\\n"
+                "eval('1')\\n"
+                "requests.get('https://example.invalid', verify=False)\\n"
+                f"KEY = {marker!r}\\n",
+                encoding="utf-8",
+            )
+            report = audit.build_report(root, set())
+            rules = {item["rule_id"] for item in report["findings"]}
+            self.assertIn("security.dynamic-code-execution", rules)
+            self.assertIn("security.tls-verification-disabled", rules)
+            self.assertIn("security.private-key-material", rules)
+
+    def test_scans_non_script_files_for_credentials(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self.make_root(temporary)
+            certificate = root / "certificates" / "server.pem"
+            certificate.parent.mkdir(parents=True)
+            certificate.write_text(
+                "-----BEGIN " + "PRIVATE KEY-----\\nredacted\\n",
+                encoding="utf-8",
+            )
+            workflow = root / ".github" / "workflows" / "deploy.yml"
+            workflow.parent.mkdir(parents=True)
+            token = "ghp_" + ("A" * 30)
+            workflow.write_text(f"token: {token}\\n", encoding="utf-8")
+
+            report = audit.build_report(root, set())
+            credential_findings = {
+                (item["path"], item["rule_id"])
+                for item in report["findings"]
+            }
+            self.assertIn(
+                ("certificates/server.pem", "security.private-key-material"),
+                credential_findings,
+            )
+            self.assertIn(
+                (".github/workflows/deploy.yml", "security.token-material"),
+                credential_findings,
+            )
+            self.assertGreater(report["credential_files"], report["source_files"])
+
+    def test_benign_binary_file_is_scanned_without_false_positive(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self.make_root(temporary)
+            binary = root / "assets" / "image.bin"
+            binary.parent.mkdir(parents=True)
+            binary.write_bytes(b"\\x00\\xff\\x10benign-data")
+            report = audit.build_report(root, set())
+            matching = [
+                item for item in report["findings"]
+                if item["path"] == "assets/image.bin"
+            ]
+            self.assertEqual(matching, [])
+
+''',
+    "credential scan tests",
+)
