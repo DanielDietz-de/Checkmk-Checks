@@ -153,6 +153,46 @@ class FullRepositoryAuditTests(unittest.TestCase):
             rules = {item["rule_id"] for item in report["findings"]}
             self.assertIn("security.network-timeout-missing", rules)
 
+    def test_detects_unbounded_urllib_calls(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self.make_root(temporary)
+            source = root / "example" / "src" / "example" / "plugin.py"
+            source.write_text(
+                '"""Urllib client."""\n'
+                'from urllib import request as urllib_request\n'
+                'class Client:\n'
+                '    def __init__(self):\n'
+                '        self.op = urllib_request.build_opener()\n'
+                '    def fetch(self, req):\n'
+                '        opener = self.op\n'
+                '        return opener.open(req)\n'
+                'urllib_request.urlopen("https://example.invalid")\n',
+                encoding="utf-8",
+            )
+            report = audit.build_report(root, set())
+            findings = [
+                item for item in report["findings"]
+                if item["rule_id"] == "security.network-timeout-missing"
+            ]
+            self.assertEqual(len(findings), 2)
+
+    def test_accepts_bounded_urllib_calls(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self.make_root(temporary)
+            source = root / "example" / "src" / "example" / "plugin.py"
+            source.write_text(
+                '"""Bounded urllib client."""\n'
+                'from urllib.request import Request, build_opener, urlopen\n'
+                'opener = build_opener()\n'
+                'req = Request("https://example.invalid")\n'
+                'opener.open(req, None, 5.0)\n'
+                'urlopen(req, timeout=5.0)\n',
+                encoding="utf-8",
+            )
+            report = audit.build_report(root, set())
+            rules = {item["rule_id"] for item in report["findings"]}
+            self.assertNotIn("security.network-timeout-missing", rules)
+
     def test_safe_secret_requires_agent_side_resolution(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_root(temporary)

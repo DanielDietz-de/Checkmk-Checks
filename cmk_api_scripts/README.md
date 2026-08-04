@@ -43,6 +43,9 @@ EXCHANGE_USER=you@example.com python3 exchange_publish.py \
   --repo /path/to/Checkmk-Checks --dry-run
 ```
 
-Relevant flags include `--dry-run`, `--only`, `--exclude`, `--limit`, and
-`--description`. Inspect `python3 exchange_publish.py --help` for the executable
-contract.
+All Exchange HTTP calls use a bounded timeout of 30 seconds by default. Use
+`--timeout` to set a different positive timeout for the current run.
+
+Relevant flags include `--dry-run`, `--only`, `--exclude`, `--limit`,
+`--timeout`, and `--description`. Inspect `python3 exchange_publish.py --help`
+for the executable contract.

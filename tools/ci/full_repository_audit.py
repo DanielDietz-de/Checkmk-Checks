@@ -240,12 +240,92 @@ def call_name(node: ast.AST) -> str:
     return ""
 
 
+def assigned_names(target: ast.AST) -> set[str]:
+    """Return stable names assigned by a Python target expression."""
+    if isinstance(target, (ast.Name, ast.Attribute)):
+        name = call_name(target)
+        return {name} if name else set()
+    if isinstance(target, (ast.Tuple, ast.List)):
+        return {name for item in target.elts for name in assigned_names(item)}
+    return set()
+
+
+def urllib_callable_names(tree: ast.AST) -> tuple[set[str], set[str]]:
+    """Resolve imported names for urllib urlopen and build_opener."""
+    urlopen_names = {"urllib.request.urlopen"}
+    builder_names = {"urllib.request.build_opener"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "urllib.request":
+                    prefix = alias.asname or alias.name
+                    urlopen_names.add(f"{prefix}.urlopen")
+                    builder_names.add(f"{prefix}.build_opener")
+        elif isinstance(node, ast.ImportFrom):
+            if node.module == "urllib":
+                for alias in node.names:
+                    if alias.name == "request":
+                        prefix = alias.asname or alias.name
+                        urlopen_names.add(f"{prefix}.urlopen")
+                        builder_names.add(f"{prefix}.build_opener")
+            elif node.module == "urllib.request":
+                for alias in node.names:
+                    local = alias.asname or alias.name
+                    if alias.name == "urlopen":
+                        urlopen_names.add(local)
+                    elif alias.name == "build_opener":
+                        builder_names.add(local)
+    return urlopen_names, builder_names
+
+
+def is_urllib_opener_expression(
+    node: ast.AST | None,
+    opener_names: set[str],
+    builder_names: set[str],
+) -> bool:
+    """Return whether an expression constructs or aliases a urllib opener."""
+    if isinstance(node, ast.Call):
+        return call_name(node.func) in builder_names
+    if isinstance(node, (ast.Name, ast.Attribute)):
+        return call_name(node) in opener_names
+    if isinstance(node, ast.IfExp):
+        return is_urllib_opener_expression(
+            node.body, opener_names, builder_names
+        ) or is_urllib_opener_expression(node.orelse, opener_names, builder_names)
+    return False
+
+
+def urllib_opener_names(tree: ast.AST, builder_names: set[str]) -> set[str]:
+    """Resolve direct and aliased urllib opener variables and attributes."""
+    assignments: list[tuple[list[ast.AST], ast.AST | None]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            assignments.append((list(node.targets), node.value))
+        elif isinstance(node, ast.AnnAssign):
+            assignments.append(([node.target], node.value))
+    result: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for targets, value in assignments:
+            if not is_urllib_opener_expression(value, result, builder_names):
+                continue
+            for target in targets:
+                for name in assigned_names(target):
+                    if name not in result:
+                        result.add(name)
+                        changed = True
+    return result
+
+
 def audit_python(root: Path, path: Path, text: str) -> list[Finding]:
     try:
         tree = ast.parse(text, filename=str(path))
     except SyntaxError as exc:
         return [finding("high", "code.python-syntax", root, path, exc.lineno or 1, exc.msg, "fix the syntax error or remove the file")]
     result = []
+    urllib_urlopen_names, urllib_builder_names = urllib_callable_names(tree)
+    urllib_openers = urllib_opener_names(tree, urllib_builder_names)
     if ast.get_docstring(tree, clean=False) is None:
         result.append(finding("low", "docs.module-docstring-missing", root, path, 1, "Python source file has no module docstring", "describe purpose, inputs, outputs, and safety boundaries"))
     for node in ast.walk(tree):
@@ -302,9 +382,21 @@ def audit_python(root: Path, path: Path, text: str) -> list[Finding]:
         for keyword in node.keywords:
             if keyword.arg == "verify" and isinstance(keyword.value, ast.Constant) and keyword.value.value is False:
                 result.append(finding("high", "security.tls-verification-disabled", root, path, getattr(keyword.value, "lineno", line), "TLS certificate verification is disabled", "enable verification and support an explicit private CA bundle"))
-        if name.endswith((".get", ".post", ".put", ".patch", ".delete", ".request")) and (name.startswith("requests.") or ".session." in name.lower() or name.startswith("session.")):
-            if not any(keyword.arg == "timeout" for keyword in node.keywords):
-                result.append(finding("medium", "security.network-timeout-missing", root, path, line, f"network call {name} has no explicit timeout", "set a bounded connect/read timeout"))
+        requests_call = name.endswith(
+            (".get", ".post", ".put", ".patch", ".delete", ".request")
+        ) and (
+            name.startswith("requests.")
+            or ".session." in name.lower()
+            or name.startswith("session.")
+        )
+        urllib_call = name in urllib_urlopen_names or (
+            name.endswith(".open") and name.removesuffix(".open") in urllib_openers
+        )
+        timeout_keyword = any(keyword.arg == "timeout" for keyword in node.keywords)
+        if requests_call and not timeout_keyword:
+            result.append(finding("medium", "security.network-timeout-missing", root, path, line, f"network call {name} has no explicit timeout", "set a bounded connect/read timeout"))
+        if urllib_call and not (timeout_keyword or len(node.args) >= 3):
+            result.append(finding("medium", "security.network-timeout-missing", root, path, line, f"urllib network call {name} has no explicit timeout", "set a bounded timeout keyword or third positional timeout argument"))
         if name in {"pickle.load", "pickle.loads", "marshal.load", "marshal.loads"}:
             result.append(finding("high", "security.unsafe-deserialization", root, path, line, f"{name} accepts executable or unsafe data", "use bounded JSON with schema validation"))
     return result
