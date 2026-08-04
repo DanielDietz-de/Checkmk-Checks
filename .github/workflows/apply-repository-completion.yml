@@ -33,7 +33,7 @@ jobs:
 
       - name: Verify staging lineage
         env:
-          EXPECTED_PARENT: 27312bcd3eb9860956f7c022345d8527932bd3b7
+          EXPECTED_PARENT: 5a54a6b9d3c89d401fbabc89a81e4dd4a96e7049
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
@@ -44,7 +44,7 @@ jobs:
           EXPECTED_TREE: e6be190858f6fd5ff239dadb35a2fb067254d187
         run: |
           set -euo pipefail
-          cat .repo-completion/chunk-* > /tmp/repository-completion.patch.xz.b64
+          cat .repo-completion/prefix .repo-completion/chunk-* > /tmp/repository-completion.patch.xz.b64
           base64 --decode /tmp/repository-completion.patch.xz.b64 > /tmp/repository-completion.patch.xz
           printf '%s  %s\n' "$PATCH_SHA256" /tmp/repository-completion.patch.xz | sha256sum --check --strict
           xz --decompress --stdout /tmp/repository-completion.patch.xz > /tmp/repository-completion.patch
