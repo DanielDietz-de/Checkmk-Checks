@@ -1,6 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
  'description': 'Unisphere Powermax Monitoring \n',
- 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/unisphere_powermax',
+ 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks',
  'files': {'cmk_addons_plugins': ['unisphere_powermax/agent_based/unisphere_powermax_alert.py',
                                   'unisphere_powermax/agent_based/unisphere_powermax_array_performance.py',
                                   'unisphere_powermax/agent_based/unisphere_powermax_director.py',
@@ -17,7 +17,7 @@
                                   'unisphere_powermax/checkman/unisphere_powermax_volume_masking_view_volume_summary']},
  'name': 'unisphere_powermax',
  'title': 'Unisphere PowerMax',
- 'version': '3.0.13',
+ 'version': '3.0.12',
  'version.min_required': '2.3.0p2',
- 'version.packaged': '2.5.0p9',
+ 'version.packaged': '2.4.0p7',
  'version.usable_until': None}

@@ -1,6 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
  'description': 'This check monitors CPU load, jobs, users and tcp connection counts on a AS400\n',
- 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/as400',
+ 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
  'files': {'cmk_addons_plugins': ['as400/agent_based/connections.py',
                                   'as400/agent_based/cpu.py',
                                   'as400/agent_based/jobs.py',
@@ -12,7 +12,7 @@
                                   'as400/rulesets/users.py']},
  'name': 'as400',
  'title': 'AS400 Checks',
- 'version': '3.0.4',
+ 'version': '3.0.3',
  'version.min_required': '2.3.0b1',
- 'version.packaged': '2.5.0p9',
+ 'version.packaged': '2.3.0p35',
  'version.usable_until': None}

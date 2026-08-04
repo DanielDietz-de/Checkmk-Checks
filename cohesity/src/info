@@ -1,6 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
  'description': 'Cohesity checks\n',
- 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/cohesity',
+ 'download_url': 'https://kuhn-ruess.de/en/checkmk_checks.html',
  'files': {'cmk_addons_plugins': ['cohesity/agent_based/cohesity_alerts.py',
                                   'cohesity/agent_based/cohesity_metadata.py',
                                   'cohesity/agent_based/cohesity_node_status.py',
@@ -15,7 +15,7 @@
                                   'cohesity/server_side_calls/cohesity_agent.py']},
  'name': 'cohesity',
  'title': 'Cohesity checks',
- 'version': '1.5.3',
+ 'version': '1.5.2',
  'version.min_required': '2.4.0',
- 'version.packaged': '2.5.0p9',
+ 'version.packaged': '2.4.0p4',
  'version.usable_until': None}

@@ -1,12 +1,12 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Creates and closes ServiceNow incidents through a verified HTTPS middleware endpoint with defensive '
-                'assignment-group handling.\n',
+ 'description': 'Creates and closes ServiceNow incidents through a verified HTTPS middleware '
+                'endpoint with defensive assignment-group handling.\n',
  'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/service_now_notify',
  'files': {'cmk_addons_plugins': ['service_now_notify/rulesets/service_now_notify.py'],
            'notifications': ['service_now_notify']},
  'name': 'service_now_notify',
  'title': 'ServiceNow notification',
- 'version': '2.2.1',
+ 'version': '2.2.0',
  'version.min_required': '2.4.0',
- 'version.packaged': '2.5.0p9',
+ 'version.packaged': '2.5.0',
  'version.usable_until': None}

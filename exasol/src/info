@@ -1,6 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
  'description': 'Full Exasol appliance monitoring\n',
- 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/exasol',
+ 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
  'files': {'cmk_addons_plugins': ['exasol/agent_based/database.py',
                                   'exasol/agent_based/database_backup.py',
                                   'exasol/agent_based/nodes.py',
@@ -13,7 +13,7 @@
                                   'exasol/server_side_calls/exasol.py']},
  'name': 'exasol',
  'title': 'Exsasol appliance monitoring',
- 'version': '2.1.2',
+ 'version': '2.1.1',
  'version.min_required': '2.3.0b1',
- 'version.packaged': '2.5.0p9',
+ 'version.packaged': '2.3.0p30',
  'version.usable_until': None}

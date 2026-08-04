@@ -1,6 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
  'description': 'Sonicwall VPN Monitoring based on SNMP',
- 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/sonicwall',
+ 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/tree/master',
  'files': {'cmk_addons_plugins': ['sonicwall/agent_based/sonicwall_conns.py',
                                   'sonicwall/agent_based/sonicwall_cpu.py',
                                   'sonicwall/agent_based/sonicwall_mem.py',
@@ -14,7 +14,7 @@
                                   'sonicwall/checkman/sonicwall_vpn']},
  'name': 'sonicwall',
  'title': 'Sonicwall VPN Monitoring',
- 'version': '1.1.2',
+ 'version': '1.1.1',
  'version.min_required': '2.4.0p1',
- 'version.packaged': '2.5.0p9',
+ 'version.packaged': '2.5.0',
  'version.usable_until': None}

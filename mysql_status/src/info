@@ -1,6 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Supports Checkmk version 2.4 and no longer needs an agent plugin since it works as a subcheck for the '
-                'normal Checkmk MySQL monitoring.\n'
+ 'description': 'Supports Checkmk version 2.4 and no longer needs an agent plugin since it works '
+                'as a subcheck for the normal Checkmk MySQL monitoring.\n'
                 '\n'
                 'Monitored variables:\n'
                 '- Aborted_clients\n'
@@ -46,14 +46,14 @@
                 '- Open_tables\n'
                 '- Open_files\n'
                 '\n'
-                'Additional combined service "MySQL Status [instance] Query Types" with rates per second and a '
-                'combined graph for:\n'
+                'Additional combined service "MySQL Status [instance] Query Types" with rates per '
+                'second and a combined graph for:\n'
                 '- Com_select\n'
                 '- Com_insert\n'
                 '- Com_update\n'
                 '- Com_delete\n'
                 '- Com_replace\n',
- 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/mysql_status',
+ 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
  'files': {'cmk_addons_plugins': ['mysql_status/agent_based/mysql_status.py',
                                   'mysql_status/checkman/mysql_innodb_buffer_pool_utilization',
                                   'mysql_status/checkman/mysql_status',
@@ -62,7 +62,7 @@
                                   'mysql_status/rulesets/mysql_status.py']},
  'name': 'mysql_status',
  'title': 'Check for MySQL status variables',
- 'version': '6.3.3',
+ 'version': '6.3.2',
  'version.min_required': '2.4.0b1',
- 'version.packaged': '2.5.0p9',
+ 'version.packaged': '2.4.0p8',
  'version.usable_until': None}

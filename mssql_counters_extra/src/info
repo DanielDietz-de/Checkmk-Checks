@@ -1,6 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
  'description': 'Additional checks based on the mssql_counters section.\n',
- 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/mssql_counters_extra',
+ 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
  'files': {'cmk_addons_plugins': ['mssql_counters_extra/agent_based/mssql_counters_access_methods.py',
                                   'mssql_counters_extra/agent_based/mssql_counters_connections.py',
                                   'mssql_counters_extra/agent_based/mssql_counters_latches.py',
@@ -14,7 +14,7 @@
                                   'mssql_counters_extra/checkman/mssql_counters_connections']},
  'name': 'mssql_counters_extra',
  'title': 'MSSQL extra counters',
- 'version': '2.1.3',
+ 'version': '2.1.2',
  'version.min_required': '2.4.0b1',
- 'version.packaged': '2.5.0p9',
+ 'version.packaged': '2.5.0',
  'version.usable_until': None}

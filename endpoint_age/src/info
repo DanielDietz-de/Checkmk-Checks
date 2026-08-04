@@ -1,6 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Monitor freshness of public HTTPS endpoints with DNS/IP SSRF protection, bounded responses and strict '
-                'JSON/header parsing.\n',
+ 'description': 'Monitor freshness of public HTTPS endpoints with DNS/IP SSRF protection, bounded '
+                'responses and strict JSON/header parsing.\n',
  'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/endpoint_age',
  'files': {'cmk_addons_plugins': ['endpoint_age/agent_based/endpoint_age.py',
                                   'endpoint_age/checkman/endpoint_age',
@@ -10,7 +10,7 @@
                                   'endpoint_age/server_side_calls/agent.py']},
  'name': 'endpoint_age',
  'title': 'Public HTTPS endpoint freshness monitoring',
- 'version': '0.1.1',
+ 'version': '0.1.0',
  'version.min_required': '2.3.0',
- 'version.packaged': '2.5.0p9',
+ 'version.packaged': '2.4.0',
  'version.usable_until': None}
