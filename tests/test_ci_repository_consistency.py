@@ -1,4 +1,4 @@
-"""Tests for deterministic metadata, documentation, and packaging gates."""
+"""Tests for deterministic metadata, documentation, packaging, and audit gates."""
 
 from __future__ import annotations
 
@@ -40,6 +40,10 @@ docstrings = load_module(
 syntax = load_module(
     ROOT / "tools" / "ci" / "check_python_syntax.py",
     "syntax_test",
+)
+full_audit = load_module(
+    ROOT / "tools" / "ci" / "full_repository_audit.py",
+    "full_repository_audit_test",
 )
 builder = load_module(
     ROOT / ".github" / "scripts" / "build_repository_mkps.py",
@@ -191,6 +195,45 @@ class RepositoryConsistencyTests(unittest.TestCase):
                 encoding="utf-8",
             )
             self.assertEqual(syntax.validate(root), [])
+
+    def test_audit_includes_platform_suffix_and_shebang_scripts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            scripts = root / "package/src/package/agents/plugins"
+            scripts.mkdir(parents=True)
+            linux = scripts / "discover_os_labels.linux"
+            aix = scripts / "discover_os_labels.aix"
+            solaris = scripts / "discover_os_labels.solaris"
+            windows = scripts / "check_ping.cmd"
+            linux.write_text("#!/bin/sh\necho linux\n", encoding="utf-8")
+            aix.write_text("#!/usr/bin/ksh\necho aix\n", encoding="utf-8")
+            solaris.write_text(
+                "#!/usr/bin/perl\nprint 'solaris';\n",
+                encoding="utf-8",
+            )
+            windows.write_text(
+                "@echo off\r\necho windows\r\n",
+                encoding="utf-8",
+            )
+
+            discovered = set(full_audit.source_files(root, []))
+            self.assertEqual(discovered, {linux, aix, solaris, windows})
+
+    def test_audit_applies_python_rules_to_unknown_suffix_shebangs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            script = root / "agent.linux"
+            script.write_text(
+                "#!/usr/bin/env python3\nAPI_TOKEN = 'actual-secret-value'\n",
+                encoding="utf-8",
+            )
+            findings = full_audit.audit_source(root, script)
+            self.assertTrue(
+                any(
+                    item.rule_id == "security.hardcoded-credential"
+                    for item in findings
+                )
+            )
 
     def test_all_manifest_sources_resolve(self):
         for package in builder.discover_package_dirs(ROOT, []):
