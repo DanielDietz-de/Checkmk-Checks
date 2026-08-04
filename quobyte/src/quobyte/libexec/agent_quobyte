@@ -7,6 +7,7 @@ https://kuhn-ruess.de
 """
 
 import argparse
+import os
 from pathlib import Path
 
 import requests
@@ -24,6 +25,21 @@ def _resolve_secret_reference(reference: str) -> str:
     return lookup(Path(store_path), secret_id)
 
 
+def _resolve_ca_bundle(explicit_ca_file: str | None) -> str | bool:
+    """Resolve explicit or site-wide CA trust without enabling proxy inheritance."""
+    configured = (
+        explicit_ca_file
+        or os.environ.get("REQUESTS_CA_BUNDLE")
+        or os.environ.get("CURL_CA_BUNDLE")
+    )
+    if not configured:
+        return True
+
+    path = Path(configured).expanduser()
+    if not path.is_file():
+        raise ValueError(f"CA bundle does not exist or is not a file: {path}")
+    return str(path.resolve())
+
 
 class Quobyte():
     """
@@ -32,14 +48,15 @@ class Quobyte():
 
     volume_names_map = {}
 
-    def __init__(self, api_host, user, password, timeout):
-        """
-        Init
-        """
+    def __init__(self, api_host, user, password, timeout, ca_file=None):
+        """Initialize an isolated HTTP session with explicit certificate trust."""
         self.api_host = api_host
         self.auth = HTTPBasicAuth(user, password)
         self.session = requests.Session()
+        # Do not inherit ambient proxies or netrc credentials. Preserve only the
+        # established Checkmk site CA-bundle variables through explicit handling.
         self.session.trust_env = False
+        self.session.verify = _resolve_ca_bundle(ca_file)
         self.timeout = 15.0
         if timeout:
             self.timeout = float(timeout)
@@ -393,6 +410,13 @@ def parse_arguments():
     password_group = parser.add_mutually_exclusive_group(required=True)
     password_group.add_argument("--password", help="Password for direct command-line testing")
     password_group.add_argument("--password-id", help="Checkmk password-store reference")
+    parser.add_argument(
+        "--ca-file",
+        help=(
+            "Optional PEM CA bundle. Overrides REQUESTS_CA_BUNDLE and "
+            "CURL_CA_BUNDLE while environment proxies remain disabled."
+        ),
+    )
     parser.add_argument("--timeout", type=float, default=15.0)
     args = parser.parse_args()
     args.password = (
@@ -405,7 +429,13 @@ def parse_arguments():
 
 if __name__ == "__main__":
     arguments = parse_arguments()
-    qb = Quobyte(arguments.api_url, arguments.username, arguments.password, arguments.timeout)
+    qb = Quobyte(
+        arguments.api_url,
+        arguments.username,
+        arguments.password,
+        arguments.timeout,
+        arguments.ca_file,
+    )
     qb.get_service_section()
     qb.get_health_section()
     qb.get_device_section()

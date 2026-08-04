@@ -9,21 +9,25 @@ class QuobyteParams(BaseModel):
     username: str
     password: Secret
     timeout: float = 15.0
+    ca_file: str | None = None
 
 
 def generate_quobyte_command(params: QuobyteParams, host_config: HostConfig):
-    yield SpecialAgentCommand(
-        command_arguments=(
-            "--api-url",
-            params.api_url,
-            "--username",
-            params.username,
-            "--password-id",
-            params.password,
-            "--timeout",
-            str(params.timeout),
-        )
-    )
+    """Build a secret-aware command with optional explicit private-CA trust."""
+    command_arguments = [
+        "--api-url",
+        params.api_url,
+        "--username",
+        params.username,
+        "--password-id",
+        params.password,
+        "--timeout",
+        str(params.timeout),
+    ]
+    if params.ca_file:
+        command_arguments.extend(["--ca-file", params.ca_file])
+
+    yield SpecialAgentCommand(command_arguments=command_arguments)
 
 
 special_agent_quobyte = SpecialAgentConfig(

@@ -13,8 +13,8 @@ binding.
 ## How it works
 
 The special agent [`agent_quobyte`](src/quobyte/libexec/agent_quobyte) is
-invoked with API URL, username, password and timeout. It POSTs JSON-RPC
-calls and emits the following sections:
+invoked with API URL, username, password, timeout and an optional explicit
+CA bundle. It POSTs JSON-RPC calls and emits the following sections:
 
 - `<<<quobyte_services>>>` (piggybacked per service host): list of
   service types and their `is_available` flag from `getServices`.
@@ -46,7 +46,7 @@ Graph, metric and perfometer definitions live under `src/quobyte/graphing/`.
 | Path | Purpose |
 | --- | --- |
 | `src/quobyte/libexec/agent_quobyte` | Special agent (JSON-RPC client to the Quobyte WebAPI). |
-| `src/quobyte/server_side_calls/quobyte.py` | Server-side-call wiring: passes `api_url username password timeout` as positional arguments. |
+| `src/quobyte/server_side_calls/quobyte.py` | Server-side-call wiring: preserves the password-store reference and passes URL, user, timeout and optional CA bundle as named arguments. |
 | `src/quobyte/rulesets/agent.py` | WATO special-agent ruleset `quobyte`. |
 | `src/quobyte/rulesets/volumes.py` | WATO ruleset for volume check parameters. |
 | `src/quobyte/agent_based/devices.py` | Devices check. |
@@ -64,7 +64,8 @@ Graph, metric and perfometer definitions live under `src/quobyte/graphing/`.
 2. Create a Checkmk host for the Quobyte cluster.
 3. Configure the special agent via *Setup -> Agents -> Other integrations
    -> Quobyte via WebAPI*. Provide the API URL, a user with read access
-   and the matching password; optionally override the timeout.
+   and the matching password; optionally override the timeout and provide
+   an absolute PEM CA-bundle path for a private certificate authority.
 4. Run service discovery on the cluster host. Additional services will
    appear on piggyback hosts named after the Quobyte service/device
    hosts.
@@ -77,7 +78,8 @@ Rule: **Setup -> Agents -> Other integrations -> Quobyte via WebAPI**
 | --- | --- | --- |
 | `api_url` | `String` (required) | Full URL of the Quobyte JSON-RPC endpoint. |
 | `username` | `String` (required) | API user. |
-| `password` | `Password` (required) | API password. |
+| `password` | `Password` (required) | API password stored through Checkmk's password store. |
+| `ca_file` | `String` (optional) | Absolute PEM CA-bundle path on the Checkmk server. Overrides `REQUESTS_CA_BUNDLE`, then `CURL_CA_BUNDLE`. |
 | `timeout` | `TimeSpan` (optional, default 2.5 s) | Request timeout. |
 
 A separate ruleset is available for volume check parameters under the
@@ -93,12 +95,9 @@ normal *Parameters for discovered services* tree.
 
 ## Known limitations
 
-- Credentials are passed as positional CLI arguments to the agent
-  (`api_url username password timeout`); they therefore appear in the
-  agent process arguments on the Checkmk server.
-- The `timeout` default in the server-side call model is `"15.0"` as a
-  string and only the ruleset default of 2.5 s takes effect; do not rely
-  on the Python type annotation.
+- Ambient proxy and netrc settings are intentionally ignored. Certificate
+  trust is retained explicitly with this precedence: rule `ca_file`,
+  `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`, then the system trust store.
 - Quota parsing assumes a single `current_usage` entry per quota - the
   source explicitly notes this may be wrong for multi-metric quotas.
 
