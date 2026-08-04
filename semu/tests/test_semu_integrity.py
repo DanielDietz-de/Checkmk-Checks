@@ -1,4 +1,4 @@
-"""Package-local structural tests derived from the shipped source tree."""
+"""Package-local structural and transport tests for the SEMU integration."""
 
 from __future__ import annotations
 
@@ -10,6 +10,9 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOT = PACKAGE_ROOT / "src"
 README = PACKAGE_ROOT / "README.md"
+SERVER_SIDE_CALL = SOURCE_ROOT / "semu/server_side_calls/agent_semu.py"
+RULESET = SOURCE_ROOT / "semu/rulesets/ruleset.py"
+AGENT = SOURCE_ROOT / "semu/libexec/agent_semu"
 
 
 def _is_python_source(path: Path) -> bool:
@@ -58,3 +61,26 @@ def test_shipped_python_sources_parse() -> None:
     for path in sorted(SOURCE_ROOT.rglob("*")):
         if path.is_file() and _is_python_source(path):
             ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+
+def test_tls_controls_flow_from_ruleset_to_special_agent() -> None:
+    """Private-CA and explicit opt-out settings must reach the executable."""
+    server_source = SERVER_SIDE_CALL.read_text(encoding="utf-8")
+    ruleset_source = RULESET.read_text(encoding="utf-8")
+    agent_source = AGENT.read_text(encoding="utf-8")
+
+    assert "ca_file: str | None = None" in server_source
+    assert "no_cert_check: bool = False" in server_source
+    assert '"--ca-file"' in server_source
+    assert '"--no-cert-check"' in server_source
+    assert '"ca_file": DictElement(' in ruleset_source
+    assert '"no_cert_check": DictElement(' in ruleset_source
+    assert 'parser.add_argument("--ca-file"' in agent_source
+    assert 'parser.add_argument("--no-cert-check"' in agent_source
+
+
+def test_contradictory_tls_controls_are_rejected() -> None:
+    """The parameter model must reject simultaneous CA and verification opt-out settings."""
+    source = SERVER_SIDE_CALL.read_text(encoding="utf-8")
+    assert '@model_validator(mode="after")' in source
+    assert "ca_file and no_cert_check are mutually exclusive" in source
