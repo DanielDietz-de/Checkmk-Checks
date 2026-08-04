@@ -74,7 +74,7 @@ jobs:
 
       - name: Build and validate corrected integrated candidate
         env:
-          EXPECTED_PARENT: 106ffd3b4076f99069300af253b9d2880ee1dd9b
+          EXPECTED_PARENT: 4102d9807f1baf390b2511db9e448b3f101b902b
           EXPECTED_MASTER: 7972e92c2cf612342608bd4f674e2e8f6a9ab8f9
           MERGE_BASE: 5f70214a6070cb4e765cefe4eacf4321ae587617
         run: |
@@ -112,16 +112,30 @@ jobs:
                   raise SystemExit(f"HTTP-call test marker missing in {relative}")
               path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-          ruleset = Path("arcgis_portal/src/arcgis_portal/rulesets/agent.py")
-          text = ruleset.read_text(encoding="utf-8")
-          old = "Diagnostic output appears in the special agent's stderr."
-          new = (
-              "Only the request method, URL without query parameters, HTTP status, "
-              "and response size are logged; response bodies and credentials are excluded."
+          arcgis_test = Path(
+              "arcgis_portal/tests/test_arcgis_portal_secret_command_arguments.py"
           )
-          if old not in text:
-              raise SystemExit("ArcGIS diagnostic-help marker missing")
-          ruleset.write_text(text.replace(old, new, 1), encoding="utf-8")
+          lines = arcgis_test.read_text(encoding="utf-8").splitlines()
+          marker = 'assert "response bodies and credentials are excluded" in rules'
+          for index, line in enumerate(lines):
+              if line.strip() != marker:
+                  continue
+              indent = line[: len(line) - len(line.lstrip())]
+              lines[index:index + 1] = [
+                  indent + 'rule_messages = " ".join(',
+                  indent + "    node.value",
+                  indent + "    for node in ast.walk(ast.parse(rules))",
+                  indent + "    if isinstance(node, ast.Constant)",
+                  indent + "    and isinstance(node.value, str)",
+                  indent + ")",
+                  indent
+                  + 'assert "response bodies and credentials are excluded" in rule_messages',
+              ]
+              break
+          else:
+              raise SystemExit("ArcGIS diagnostic assertion marker missing")
+          arcgis_test.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
           PY
           bash /tmp/regenerate.sh
           rm .github/workflows/integrate-current-master-retry.yml
