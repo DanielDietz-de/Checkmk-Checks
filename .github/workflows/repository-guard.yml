@@ -359,6 +359,7 @@ jobs:
       - name: Validate remediation
         run: |
           set -euo pipefail
+          python3 -m pip install --disable-pip-version-check requests==2.34.2
           python3 tools/ci/check_python_syntax.py
           python3 tools/ci/full_repository_audit.py --fail-on low
           python3 -m unittest discover -s tests -p 'test_ci_*.py' -v
