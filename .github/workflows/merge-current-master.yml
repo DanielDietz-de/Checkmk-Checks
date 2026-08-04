@@ -30,15 +30,15 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Apply exact master delta with three-way merge
+      - name: Inspect exact master-delta conflicts
         env:
-          EXPECTED_FIRST_PARENT: 1e57cc5472145950570fb5e62ddbfae2932c3837
+          EXPECTED_PARENT: 51f9996178676382a5bdb30e357c0899b1d506c5
           EXPECTED_MASTER: 7972e92c2cf612342608bd4f674e2e8f6a9ab8f9
           MERGE_BASE: 5f70214a6070cb4e765cefe4eacf4321ae587617
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^1)" = "$EXPECTED_FIRST_PARENT"
-          test "$(git rev-parse HEAD^2)" = "$EXPECTED_MASTER"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          git merge-base --is-ancestor "$EXPECTED_MASTER" HEAD
           git diff --binary "$MERGE_BASE" "$EXPECTED_MASTER" > /tmp/current-master.patch
           set +e
           git apply --3way --index /tmp/current-master.patch
@@ -47,9 +47,14 @@ jobs:
           echo "Apply return code: $apply_rc"
           echo "Unmerged paths:"
           git diff --name-only --diff-filter=U || true
-          echo "Status:"
-          git status --short
-          if [ "$apply_rc" -eq 0 ]; then
-            echo "Integrated tree before regeneration: $(git write-tree)"
-          fi
+          for path in \
+            arcgis_portal/src/arcgis_portal/libexec/agent_arcgis_portal \
+            palo_alto/README.md; do
+            echo "===== BASE: $path ====="
+            git show ":1:$path" || true
+            echo "===== AUDITED BRANCH: $path ====="
+            git show ":2:$path" || true
+            echo "===== CURRENT MASTER: $path ====="
+            git show ":3:$path" || true
+          done
           exit 1
