@@ -33,7 +33,7 @@ jobs:
 
       - name: Verify staging lineage
         env:
-          EXPECTED_PARENT: 5a54a6b9d3c89d401fbabc89a81e4dd4a96e7049
+          EXPECTED_PARENT: 9df21717f61795f1374112ce2eea73c6d73a06ed
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
@@ -71,6 +71,9 @@ jobs:
           set -euo pipefail
           python3 tools/ci/pin_supply_chain.py --check
           python3 tools/ci/sync_package_metadata.py
+          python3 tools/ci/generate_package_reference.py --write
+          unexpected="$(git diff --name-only | grep -vE '^[^/]+/README\.md$' || true)"
+          test -z "$unexpected"
           python3 tools/ci/generate_package_reference.py
           python3 tools/ci/manage_module_docstrings.py
           python3 tools/ci/check_python_syntax.py
@@ -78,16 +81,19 @@ jobs:
           ruff check --select E9,F63,F7,F82 .github/scripts .github/tests create_mkp_index.py
           python3 -m pytest -q tests .github/tests */tests
 
-      - name: Commit and publish exact validated tree
-        env:
-          EXPECTED_TREE: e6be190858f6fd5ff239dadb35a2fb067254d187
+      - name: Commit and publish validated code-driven tree
         run: |
           set -euo pipefail
           find . -type d -name __pycache__ -prune -exec rm -rf {} +
           find . -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
           rm -rf .pytest_cache
+          unexpected="$(git diff --name-only | grep -vE '^[^/]+/README\.md$' || true)"
+          test -z "$unexpected"
+          test ! -e .repo-completion
+          test ! -e .github/workflows/apply-repository-completion.yml
           git add -A
-          test "$(git write-tree)" = "$EXPECTED_TREE"
+          final_tree="$(git write-tree)"
+          echo "Final tree: $final_tree"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "repository: complete code-driven security and documentation audit"
