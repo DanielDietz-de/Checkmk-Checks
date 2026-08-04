@@ -78,7 +78,7 @@ def check_palo_alto_threadid(params, section):
 
 check_plugin_palo_alto_threadid = CheckPlugin(
     name="palo_alto_threadid",
-    service_name="Palo Alto TheadID Version",
+    service_name="Palo Alto Threat ID Version",
     discovery_function=discover_palo_alto_threadid,
     check_function=check_palo_alto_threadid,
     check_ruleset_name="palo_alto_threadid",

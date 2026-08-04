@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""
+UCP / MKE Health Special Agent
+
+Queries the Mirantis Kubernetes Engine (MKE / UCP) manager _ping endpoint of one
+or more nodes and turns the result into Checkmk local checks. Only the HTTP
+status code is relevant (200 = healthy, anything else = unhealthy); see
+https://docs.mirantis.com/mke/3.8/ops/monitor-cluster.html
+
+  * One "UCP Healthy" local check per node, optionally distributed to the node
+    host via piggyback (--piggyback).
+  * An optional collection check ("UCP Manager") on the configured host that goes
+    WARN/CRIT once the configured number of nodes is unhealthy (--collection).
+
+Kuhn & Rueß GmbH
+Consulting and Development
+https://kuhn-ruess.de
+"""
+import argparse
+import os
+
+import requests
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="UCP / MKE Health Special Agent")
+    parser.add_argument("--node", action="append", nargs=2, metavar=("NAME", "URL"),
+                        default=[], help="Node to check: host name and _ping URL. Repeatable.")
+    parser.add_argument("--service-name", default="UCP Healthy",
+                        help="Service name for the per-node check")
+    parser.add_argument("--piggyback", action="store_true",
+                        help="Distribute the per-node checks to the node hosts via piggyback")
+    parser.add_argument("--collection", action="store_true",
+                        help="Emit the collection check on the configured host")
+    parser.add_argument("--collection-service-name", default="UCP Manager",
+                        help="Service name for the collection check")
+    parser.add_argument("--warn-unhealthy", type=int, default=None,
+                        help="Collection check goes WARN at this many unhealthy nodes")
+    parser.add_argument("--crit-unhealthy", type=int, default=2,
+                        help="Collection check goes CRIT at this many unhealthy nodes")
+    parser.add_argument("--timeout", type=int, default=10, help="HTTP timeout in seconds")
+    parser.add_argument("--no-verify-ssl", action="store_true",
+                        help="Do not verify the TLS certificate of the _ping endpoint")
+    parser.add_argument("--client-cert", help="Path to the client certificate (PEM) for mutual TLS")
+    parser.add_argument("--client-key", help="Path to the client key (PEM) for mutual TLS")
+    return parser.parse_args()
+
+
+def check_node(url, timeout, verify, cert):
+    """Return (healthy, info). Healthy only on HTTP 200; errors count as unhealthy.
+
+    With a client certificate the _ping endpoint returns a detailed message for
+    unhealthy components, so the response body is appended when it carries more
+    than a plain "OK".
+    """
+    try:
+        resp = requests.get(url, timeout=timeout, verify=verify, cert=cert)
+    except requests.exceptions.RequestException:
+        return False, "unreachable"
+
+    info = f"HTTP {resp.status_code}"
+    body = (resp.text or "").strip().replace("\n", " ")
+    if body and body.upper() != "OK":
+        info += f": {body[:200]}"
+    return resp.status_code == 200, info
+
+
+def local_check(state, item, metric, text):
+    """Print one Checkmk local check line: <state> "<item>" <perfdata> <detail>."""
+    print("<<<local>>>")
+    print(f'{state} "{item}" {metric} {text}')
+
+
+def main():
+    args = parse_arguments()
+
+    # Verify against the system trust store unless verification is disabled. The
+    # value is passed explicitly per request (required in OMD sites); honouring
+    # REQUESTS_CA_BUNDLE lets the site/OS CA bundle be used without a config path.
+    # A client cert (optionally with a separate key file) unlocks the detailed
+    # _ping error messages.
+    if args.no_verify_ssl:
+        verify = False
+    else:
+        verify = os.environ.get("REQUESTS_CA_BUNDLE") or True
+    if args.client_cert and args.client_key:
+        cert = (args.client_cert, args.client_key)
+    else:
+        cert = args.client_cert  # None or a combined cert+key PEM
+
+    unhealthy = []
+
+    for name, url in args.node:
+        healthy, info = check_node(url, args.timeout, verify, cert)
+        if not healthy:
+            unhealthy.append((name, url))
+
+        state = 0 if healthy else 2
+        metric = f"healthy={int(healthy)}"
+        text = f"{info} - {'healthy' if healthy else 'unhealthy'} ({url})"
+        item = args.service_name if args.piggyback else f"{args.service_name} {name}"
+
+        if args.piggyback:
+            print(f"<<<<{name}>>>>")
+            local_check(state, item, metric, text)
+            print("<<<<>>>>")
+        else:
+            local_check(state, item, metric, text)
+
+    if args.collection:
+        count = len(unhealthy)
+        total = len(args.node)
+        if count >= args.crit_unhealthy:
+            state = 2
+        elif args.warn_unhealthy is not None and count >= args.warn_unhealthy:
+            state = 1
+        else:
+            state = 0
+
+        text = f"{total - count}/{total} nodes healthy (CRIT at {args.crit_unhealthy})"
+        if unhealthy:
+            text += " - unhealthy: " + ", ".join(f"{n} ({u})" for n, u in unhealthy)
+        else:
+            text += " - checked: " + ", ".join(u for _, u in args.node)
+
+        local_check(state, args.collection_service_name, f"unhealthy_nodes={count}", text)
+
+
+if __name__ == "__main__":
+    main()

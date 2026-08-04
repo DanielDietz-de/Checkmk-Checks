@@ -20,7 +20,7 @@ not orphan services.
 | --- | --- | --- |
 | `palo_alto_antivirus` | `Palo Alto antivirus version` | WARN/CRIT when the antivirus signature database has not been updated for longer than the configured age. |
 | `palo_alto_gp_tunnels` | `Palo Alto GlobalProtect Tunnels` | WARN/CRIT when the remaining free GlobalProtect tunnel slots drop below the configured thresholds. |
-| `palo_alto_threadid` | `Palo Alto TheadID Version` | Reports the current Threat content version (always OK, informational). |
+| `palo_alto_threadid` | `Palo Alto Threat ID Version` | Reports the current Threat content version (always OK, informational). |
 | `palo_alto_urlfilter` | `Palo Alto URL-Filtering Version` | Reports the current URL-Filtering content version (always OK, informational). |
 
 All four checks share the same detection: `sysDescr` must start with
@@ -56,5 +56,6 @@ exist.
 
 - The antivirus "age" is measured from the first time the plugin sees a
   given version string, not from the actual last update on the firewall.
-- The service name for the Threat content version is kept as the historical
-  typo `TheadID Version` so existing services stay intact.
+- The Threat content version service was renamed from the earlier typo
+  `TheadID Version` to `Threat ID Version` in 1.3.2. Existing services are
+  rediscovered under the new name, so run a service discovery after upgrading.
