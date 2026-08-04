@@ -5,7 +5,7 @@
 <!-- compatibility-badges:end -->
 
 Special agent for Pure Storage FlashArray. Queries the FlashArray REST API
-using the `purestorage` Python client and emits multiple Checkmk sections
+using the tested `purestorage==1.19.0` Python client and emits multiple Checkmk sections
 covering alerts, array metadata, hardware components, drives, volumes,
 volume performance, reduction details and TLS certificates.
 
@@ -44,7 +44,7 @@ volume performance, reduction details and TLS certificates.
 | Path | Purpose |
 | --- | --- |
 | `src/pure/libexec/agent_pure` | Special agent talking to the FlashArray REST API via `purestorage`. |
-| `src/pure/server_side_calls/pure.py` | Server-side call wiring: passes `-i <ip> -t <token>` to the agent. |
+| `src/pure/server_side_calls/pure.py` | Server-side call wiring: preserves the Checkmk token reference and forwards timeout and TLS controls. |
 | `src/pure/rulesets/special_agent.py` | WATO special-agent ruleset `pure` with the API token field. |
 | `src/pure/agent_based/alerts.py` | Section + check `pure_fa_errors` (alert counters). |
 | `src/pure/agent_based/array.py` | Array inventory / summary check. |
@@ -62,8 +62,8 @@ volume performance, reduction details and TLS certificates.
 
 ## Installation
 
-1. Install the `purestorage` Python package into the Checkmk site:
-   `pip3 install --no-deps purestorage`
+1. Install the tested `purestorage` client into the Checkmk site:
+   `pip3 install --no-deps purestorage==1.19.0`
 2. On the FlashArray, create an API token for a dedicated user via the UI
    (Settings -> API Client) or on the CLI: `pureadmin create --api-token`.
 3. Install the MKP on the Checkmk site.
@@ -77,7 +77,10 @@ Rule: **Setup -> Agents -> Other integrations -> Pure via WebAPI**
 
 | Parameter | Type | Meaning |
 | --- | --- | --- |
-| `token` | `Password` (required, non-empty) | FlashArray API token passed to `agent_pure` via `-t`. |
+| `token` | `Password` (required, non-empty) | FlashArray API token retained as a Checkmk password-store reference until the agent resolves it. |
+| `timeout` | `Float` | Bounded request timeout in seconds; default 30. |
+| `ca_file` | `String` | Optional CA bundle path for private PKI verification. |
+| `no_cert_check` | `BooleanChoice` | Explicit temporary verification opt-out; mutually exclusive with `ca_file`. |
 
 The host IP address is taken from `HostConfig.primary_ip_config` and
 passed as `-i`.
@@ -99,8 +102,7 @@ created:
 
 ## Known limitations
 
-- Requires `purestorage` to be manually installed in the site - it is not
-  shipped with the MKP.
+- Requires the tested `purestorage==1.19.0` client to be installed manually in the site; it is not shipped with the MKP. The agent validates the required constructor interface before connecting.
 - The agent prints plain error messages and exits on connection or API
   errors; nothing is retried.
 - Hardware filtering is done by name prefix (`CH`, `SH`) and excludes

@@ -19,7 +19,31 @@ from typing import Any, Iterable
 
 SCHEMA_VERSION = 1
 SEVERITY = {"info": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
-SOURCE_SUFFIXES = {".py", ".sh", ".bash", ".php", ".rb", ".ps1"}
+SOURCE_SUFFIXES = {
+    ".py",
+    ".sh",
+    ".bash",
+    ".ksh",
+    ".zsh",
+    ".php",
+    ".rb",
+    ".pl",
+    ".ps1",
+    ".cmd",
+    ".bat",
+}
+SHEBANG_INTERPRETERS = (
+    "python",
+    "/sh",
+    "bash",
+    "ksh",
+    "zsh",
+    "ruby",
+    "php",
+    "perl",
+    "powershell",
+    "pwsh",
+)
 EXCLUDED_SOURCE_PARTS = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", "dist", "tests", "testdata"}
 CREDENTIAL_NAME_RE = re.compile(r"(?:^|_)(?:SECRET|PASSWORD|TOKEN|API_KEY|ACCESS_KEY)(?:_|$)", re.I)
 ROOT_DOCS = ("README.md", "SECURITY.md", "CONTRIBUTING.md", "MAINTENANCE.md", "SUPPORT.md", "LICENSE")
@@ -179,16 +203,20 @@ def audit_secret_boundary(root: Path, package: Path) -> list[Finding]:
 
 
 def source_language(path: Path) -> str | None:
-    if path.suffix.lower() in SOURCE_SUFFIXES:
-        return path.suffix.lower()
-    if path.suffix:
-        return None
+    """Classify known scripts and shebang-driven platform variants."""
+    suffix = path.suffix.lower()
+    if suffix in SOURCE_SUFFIXES:
+        return suffix
     try:
         with path.open("rb") as handle:
             first = handle.readline(512).decode("utf-8", errors="replace").lower()
     except OSError:
         return None
-    return "script" if first.startswith("#!") and any(item in first for item in ("python", "/sh", "bash", "ruby", "php")) else None
+    if first.startswith("#!") and any(
+        interpreter in first for interpreter in SHEBANG_INTERPRETERS
+    ):
+        return "script"
+    return None
 
 
 def source_files(root: Path, active: Iterable[tuple[Path, dict[str, Any]]]) -> Iterable[Path]:
