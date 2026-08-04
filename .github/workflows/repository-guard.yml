@@ -8,80 +8,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: repository-guard-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  apply-reviewed-remediation:
-    if: github.event_name == 'pull_request' && github.head_ref == 'agent/repository-wide-security-documentation-audit'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Check out remediation branch
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          ref: agent/repository-wide-security-documentation-audit
-          fetch-depth: 0
-
-      - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.12"
-
-      - name: Install test runner
-        run: python3 -m pip install --disable-pip-version-check pytest==8.4.2
-
-      - name: Apply reviewed source archive
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import tarfile
-          from pathlib import Path
-
-          archive = Path('.github/remediation/repository-security-remediation.tar.gz')
-          root = Path.cwd().resolve()
-          with tarfile.open(archive, 'r:gz') as handle:
-              for member in handle.getmembers():
-                  destination = (root / member.name).resolve()
-                  if root not in destination.parents and destination != root:
-                      raise SystemExit(f'unsafe archive member: {member.name}')
-              handle.extractall(root, filter='data')
-          PY
-          mv .github/remediation/final-repository-guard.yml .github/workflows/repository-guard.yml
-          rm -f .github/remediation/repository-security-remediation.tar.gz
-          rmdir .github/remediation 2>/dev/null || true
-          rm -f .github/workflows/apply-repository-remediation.yml
-
-      - name: Run focused remediation tests
-        run: |
-          set -euo pipefail
-          packages=(
-            cohesity dell_pmax ec_cleanup hitachi_hnas_rest pure semu
-            service_counter unisphere_powermax
-          )
-          for package in "${packages[@]}"; do
-            python3 -m pytest -q "$package/tests"
-          done
-          python3 tools/ci/full_repository_audit.py --fail-on high --output repository-audit.json
-          python3 -m unittest discover -s tests -p 'test_ci_*.py' -v
-
-      - name: Commit reviewed remediation
-        env:
-          BRANCH_NAME: ${{ github.head_ref }}
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git diff --cached --check
-          git commit -m 'fix(security): remediate legacy transport boundaries'
-          git push origin "HEAD:${BRANCH_NAME}"
-
   guard:
-    if: github.event_name != 'pull_request' || github.head_ref != 'agent/repository-wide-security-documentation-audit'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
