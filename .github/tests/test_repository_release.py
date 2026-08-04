@@ -107,6 +107,23 @@ def test_archive_modes_strip_special_bits(tmp_path: Path) -> None:
         file_object.close()
 
 
+
+def test_release_inventory_is_derived_from_canonical_manifests(
+    tmp_path: Path,
+) -> None:
+    prepare = _load(
+        "prepare_repository_mkp_release_inventory",
+        REPOSITORY / ".github/scripts/prepare_repository_mkp_release.py",
+    )
+    for name in ("alpha", "beta"):
+        _write_manifest(tmp_path / name, _minimal_manifest(name))
+
+    discovered = prepare._discover_info_paths(tmp_path)
+
+    assert [path.parent.parent.name for path in discovered] == ["alpha", "beta"]
+    with pytest.raises(ValueError, match="no active package manifests"):
+        prepare._discover_info_paths(tmp_path / "empty")
+
 def test_alertmanager_release_keeps_custom_rule_namespace(tmp_path: Path) -> None:
     prepare = _load(
         "prepare_repository_mkp_release",

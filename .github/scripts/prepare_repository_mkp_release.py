@@ -56,6 +56,16 @@ def _read_config(path: Path) -> dict[str, Any]:
     return config
 
 
+def _discover_info_paths(repository: Path) -> list[Path]:
+    """Discover active packages exclusively from canonical manifests."""
+    info_paths = sorted(
+        path for path in repository.glob("*/src/info") if path.is_file()
+    )
+    if not info_paths:
+        raise ValueError(f"{repository}: no active package manifests found")
+    return info_paths
+
+
 def _is_legacy_bakery_entry(entry: str) -> bool:
     path = Path(entry)
     return "agent_based" in path.parts and "bakery" in path.name
@@ -200,10 +210,7 @@ def main() -> None:
     config_path = args.config if args.config.is_absolute() else repository / args.config
     config = _read_config(config_path)
 
-    info_paths = sorted(repository.glob("*/src/info"))
-    expected = int(config["expected_package_count"])
-    if len(info_paths) != expected:
-        raise SystemExit(f"Expected {expected} active packages, found {len(info_paths)}")
+    info_paths = _discover_info_paths(repository)
 
     bump_versions = bool(config.get("bump_versions", False))
     preserved = set(config.get("preserve_versions", []))
