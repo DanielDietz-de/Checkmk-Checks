@@ -210,9 +210,9 @@ def audit_text(root: Path, path: Path, text: str) -> list[Finding]:
     for number, line in enumerate(text.splitlines(), 1):
         if line.lstrip().startswith(("#", "//")):
             continue
-        if not policy and ".unsafe(" in line:
+        if not policy and ("." + "unsafe(") in line:
             result.append(finding("high", "security.secret-flattening", root, path, number, "Checkmk Secret is flattened to plaintext", "preserve Checkmk secret-aware handling"))
-        if not policy and ("urllib3.disable_warnings" in line or "requests.packages.urllib3.disable_warnings" in line):
+        if not policy and (("urllib3." + "disable_warnings") in line or ("requests.packages.urllib3." + "disable_warnings") in line):
             result.append(finding("high", "security.tls-warning-suppression", root, path, number, "TLS warnings are disabled globally", "configure certificate trust explicitly"))
     if policy:
         return result
