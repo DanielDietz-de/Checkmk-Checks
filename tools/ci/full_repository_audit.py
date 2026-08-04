@@ -12,6 +12,7 @@ import ast
 import hashlib
 import json
 import re
+import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -45,6 +46,7 @@ SHEBANG_INTERPRETERS = (
     "pwsh",
 )
 EXCLUDED_SOURCE_PARTS = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", "dist", "tests", "testdata"}
+EXCLUDED_REPOSITORY_PARTS = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", "dist"}
 CREDENTIAL_NAME_RE = re.compile(r"(?:^|_)(?:SECRET|PASSWORD|TOKEN|API_KEY|ACCESS_KEY)(?:_|$)", re.I)
 ROOT_DOCS = ("README.md", "SECURITY.md", "CONTRIBUTING.md", "MAINTENANCE.md", "SUPPORT.md", "LICENSE")
 REQUIRED_ROOT_DOCUMENTS = ROOT_DOCS
@@ -56,7 +58,12 @@ DOC_SECTIONS = {
     "troubleshooting": ("troubleshoot", "diagnos", "known limitation"),
     "security": ("security", "credential", "permission", "tls"),
 }
-PRIVATE_KEYS = ("-----BEGIN PRIVATE KEY-----", "-----BEGIN RSA PRIVATE KEY-----", "-----BEGIN OPENSSH PRIVATE KEY-----", "-----BEGIN EC PRIVATE KEY-----")
+PRIVATE_KEYS = (
+    "-----BEGIN " + "PRIVATE KEY-----",
+    "-----BEGIN RSA " + "PRIVATE KEY-----",
+    "-----BEGIN OPENSSH " + "PRIVATE KEY-----",
+    "-----BEGIN EC " + "PRIVATE KEY-----",
+)
 TOKEN_PATTERNS = (
     (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "AWS access-key identifier"),
     (re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{30,}\b"), "GitHub token"),
@@ -229,6 +236,85 @@ def source_files(root: Path, active: Iterable[tuple[Path, dict[str, Any]]]) -> I
             continue
         if source_language(path):
             yield path
+
+
+def repository_files(root: Path) -> Iterable[Path]:
+    """Yield tracked repository files, with a deterministic fallback for test roots."""
+    git_metadata = root / ".git"
+    if git_metadata.exists():
+        try:
+            completed = subprocess.run(
+                ["git", "-C", str(root), "ls-files", "-z"],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise AuditError(f"cannot enumerate tracked repository files: {exc}") from exc
+        candidates = (
+            root / entry.decode("utf-8", errors="surrogateescape")
+            for entry in completed.stdout.split(b"\0")
+            if entry
+        )
+    else:
+        candidates = root.rglob("*")
+    for path in sorted(candidates):
+        if not path.is_file() or path.is_symlink():
+            continue
+        relative = path.relative_to(root)
+        if any(part in EXCLUDED_REPOSITORY_PARTS for part in relative.parts):
+            continue
+        yield path
+
+
+def audit_credential_material(root: Path, path: Path) -> list[Finding]:
+    """Scan every tracked repository file for committed key or token material."""
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        return [
+            finding(
+                "high",
+                "code.unreadable",
+                root,
+                path,
+                1,
+                f"cannot read {path}: {exc}",
+                "store repository content in a readable file",
+            )
+        ]
+    text = data.decode("utf-8", errors="replace")
+    result = []
+    for marker in PRIVATE_KEYS:
+        if marker in text:
+            line = text[: text.index(marker)].count("\n") + 1
+            result.append(
+                finding(
+                    "critical",
+                    "security.private-key-material",
+                    root,
+                    path,
+                    line,
+                    "private-key material appears to be committed",
+                    "revoke and remove the key from history",
+                )
+            )
+    for pattern, label in TOKEN_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            line = text[: match.start()].count("\n") + 1
+            result.append(
+                finding(
+                    "critical",
+                    "security.token-material",
+                    root,
+                    path,
+                    line,
+                    f"possible committed {label}",
+                    "revoke and remove the credential from history",
+                )
+            )
+    return result
 
 
 def call_name(node: ast.AST) -> str:
@@ -411,17 +497,6 @@ def audit_text(root: Path, path: Path, text: str) -> list[Finding]:
             result.append(finding("high", "security.secret-flattening", root, path, number, "Checkmk Secret is flattened to plaintext", "preserve Checkmk secret-aware handling"))
         if not policy and (("urllib3." + "disable_warnings") in line or ("requests.packages.urllib3." + "disable_warnings") in line):
             result.append(finding("high", "security.tls-warning-suppression", root, path, number, "TLS warnings are disabled globally", "configure certificate trust explicitly"))
-    if policy:
-        return result
-    for marker in PRIVATE_KEYS:
-        if marker in text:
-            line = text[: text.index(marker)].count("\n") + 1
-            result.append(finding("critical", "security.private-key-material", root, path, line, "private-key material appears to be committed", "revoke and remove the key from history"))
-    for pattern, label in TOKEN_PATTERNS:
-        match = pattern.search(text)
-        if match:
-            line = text[: match.start()].count("\n") + 1
-            result.append(finding("critical", "security.token-material", root, path, line, f"possible committed {label}", "revoke and remove the credential from history"))
     return result
 
 
@@ -469,6 +544,9 @@ def build_report(root: Path, baseline: set[str]) -> dict[str, Any]:
     for package, data in active:
         findings += audit_package(root, package, data)
         findings += audit_secret_boundary(root, package)
+    credential_paths = list(repository_files(root))
+    for path in credential_paths:
+        findings += audit_credential_material(root, path)
     sources = list(source_files(root, active))
     for path in sources:
         findings += audit_source(root, path)
@@ -480,7 +558,14 @@ def build_report(root: Path, baseline: set[str]) -> dict[str, Any]:
         all_counts[item.severity] += 1
         if item.fingerprint not in baseline:
             new_counts[item.severity] += 1
-    return {"schema_version": SCHEMA_VERSION, "active_packages": len(active), "source_files": len(sources), "summary": {"all": all_counts, "new": new_counts, "total": len(unique)}, "findings": [item.render(baseline) for item in unique]}
+    return {
+    "schema_version": SCHEMA_VERSION,
+    "active_packages": len(active),
+    "source_files": len(sources),
+    "credential_files": len(credential_paths),
+    "summary": {"all": all_counts, "new": new_counts, "total": len(unique)},
+    "findings": [item.render(baseline) for item in unique],
+}
 
 
 def arguments(argv: list[str] | None = None) -> argparse.Namespace:

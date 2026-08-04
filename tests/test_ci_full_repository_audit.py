@@ -66,12 +66,13 @@ class FullRepositoryAuditTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_root(temporary)
             source = root / "example" / "src" / "example" / "plugin.py"
+            marker = "-----BEGIN " + "PRIVATE KEY-----"
             source.write_text(
                 '"""Unsafe example."""\n'
                 "import requests\n"
                 "eval('1')\n"
                 "requests.get('https://example.invalid', verify=False)\n"
-                "KEY = '-----BEGIN PRIVATE KEY-----'\n",
+                f"KEY = {marker!r}\n",
                 encoding="utf-8",
             )
             report = audit.build_report(root, set())
@@ -79,6 +80,48 @@ class FullRepositoryAuditTests(unittest.TestCase):
             self.assertIn("security.dynamic-code-execution", rules)
             self.assertIn("security.tls-verification-disabled", rules)
             self.assertIn("security.private-key-material", rules)
+
+    def test_scans_non_script_files_for_credentials(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self.make_root(temporary)
+            certificate = root / "certificates" / "server.pem"
+            certificate.parent.mkdir(parents=True)
+            certificate.write_text(
+                "-----BEGIN " + "PRIVATE KEY-----\nredacted\n",
+                encoding="utf-8",
+            )
+            workflow = root / ".github" / "workflows" / "deploy.yml"
+            workflow.parent.mkdir(parents=True)
+            token = "ghp_" + ("A" * 30)
+            workflow.write_text(f"token: {token}\n", encoding="utf-8")
+
+            report = audit.build_report(root, set())
+            credential_findings = {
+                (item["path"], item["rule_id"])
+                for item in report["findings"]
+            }
+            self.assertIn(
+                ("certificates/server.pem", "security.private-key-material"),
+                credential_findings,
+            )
+            self.assertIn(
+                (".github/workflows/deploy.yml", "security.token-material"),
+                credential_findings,
+            )
+            self.assertGreater(report["credential_files"], report["source_files"])
+
+    def test_benign_binary_file_is_scanned_without_false_positive(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self.make_root(temporary)
+            binary = root / "assets" / "image.bin"
+            binary.parent.mkdir(parents=True)
+            binary.write_bytes(b"\x00\xff\x10benign-data")
+            report = audit.build_report(root, set())
+            matching = [
+                item for item in report["findings"]
+                if item["path"] == "assets/image.bin"
+            ]
+            self.assertEqual(matching, [])
 
     def test_baseline_marks_existing_findings(self):
         with tempfile.TemporaryDirectory() as temporary:
