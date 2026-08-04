@@ -28,7 +28,7 @@ def generate_as400_agent_command(params: AgentAs400Params, host_config: HostConf
     args.append(params.driver)
     args.append(params.system)
     args.append(params.uid)
-    args.append(params.password.unsafe())
+    args.append(params.password)
 
     yield SpecialAgentCommand(
         command_arguments = (

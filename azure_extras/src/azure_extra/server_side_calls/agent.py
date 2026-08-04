@@ -25,7 +25,7 @@ def azure_arguments(params, host_config):
     args: list[str | Secret] = [
         "--tenant-id", params.tenant_id,
         "--client-id", params.client_id,
-        "--client-secret", params.client_secret.unsafe(),
+        "--client-secret", params.client_secret,
         "--subscription-id", params.subscription_id,
     ]
     
