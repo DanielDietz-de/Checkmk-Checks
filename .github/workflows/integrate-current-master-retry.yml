@@ -74,7 +74,7 @@ jobs:
 
       - name: Build and validate corrected integrated candidate
         env:
-          EXPECTED_PARENT: 560cbbbfbfd3f136004ea60a6404e20da8ad2264
+          EXPECTED_PARENT: 106ffd3b4076f99069300af253b9d2880ee1dd9b
           EXPECTED_MASTER: 7972e92c2cf612342608bd4f674e2e8f6a9ab8f9
           MERGE_BASE: 5f70214a6070cb4e765cefe4eacf4321ae587617
         run: |
@@ -97,20 +97,20 @@ jobs:
               "ucp_health/tests/test_ucp_health_security_defaults.py",
           ):
               path = Path(relative)
-              text = path.read_text(encoding="utf-8")
-              old = (
-                  "            and isinstance(node.func, ast.Attribute)\n"
-                  "            and node.func.attr in {\"get\", \"post\", \"request\"}\n"
-              )
-              new = (
-                  "            and isinstance(node.func, ast.Attribute)\n"
-                  "            and isinstance(node.func.value, ast.Name)\n"
-                  "            and node.func.value.id == \"requests\"\n"
-                  "            and node.func.attr in {\"get\", \"post\", \"request\"}\n"
-              )
-              if old not in text:
+              lines = path.read_text(encoding="utf-8").splitlines()
+              marker = 'and node.func.attr in {"get", "post", "request"}'
+              for index, line in enumerate(lines):
+                  if line.strip() != marker:
+                      continue
+                  indent = line[: len(line) - len(line.lstrip())]
+                  lines[index:index] = [
+                      indent + "and isinstance(node.func.value, ast.Name)",
+                      indent + 'and node.func.value.id == "requests"',
+                  ]
+                  break
+              else:
                   raise SystemExit(f"HTTP-call test marker missing in {relative}")
-              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+              path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
           ruleset = Path("arcgis_portal/src/arcgis_portal/rulesets/agent.py")
           text = ruleset.read_text(encoding="utf-8")
