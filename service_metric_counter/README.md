@@ -54,3 +54,42 @@ Remote aggregation is intentionally not supported with the local automation cred
 | `metric_label` | Human-readable label. |
 
 The check-parameter rule *Service Metric Count* can apply optional upper WARN/CRIT levels to the total.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `service_metric_counter` version `2.0.2`; minimum Checkmk version `2.3.0p1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `service_metric_counter/src/info`; it declares 4 packaged files.
+- Repository MKP artifacts present: `service_metric_counter-1.2.0.mkp`, `service_metric_counter-1.2.1.mkp`, `service_metric_counter-1.2.2.mkp`, `service_metric_counter-2.0.0.mkp`, `service_metric_counter-2.0.1.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/service_metric_counter/agent_based/service.py`.
+- **Server-side calls:** `src/service_metric_counter/server_side_calls/service_counter.py`.
+- **Rulesets:** `src/service_metric_counter/rulesets/ruleset.py`.
+- **Executables:** `src/service_metric_counter/libexec/agent_service_metric_counter`.
+- Registered special-agent names: `service_metric_counter`.
+- Registered check plug-in names: `service_metric_counter`.
+
+### Validation
+
+- Package-specific tests: `tests/test_service_metric_counter_local_site_url.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+- The source reads the local Checkmk automation secret. It must only transmit that credential to a validated loopback site URL.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `local`, `service_metric_counter`.
+- For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
+<!-- code-derived-reference:end -->

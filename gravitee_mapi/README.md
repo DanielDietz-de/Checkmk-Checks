@@ -55,3 +55,42 @@ The host name is taken from the Checkmk host configuration (`host_config.name`).
 - **`API <name> Response Time`** — metrics `response_time`, `response_time_min`, `response_time_max`.
 - **`API <name> Error Rates`** — metrics `requests_2xx`, `requests_4xx`, `requests_5xx`, `requests_total`; WARN on any 4xx, CRIT on any 5xx.
 - **`API <name> Health`** — metric `availability` (percent); thresholds 99 / 95.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `gravitee_mapi` version `0.0.3`; minimum Checkmk version `2.4.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `gravitee_mapi/src/info`; it declares 4 packaged files.
+- Repository MKP artifacts present: `gravitee_mapi-0.0.1.mkp`, `gravitee_mapi-0.0.2.mkp`, `gravitee_mapi-0.0.3.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/gravitee_mapi/agent_based/apis.py`.
+- **Server-side calls:** `src/gravitee_mapi/server_side_calls/agent.py`.
+- **Rulesets:** `src/gravitee_mapi/rulesets/agent.py`.
+- **Executables:** `src/gravitee_mapi/libexec/agent_gravitee_mapi`.
+- Registered special-agent names: `gravitee_mapi`.
+- Registered check plug-in names: `gravitee_mapi_errors`, `gravitee_mapi_health`, `gravitee_mapi_stats`.
+
+### Validation
+
+- Package-specific tests: `tests/test_gravitee_mapi_secret_command_arguments.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- Server-side calls preserve Checkmk password-store references and the executable resolves them at runtime; direct plaintext options, where present, are limited to isolated command-line diagnostics.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+- An explicit TLS-verification opt-out is present. Verification remains the secure default; use the opt-out only as a documented temporary exception and prefer a private CA bundle.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `gravitee_mapi`.
+- For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
+<!-- code-derived-reference:end -->

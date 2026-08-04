@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Server-side command construction for the switch_port_sync integration: special agent."""
+
 
 from collections.abc import Iterable, Mapping
 

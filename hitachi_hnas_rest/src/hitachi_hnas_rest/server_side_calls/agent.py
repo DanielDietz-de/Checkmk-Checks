@@ -29,13 +29,13 @@ def _agent_arguments(params, host_config: HostConfig):
 
     auth_method, auth = params["auth"]
     if auth_method == "api_key":
-        args.extend(("--api-key", auth["key"]))
+        args.extend(("--api-key-id", auth["key"]))
     else:
         args.extend(
             (
                 "--user",
                 auth["username"],
-                "--password",
+                "--password-id",
                 auth["password"],
             )
         )

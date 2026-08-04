@@ -2,7 +2,7 @@
 """Ruleset for the Dell EMC PowerMax special agent."""
 
 from cmk.rulesets.v1 import Help, Title
-from cmk.rulesets.v1.form_specs import DictElement, Dictionary, Password, String
+from cmk.rulesets.v1.form_specs import BooleanChoice, DictElement, Dictionary, Float, InputHint, Integer, Password, String
 from cmk.rulesets.v1.form_specs.validators import LengthInRange
 from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
@@ -29,6 +29,21 @@ def _parameter_form_dell_powermax() -> Dictionary:
                 parameter_form=Password(
                     title=Title("Password"),
                     help_text=Help("Password for the storage-system monitoring account."),
+                ),
+            ),
+            "port": DictElement(
+                parameter_form=Integer(title=Title("API port"), prefill=InputHint(8443)),
+            ),
+            "timeout": DictElement(
+                parameter_form=Float(title=Title("Request timeout in seconds"), prefill=InputHint(30.0)),
+            ),
+            "ca_file": DictElement(
+                parameter_form=String(title=Title("Private CA bundle path")),
+            ),
+            "no_cert_check": DictElement(
+                parameter_form=BooleanChoice(
+                    title=Title("Disable TLS certificate verification"),
+                    help_text=Help("Use only as an explicit temporary compatibility exception."),
                 ),
             ),
         },

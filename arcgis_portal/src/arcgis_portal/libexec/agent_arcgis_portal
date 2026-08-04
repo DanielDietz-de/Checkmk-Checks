@@ -1,6 +1,22 @@
 #!/usr/bin/env python3
+"""Executable data-collection helper for the arcgis_portal integration: agent arcgis portal."""
+
 import argparse
+from pathlib import Path
+
 import requests
+
+
+def _resolve_secret_reference(reference: str) -> str:
+    """Resolve a Checkmk password-store reference without exposing it in argv."""
+    try:
+        secret_id, store_path = reference.split(":", 1)
+    except ValueError as exc:
+        raise ValueError("invalid Checkmk password-store reference") from exc
+    from cmk.utils.password_store import lookup
+
+    return lookup(Path(store_path), secret_id)
+
 
 
 def parse_arguments():
@@ -20,10 +36,14 @@ def parse_arguments():
         help="Portal username for generateToken authentication"
     )
 
-    parser.add_argument(
+    password_group = parser.add_mutually_exclusive_group(required=True)
+    password_group.add_argument(
         "--password",
-        required=False,
-        help="Portal password for generateToken authentication"
+        help="Portal password for direct command-line testing only",
+    )
+    password_group.add_argument(
+        "--password-id",
+        help="Checkmk password-store reference",
     )
 
     parser.add_argument(
@@ -34,16 +54,13 @@ def parse_arguments():
 
     args = parser.parse_args()
 
-    has_user_credentials = bool(args.username and args.password)
-
-    if args.username and not args.password:
-        parser.error("--password is required when --username is set")
-    if args.password and not args.username:
-        parser.error("--username is required when --password is set")
-    if not has_user_credentials:
-        parser.error(
-            "Please provide --username/--password for generateToken authentication"
-        )
+    if not args.username:
+        parser.error("--username is required for generateToken authentication")
+    args.password = (
+        args.password
+        if args.password is not None
+        else _resolve_secret_reference(args.password_id)
+    )
 
     return args
 

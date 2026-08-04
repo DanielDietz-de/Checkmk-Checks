@@ -1,5 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Monitor Hitachi NAS (HNAS) systems via the File Storage REST API: filesystems, snapshots, storage pools, virtual servers (EVS), cluster nodes and system drives.',
+ 'description': 'Monitor Hitachi NAS (HNAS) systems via the File Storage REST API: filesystems, '
+                'snapshots, storage pools, virtual servers (EVS), cluster nodes and system drives.',
  'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks',
  'files': {'cmk_addons_plugins': ['hitachi_hnas_rest/agent_based/filesystems.py',
                                   'hitachi_hnas_rest/agent_based/nodes.py',
@@ -24,4 +25,5 @@
  'title': 'Hitachi HNAS via REST API',
  'version': '1.0.2',
  'version.min_required': '2.4.0',
- 'version.packaged': '2.4.0p18'}
+ 'version.packaged': '2.4.0p18',
+ 'version.usable_until': None}

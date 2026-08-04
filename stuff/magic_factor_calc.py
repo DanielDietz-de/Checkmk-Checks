@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Checkmk extension support code for stuff: magic factor calc."""
+
 
 filesystem_size = int(input("Input Filesystem Size in GB: ").strip())
 referenze_size = int(input("Input reference Size in GB default 20: ").strip() or 20)

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Agent-based parsing, discovery, and check logic for cisco_catalyst_9k_vss_switch_redundancy_state: cisco catalyst 9k vss switch redundancy state."""
+
 
 from cmk.agent_based.v2 import (
     CheckPlugin,

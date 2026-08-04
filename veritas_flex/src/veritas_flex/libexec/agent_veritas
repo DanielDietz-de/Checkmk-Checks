@@ -1,9 +1,24 @@
 #!/usr/bin/env python3
+"""Executable data-collection helper for the veritas_flex integration: agent veritas."""
+
 
 import requests
 import json
 import logging
 import argparse
+from pathlib import Path
+
+
+def _resolve_secret_reference(reference: str) -> str:
+    """Resolve a Checkmk password-store reference passed by server-side calls."""
+    try:
+        secret_id, store_path = reference.split(":", 1)
+    except ValueError as exc:
+        raise ValueError("invalid Checkmk password-store reference") from exc
+    from cmk.utils.password_store import lookup
+
+    return lookup(Path(store_path), secret_id)
+
 
 
 class FlexApi:
@@ -38,11 +53,12 @@ class FlexApi:
             "time-to-live": 10
         }
         self.session = requests.Session()
+        self.session.trust_env = False
         self.session.headers.update(self.headers)
         login_url = ''.join([self.url, 'v1/login'])
         try:
-            r = self.session.post(login_url, data=json.dumps(auth), timeout=5)
-            logging.debug(f'HttpResponse: {r.text}')
+            r = self.session.post(login_url, data=json.dumps(auth), timeout=5, allow_redirects=False)
+            logging.debug('Login response status: %s', r.status_code)
             r.raise_for_status()
         except requests.exceptions.SSLError as e:
             print(f'SSL error occurred please check certificate for {self.url}')
@@ -64,15 +80,15 @@ class FlexApi:
             self.session.headers.update({'refresh-token': self._refresh_token})
         else:
             self.session.headers.update({'refresh-token': ''})
-        logging.debug(f'Login Token: {self._token}')
-        logging.debug(f'Refresh Token: {self._refresh_token}')
+        logging.debug('Login token received: %s', bool(self._token))
+        logging.debug('Refresh token received: %s', bool(self._refresh_token))
 
     def get_nodes(self):
         # api/v1/nodes
         node_url = ''.join([self.url, 'v1/nodes'])
         nodes = []
         try:
-            r = self.session.get(node_url)
+            r = self.session.get(node_url, timeout=10, allow_redirects=False)
             json_body = r.json()
             for node in json_body:
                 nodes.append(node.get('name'))
@@ -86,7 +102,7 @@ class FlexApi:
         instances = []
         instance_url = ''.join([self.url, 'v3/instances'])
         try:
-            r = self.session.get(instance_url)
+            r = self.session.get(instance_url, timeout=10, allow_redirects=False)
             json_body = r.json()
             for instance in json_body:
                 _hostname = instance.get('hostname')
@@ -105,7 +121,7 @@ class FlexApi:
             hardware_health_url = ''.join([self.url, 'v1/nodes/', node, '/health/hardware'])
             logging.debug(f'API URL: {hardware_health_url}')
             try:
-                r = self.session.get(hardware_health_url)
+                r = self.session.get(hardware_health_url, timeout=10, allow_redirects=False)
                 json_body = r.json()
                 logging.debug(f'Hardware Health API Call Response: {json_body}')
                 if len(json_body.keys()) == 3:
@@ -127,7 +143,7 @@ class FlexApi:
             services_health_url = ''.join([self.url, 'v1/nodes/', node, '/health/services'])
             logging.debug(f'API URL: {services_health_url}')
             try:
-                r = self.session.get(services_health_url)
+                r = self.session.get(services_health_url, timeout=10, allow_redirects=False)
                 json_body = r.json()
                 logging.debug(f'Services Health API Call Response: {json_body}')
                 logging.debug(f'Json Body: {json_body}')
@@ -144,8 +160,8 @@ class FlexApi:
 
     def do_logout(self):
         logout_url = ''.join([self.url, 'v1/logout'])
-        r = self.session.post(logout_url)
-        logging.debug(f'Logout API Call Response: {r.text}')
+        r = self.session.post(logout_url, timeout=10, allow_redirects=False)
+        logging.debug('Logout response status: %s', r.status_code)
 
 
 def main():
@@ -154,10 +170,17 @@ def main():
         description='FlexAPI monitoring script')
     parser.add_argument('url')
     parser.add_argument('-u', '--username', required=True)
-    parser.add_argument('-p', '--password', required=True)
+    password_group = parser.add_mutually_exclusive_group(required=True)
+    password_group.add_argument('-p', '--password', help='Password for direct command-line testing')
+    password_group.add_argument('--password-id', help='Checkmk password-store reference')
     parser.add_argument('-d', '--debug',
                         action='store_true')
     args = parser.parse_args()
+    args.password = (
+        args.password
+        if args.password is not None
+        else _resolve_secret_reference(args.password_id)
+    )
     flex = FlexApi()
     flex.setup_logging(args.debug)
     flex.url = f'https://{args.url}/api/'

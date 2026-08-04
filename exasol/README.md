@@ -72,3 +72,42 @@ Check parameter rule: **Service monitoring rules -> Databases -> Exasol database
 - The special agent currently hardcodes `VERIFY = True` while also setting `check_hostname = VERIFY`; TLS verification is not exposed as a WATO option.
 - The `--ignore` argument is treated as an iterable by the agent without splitting the comma-joined value passed from `server_side_calls/exasol.py`, so the ignore list may not filter as expected with multiple entries.
 - Partition size cache is keyed only by hostname under `~/tmp/check_mk/exasol_<host>` with a fixed 1 h TTL.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `exasol` version `2.1.1`; minimum Checkmk version `2.3.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `exasol/src/info`; it declares 10 packaged files.
+- Repository MKP artifacts present: `Exasol-1.0.mkp`, `exasol-1.0.0.mkp`, `exasol-1.0.1.mkp`, `exasol-1.0.2.mkp`, `exasol-2.0.0.mkp`, `exasol-2.0.1.mkp` (additional historical artifacts omitted).
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/exasol/agent_based/database.py`, `src/exasol/agent_based/database_backup.py`, `src/exasol/agent_based/nodes.py`, `src/exasol/agent_based/services.py`, `src/exasol/agent_based/utils/exasol.py`.
+- **Server-side calls:** `src/exasol/server_side_calls/exasol.py`.
+- **Rulesets:** `src/exasol/rulesets/database.py`, `src/exasol/rulesets/special_agent.py`.
+- **Executables:** `src/exasol/libexec/agent_exasol`.
+- **Graphing:** `src/exasol/graphing/database.py`.
+- Registered special-agent names: `exasol`.
+- Registered check plug-in names: `exasol_database`, `exasol_database_backup`, `exasol_nodes`, `exasol_services`.
+
+### Validation
+
+- Package-specific tests: `tests/test_exasol_secret_command_arguments.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- Server-side calls preserve Checkmk password-store references and the executable resolves them at runtime; direct plaintext options, where present, are limited to isolated command-line diagnostics.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `exasol_database`, `exasol_nodes`, `exasol_services`.
+- For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
+<!-- code-derived-reference:end -->

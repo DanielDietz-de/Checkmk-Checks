@@ -47,3 +47,39 @@ which Checkmk 2.4 ships natively — install no custom package for that one.
    `cisco_distr_stack_port` MKP is installed, uninstall it.
 2. Install this MKP on the Checkmk site (>= 2.4).
 3. Run service discovery on the Cisco SNMP hosts.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `cisco` version `2.2.1`; minimum Checkmk version `2.4.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `cisco/src/info`; it declares 5 packaged files.
+- Repository MKP artifacts present: `cisco-2.1.0.mkp`, `cisco-2.2.0.mkp`, `cisco-2.2.1.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/cisco/agent_based/catalyst_switch_state.py`, `src/cisco/agent_based/distr_stack_port.py`, `src/cisco/agent_based/stackring.py`.
+- **Rulesets:** `src/cisco/rulesets/catalyst_switch_state.py`.
+- **Check manuals:** `src/cisco/checkman/cisco_stackring`.
+- Registered check plug-in names: `catalyst_switch_state`, `cisco_distr_stack_port`, `cisco_stackring`.
+
+### Validation
+
+- Package-specific tests: `tests/test_cisco_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- No direct remote-network client was detected in the current source.
+
+### Troubleshooting
+
+- No literal Checkmk section header was detected. Inspect the executable or notification exit status and the Checkmk log relevant to the component type.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

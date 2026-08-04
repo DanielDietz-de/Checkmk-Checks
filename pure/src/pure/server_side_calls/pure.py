@@ -13,15 +13,24 @@ from cmk.server_side_calls.v1 import (
 
 class PureParams(BaseModel):
     token: Secret
+    timeout: float = 30.0
+    ca_file: str | None = None
+    no_cert_check: bool = False
 
 
 def generate_pure_command(params: PureParams, host_config: HostConfig):
     args: list[str | Secret] = [
         "-i",
         host_config.primary_ip_config.address,
-        "-t",
+        "--token-id",
         params.token,
+        "--timeout",
+        str(params.timeout),
     ]
+    if params.ca_file:
+        args.extend(["--ca-file", params.ca_file])
+    if params.no_cert_check:
+        args.append("--no-cert-check")
     yield SpecialAgentCommand(command_arguments=args)
 
 

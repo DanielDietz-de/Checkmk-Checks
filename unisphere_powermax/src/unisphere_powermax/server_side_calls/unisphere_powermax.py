@@ -36,7 +36,7 @@ def generate_powermanx_command(params: AgentPowermaxUParams, host_config: HostCo
     args: list[str | Secret] = [
         "--user",
         params.username,
-        "--password",
+        "--password-id",
         params.password,
     ]
     if params.port:

@@ -84,3 +84,40 @@ assigned memory without WARN/CRIT thresholds.
 - VM name rewriting: names starting with `instance` are shortened to
   `i` — historical quirk kept for compatibility with existing service
   items.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `qemu` version `4.0.1`; minimum Checkmk version `2.3.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `qemu/src/info`; it declares 6 packaged files.
+- Repository MKP artifacts present: `qemu-1.0.mkp`, `qemu-1.1.mkp`, `qemu-2.0.1.mkp`, `qemu-2.0.2.mkp`, `qemu-2.0.mkp`, `qemu-3.0.0.mkp` (additional historical artifacts omitted).
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/qemu/agent_based/bakery.py`, `src/qemu/agent_based/qemu.py`.
+- **Rulesets:** `src/qemu/rulesets/bakery.py`, `src/qemu/rulesets/qemu.py`.
+- **Check manuals:** `src/qemu/checkman/qemu`.
+- **Other packaged source:** `src/agents/plugins/qemu`.
+- Registered check plug-in names: `qemu`.
+
+### Validation
+
+- Package-specific tests: `tests/test_qemu_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- No direct remote-network client was detected in the current source.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `qemu`.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

@@ -25,7 +25,7 @@ def agent_arguments(params, host_config: HostConfig):
     args: list[str | Secret] = [
         "--host-name", host_config.name,
         "--username", params.username,
-        "--password", params.password,
+        "--password-id", params.password,
     ]
 
     if params.proxy_url:

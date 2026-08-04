@@ -7,11 +7,10 @@ https://kuhn-ruess.de
 """
 
 from argparse import ArgumentParser
+from pathlib import Path
 from sys import argv, exit
 
 import math
-import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 try:
     import purestorage
@@ -19,6 +18,17 @@ except ImportError:
     print("Python package purestorage >= 1.4.0 is missing")
     print("Please install it with: <<<pip3 install --no-deps purestorage>>")
     exit(1)
+
+
+def _resolve_secret_reference(reference: str) -> str:
+    """Resolve a Checkmk password-store reference passed by server-side calls."""
+    try:
+        secret_id, store_path = reference.split(":", 1)
+    except ValueError as exc:
+        raise ValueError("invalid Checkmk password-store reference") from exc
+    from cmk.utils.password_store import lookup
+
+    return lookup(Path(store_path), secret_id)
 
 
 def get_alerts():
@@ -182,14 +192,25 @@ if __name__ == '__main__':
     )
 
     parser.add_argument("-i", "--ipaddress", type=str)
-    parser.add_argument("-t", "--token", type=str)
+    token_group = parser.add_mutually_exclusive_group(required=True)
+    token_group.add_argument("-t", "--token", help="API token for direct command-line testing")
+    token_group.add_argument("--token-id", help="Checkmk password-store reference")
+    parser.add_argument("--timeout", type=float, default=30.0)
+    parser.add_argument("--ca-file", help="Private CA bundle used for TLS verification")
+    parser.add_argument("--no-cert-check", action="store_true", help="Explicitly disable TLS verification")
 
     args = parser.parse_args()
+    args.token = args.token if args.token is not None else _resolve_secret_reference(args.token_id)
 
     HARDWARE_CACHE = {}
 
     try:
-        FA = purestorage.FlashArray(args.ipaddress, api_token=args.token)
+        verify = False if args.no_cert_check else (args.ca_file or True)
+        FA = purestorage.FlashArray(
+            args.ipaddress,
+            api_token=args.token,
+            request_kwargs={"verify": verify, "timeout": args.timeout},
+        )
 
     except OSError:
         print(f"Connection error to host {args.ipaddress}")

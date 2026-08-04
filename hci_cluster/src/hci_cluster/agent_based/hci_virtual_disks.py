@@ -1,3 +1,5 @@
+"""Agent-based parsing, discovery, and check logic for hci_cluster: hci virtual disks."""
+
 from .hci_helper import parse_list
 from cmk.agent_based.v2 import (
     AgentSection,

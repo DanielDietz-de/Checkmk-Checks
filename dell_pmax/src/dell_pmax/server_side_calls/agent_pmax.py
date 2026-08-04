@@ -16,6 +16,10 @@ from cmk.server_side_calls.v1 import (
 class AgentDellPowermaxParams(BaseModel):
     username: str
     password: Secret
+    port: int = 8443
+    timeout: float = 30.0
+    ca_file: str | None = None
+    no_cert_check: bool = False
 
 
 def generate_powermax_command(
@@ -25,11 +29,19 @@ def generate_powermax_command(
     args: list[str | Secret] = [
         "-u",
         params.username,
-        "-s",
+        "--secret-id",
         params.password,
         "-a",
         host_config.ipv4_config.address,
+        "--port",
+        str(params.port),
+        "--timeout",
+        str(params.timeout),
     ]
+    if params.ca_file:
+        args.extend(["--ca-file", params.ca_file])
+    if params.no_cert_check:
+        args.append("--no-cert-check")
     yield SpecialAgentCommand(command_arguments=args)
 
 

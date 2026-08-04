@@ -39,9 +39,12 @@ if "SERVICE" == environ.get("NOTIFY_WHAT", "NA") and "OK" != environ.get("NOTIFY
         API_ALARM = "horse.mp3";
 
     session = Session()
+    session.trust_env = False
     session.headers["Accept"] = "application/json"
     resp = session.get(
         f"{API_PROTO}://{API_HOSTNAME}/{API_URL}?alarm={API_ALARM}",
+        timeout=10,
+        allow_redirects=False,
     )
 
     if resp.status_code == 200:

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Agent-based parsing, discovery, and check logic for switch_port_sync: switch port sync."""
+
 
 from __future__ import annotations
 

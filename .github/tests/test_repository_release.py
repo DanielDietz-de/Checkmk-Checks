@@ -45,7 +45,7 @@ def test_manifest_rejects_output_path_injection(tmp_path: Path) -> None:
     package = tmp_path / "package"
     _write_manifest(package, _minimal_manifest("../escape"))
     with pytest.raises(ValueError, match="unsafe name"):
-        build.read_manifest(package, "2.5.0p9", "2.5.99")
+        build.read_manifest(package, "2.5.0p9")
 
 
 def test_manifest_preserves_explicit_usable_until(tmp_path: Path) -> None:
@@ -58,12 +58,12 @@ def test_manifest_preserves_explicit_usable_until(tmp_path: Path) -> None:
     manifest["version.usable_until"] = "2.2.99"
     _write_manifest(package, manifest)
 
-    packaged = build.read_manifest(package, "2.5.0p9", "2.5.99")
+    packaged = build.read_manifest(package, "2.5.0p9")
 
     assert packaged["version.usable_until"] == "2.2.99"
 
 
-def test_manifest_uses_workflow_cap_only_as_default(tmp_path: Path) -> None:
+def test_manifest_preserves_unasserted_upper_bound(tmp_path: Path) -> None:
     build = _load(
         "build_repository_mkps_default_cap",
         REPOSITORY / ".github/scripts/build_repository_mkps.py",
@@ -71,9 +71,9 @@ def test_manifest_uses_workflow_cap_only_as_default(tmp_path: Path) -> None:
     package = tmp_path / "package"
     _write_manifest(package, _minimal_manifest())
 
-    packaged = build.read_manifest(package, "2.5.0p9", "2.5.99")
+    packaged = build.read_manifest(package, "2.5.0p9")
 
-    assert packaged["version.usable_until"] == "2.5.99"
+    assert packaged["version.usable_until"] is None
 
 
 def test_symlink_target_must_stay_in_package(tmp_path: Path) -> None:

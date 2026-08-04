@@ -17,4 +17,5 @@
  'title': 'Cohesity checks',
  'version': '1.5.2',
  'version.min_required': '2.4.0',
- 'version.packaged': '2.4.0p4'}
+ 'version.packaged': '2.4.0p4',
+ 'version.usable_until': None}

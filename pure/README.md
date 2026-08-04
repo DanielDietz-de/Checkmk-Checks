@@ -105,3 +105,43 @@ created:
   errors; nothing is retried.
 - Hardware filtering is done by name prefix (`CH`, `SH`) and excludes
   entries containing `PWR` - non-standard hardware labels may be missed.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `pure` version `2.0.6`; minimum Checkmk version `2.3.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `pure/src/info`; it declares 16 packaged files.
+- Repository MKP artifacts present: `pure-1.0.mkp`, `pure-1.1.mkp`, `pure-1.2.0.mkp`, `pure-1.2.mkp`, `pure-1.3.0.mkp`, `pure-1.3.1.mkp` (additional historical artifacts omitted).
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/pure/agent_based/alerts.py`, `src/pure/agent_based/array.py`, `src/pure/agent_based/arraycertificates.py`, `src/pure/agent_based/arraydetails.py`, `src/pure/agent_based/arrayperformance.py`, `src/pure/agent_based/devices.py`, `src/pure/agent_based/hardware.py`, `src/pure/agent_based/hardware_fan.py` and 4 more.
+- **Server-side calls:** `src/pure/server_side_calls/pure.py`.
+- **Rulesets:** `src/pure/rulesets/special_agent.py`.
+- **Executables:** `src/pure/libexec/agent_pure`.
+- **Graphing:** `src/pure/graphing/arraydetails.py`.
+- Registered special-agent names: `pure`.
+- Registered check plug-in names: `pure_array`, `pure_arraycertificates`, `pure_arraydetails`, `pure_arrayperformance`, `pure_drives`, `pure_fa_errors`, `pure_hardware`, `pure_hardware_fan`, `pure_hardware_nw`, `pure_hardware_psu`, `pure_hardware_temperature`.
+
+### Validation
+
+- Package-specific tests: `tests/test_pure_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- Server-side calls preserve Checkmk password-store references and the executable resolves them at runtime; direct plaintext options, where present, are limited to isolated command-line diagnostics.
+- No direct remote-network client was detected in the current source.
+- An explicit TLS-verification opt-out is present. Verification remains the secure default; use the opt-out only as a documented temporary exception and prefer a private CA bundle.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `df`, `pure_array`, `pure_arraycertificates`, `pure_arraydetails`, `pure_arrayperformance`, `pure_drives`, `pure_fa_errors`, `pure_hardware`.
+- For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
+<!-- code-derived-reference:end -->

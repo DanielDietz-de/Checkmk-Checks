@@ -80,3 +80,43 @@ Check parameter rules (topic *Storage*):
 - The agent uses a `--randomFailures` debug flag that can randomly flip port/volume status in the agent output — do not enable in production.
 - The masking view section is refreshed only every `cache_time` minutes; shorter check intervals will see stale data.
 - HTTP basic auth only; no OAuth / token support.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `unisphere_powermax` version `3.0.12`; minimum Checkmk version `2.3.0p2`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `unisphere_powermax/src/info`; it declares 14 packaged files.
+- Repository MKP artifacts present: `unisphere_powermax-2.2.3.mkp`, `unisphere_powermax-2.2.4.mkp`, `unisphere_powermax-2.2.5.mkp`, `unisphere_powermax-3.0.0.mkp`, `unisphere_powermax-3.0.1.mkp`, `unisphere_powermax-3.0.10.mkp` (additional historical artifacts omitted).
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/unisphere_powermax/agent_based/unisphere_powermax_alert.py`, `src/unisphere_powermax/agent_based/unisphere_powermax_array_performance.py`, `src/unisphere_powermax/agent_based/unisphere_powermax_director.py`, `src/unisphere_powermax/agent_based/unisphere_powermax_health_check.py`, `src/unisphere_powermax/agent_based/unisphere_powermax_health_score.py`, `src/unisphere_powermax/agent_based/unisphere_powermax_masking_view.py`, `src/unisphere_powermax/agent_based/unisphere_powermax_port_group.py`, `src/unisphere_powermax/agent_based/unisphere_powermax_srp.py` and 1 more.
+- **Server-side calls:** `src/unisphere_powermax/server_side_calls/unisphere_powermax.py`.
+- **Rulesets:** `src/unisphere_powermax/rulesets/rulesets.py`.
+- **Executables:** `src/unisphere_powermax/libexec/agent_unisphere_powermax`.
+- **Check manuals:** `src/unisphere_powermax/checkman/unisphere_powermax_port_masking_view_port_summary`, `src/unisphere_powermax/checkman/unisphere_powermax_volume_masking_view_volume_summary`.
+- Registered special-agent names: `unisphere_powermax`.
+- Registered check plug-in names: `unisphere_powermax_alerts`, `unisphere_powermax_array_performance_perf_info`, `unisphere_powermax_array_performance_wp_cache`, `unisphere_powermax_director_status`, `unisphere_powermax_health_check`, `unisphere_powermax_health_score`, `unisphere_powermax_port_group_state`, `unisphere_powermax_port_masking_view_port_summary`, `unisphere_powermax_srp_data_reduction_ratio`, `unisphere_powermax_srp_effective_used`, `unisphere_powermax_srp_physical_used`, `unisphere_powermax_volume_masking_view_volume_summary`.
+
+### Validation
+
+- Package-specific tests: `tests/test_unisphere_powermax_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- Server-side calls preserve Checkmk password-store references and the executable resolves them at runtime; direct plaintext options, where present, are limited to isolated command-line diagnostics.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+- An explicit TLS-verification opt-out is present. Verification remains the secure default; use the opt-out only as a documented temporary exception and prefer a private CA bundle.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `check_mk`, `unisphere_powermax_alert`, `unisphere_powermax_alerts`, `unisphere_powermax_array_performance`, `unisphere_powermax_director`, `unisphere_powermax_health_check`, `unisphere_powermax_health_score`, `unisphere_powermax_port`, `unisphere_powermax_port_group`, `unisphere_powermax_srp`, `unisphere_powermax_volume`.
+- For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
+<!-- code-derived-reference:end -->

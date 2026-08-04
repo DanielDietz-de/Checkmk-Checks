@@ -8,4 +8,5 @@
  'title': 'Veritas Flex Appliance',
  'version': '1.0.3',
  'version.min_required': '2.3.0',
- 'version.packaged': '2.3.0p25'}
+ 'version.packaged': '2.3.0p25',
+ 'version.usable_until': None}

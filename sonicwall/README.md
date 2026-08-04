@@ -47,3 +47,39 @@ The VPN service reports the peer IP in the summary and emits per-second byte rat
 
 - No WATO ruleset files are shipped in the MKP; the CPU, memory and connection checks reference `check_ruleset_name` values (`sonicwall_cpu`, `sonicwall_mem`, `sonicwall_conns`) but the ruleset definitions themselves are not part of this package, so parameters can only be changed through the built-in defaults.
 - The VPN check always reports state OK for a discovered SA; there is no tunnel up/down evaluation.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `sonicwall` version `1.1.1`; minimum Checkmk version `2.4.0p1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `sonicwall/src/info`; it declares 11 packaged files.
+- Repository MKP artifacts present: `sonicwall-1.0.0-dev1.mkp`, `sonicwall-1.0.1.mkp`, `sonicwall-1.1.0.mkp`, `sonicwall-1.1.1.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/sonicwall/agent_based/sonicwall_conns.py`, `src/sonicwall/agent_based/sonicwall_cpu.py`, `src/sonicwall/agent_based/sonicwall_mem.py`, `src/sonicwall/agent_based/sonicwall_vpn.py`.
+- **Rulesets:** `src/sonicwall/rulesets/sonicwall_conns.py`, `src/sonicwall/rulesets/sonicwall_cpu.py`, `src/sonicwall/rulesets/sonicwall_mem.py`.
+- **Check manuals:** `src/sonicwall/checkman/sonicwall_conns`, `src/sonicwall/checkman/sonicwall_cpu`, `src/sonicwall/checkman/sonicwall_mem`, `src/sonicwall/checkman/sonicwall_vpn`.
+- Registered check plug-in names: `sonicwall_conns`, `sonicwall_cpu`, `sonicwall_mem`, `sonicwall_vpn`.
+
+### Validation
+
+- Package-specific tests: `tests/test_sonicwall_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- No direct remote-network client was detected in the current source.
+
+### Troubleshooting
+
+- No literal Checkmk section header was detected. Inspect the executable or notification exit status and the Checkmk log relevant to the component type.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

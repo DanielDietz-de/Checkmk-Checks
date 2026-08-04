@@ -51,3 +51,39 @@ WATO rule: *Setup > Agents > Other integrations > Veritas Flex Appliance*.
 - Health evaluation is naive: the code only counts top-level JSON keys in the response (`len(json_body.keys())`) to decide healthy vs degraded, with no inspection of actual fault details.
 - The agent logs into `/tmp/checkMK_flex.log` on the Checkmk site and does not call `do_logout()`.
 - All results flow through `<<<local>>>`, so there is no dedicated check plugin, ruleset or metric — configuration must happen via the standard *Local checks* rules.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `veritas_flex` version `1.0.3`; minimum Checkmk version `2.3.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `veritas_flex/src/info`; it declares 3 packaged files.
+- Repository MKP artifacts present: `veritas_flex-1.0.2.mkp`, `veritas_flex-1.0.3.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Server-side calls:** `src/veritas_flex/server_side_calls/veritas.py`.
+- **Rulesets:** `src/veritas_flex/rulesets/agent.py`.
+- **Executables:** `src/veritas_flex/libexec/agent_veritas`.
+- Registered special-agent names: `veritas`.
+
+### Validation
+
+- Package-specific tests: `tests/test_veritas_flex_secret_command_arguments.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- Server-side calls preserve Checkmk password-store references and the executable resolves them at runtime; direct plaintext options, where present, are limited to isolated command-line diagnostics.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `local`.
+- For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
+<!-- code-derived-reference:end -->

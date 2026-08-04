@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- encoding: utf-8; py-indent-offset: 4 -*-
+"""Setup ruleset definitions for the mysql_performance integration: mysql tchitrate."""
+
 # Copyright Bastian Kuhn 2018  mail@bastian-kuhn.de
 #
 # This program is free software: you can redistribute it and/or modify

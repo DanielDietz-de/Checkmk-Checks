@@ -65,3 +65,42 @@ State is derived from `provisioningState` and resource specific fields; these ch
 
 - Metric collection (`microsoft.insights/metrics`) is defined in the agent but commented out; only ARM property data is shipped.
 - Hosts are identified via piggyback using Azure resource names, so they must exist as Checkmk hosts (or be auto-created) for services to appear.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `azure_extras` version `1.3.0`; minimum Checkmk version `2.4.0p18`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `azure_extras/src/info`; it declares 10 packaged files.
+- Repository MKP artifacts present: `azure_extras-1.0.0.mkp`, `azure_extras-1.0.1.mkp`, `azure_extras-1.2.0.mkp`, `azure_extras-1.3.0.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/azure_extra/agent_based/azure_extra_azurefirewalls.py`, `src/azure_extra/agent_based/azure_extra_connections.py`, `src/azure_extra/agent_based/azure_extra_dnsresolvers.py`, `src/azure_extra/agent_based/azure_extra_virtualnetworkgateways.py`, `src/azure_extra/agent_based/azure_extra_virtualnetworks.py`.
+- **Server-side calls:** `src/azure_extra/server_side_calls/agent.py`.
+- **Rulesets:** `src/azure_extra/rulesets/agent.py`.
+- **Executables:** `src/azure_extra/libexec/agent_azure_extra`.
+- **Check manuals:** `src/azure_extra/checkman/azure_vpn_gateway_bgp`, `src/azure_extra/checkman/azure_vpn_gateway_bgp_tunnel`.
+- Registered special-agent names: `azure_extra`.
+- Registered check plug-in names: `azure_extra_connections`, `azure_extra_dnsresolvers`, `azure_extra_virtualnetworks`, `azure_extra_virtualnetworks_peerings`, `azure_extra_virtualnetworks_subnets`, `azure_firewall`, `azure_firewall_ipconfig`, `azure_firewall_metrics`, `azure_firewall_policy`, `azure_firewall_rules`, `azure_vpn_gateway`, `azure_vpn_gateway_bgp`, `azure_vpn_gateway_bgp_tunnel`, `azure_vpn_gateway_ipconfig`, `azure_vpn_gateway_metrics`, `azure_vpn_gateway_natrule`, `azure_vpn_gateway_policygroup`, `azure_vpn_gateway_remotepeering`, `azure_vpn_gateway_vpnclient`.
+
+### Validation
+
+- Package-specific tests: `tests/test_azure_extras_secret_command_arguments.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- Server-side calls preserve Checkmk password-store references and the executable resolves them at runtime; direct plaintext options, where present, are limited to isolated command-line diagnostics.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+
+### Troubleshooting
+
+- No literal Checkmk section header was detected. Inspect the executable or notification exit status and the Checkmk log relevant to the component type.
+- For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
+<!-- code-derived-reference:end -->

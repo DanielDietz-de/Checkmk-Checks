@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Setup ruleset definitions for the switch_port_sync integration: special agent."""
+
 
 from cmk.rulesets.v1 import Help, Title
 from cmk.rulesets.v1.form_specs import DictElement, Dictionary, String, validators

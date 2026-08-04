@@ -17,7 +17,7 @@ def generate_agent_command(params: AgentSapAlmParams, host_config: HostConfig):
     args: list[str | Secret] = [
         "--instance", params.instance,
         "--client-id", params.client_id,
-        "--client-secret", params.client_secret,
+        "--client-secret-id", params.client_secret,
         "--filter", quote_plus(params.metric_filter),
     ]
     if params.proxy:

@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+"""Agent-based parsing, discovery, and check logic for frafos_callcenter: frafos calls."""
+
 import time
 from .agent_based_api.v1 import *
 

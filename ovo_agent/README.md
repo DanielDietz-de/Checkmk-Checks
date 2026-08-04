@@ -57,3 +57,39 @@ emitted.
 - The plugin is only effective on hosts that have `waitmax` available;
   otherwise it exits silently.
 - Reports host labels only — no services or metrics are generated.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `ovo_agent` version `1.0.1`; minimum Checkmk version `2.3.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `ovo_agent/src/info`; it declares 5 packaged files.
+- Repository MKP artifacts present: `ovo_agent-1.0.0.mkp`, `ovo_agent-1.0.1.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/ovo_agent/agent_based/bakery.py`.
+- **Rulesets:** `src/ovo_agent/rulesets/bakery.py`.
+- **Other packaged source:** `src/agents/plugins/ovo_agent_aix.sh`, `src/agents/plugins/ovo_agent_linux.sh`, `src/agents/plugins/ovo_agent_solaris.sh`.
+- No special-agent or agent-based check registration was detected; use the component paths above to identify the package entry point.
+
+### Validation
+
+- Package-specific tests: `tests/test_ovo_agent_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- No direct remote-network client was detected in the current source.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `labels`.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

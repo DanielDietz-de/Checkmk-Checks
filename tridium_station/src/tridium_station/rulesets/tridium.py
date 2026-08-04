@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Setup ruleset definitions for the tridium_station integration: tridium."""
+
 # WATO rulesets for the Tridium Niagara Station checks (cmk.rulesets.v1)
 
 from cmk.rulesets.v1 import Help, Label, Title

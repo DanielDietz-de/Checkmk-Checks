@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Agent-based parsing, discovery, and check logic for as400: lib."""
+
 
 from cmk.agent_based.v2 import startswith
 

@@ -16,7 +16,7 @@ def generate_exasol_command(params: ExasolParams, host_config: HostConfig):
     args: list[str | Secret] = [
         "-i", host_config.primary_ip_config.address,
         "-u", params.username,
-        "-p", params.password,
+        "--password-id", params.password,
     ]
     if params.ignore_dbs:
         args.extend(("-I", ",".join(params.ignore_dbs)))

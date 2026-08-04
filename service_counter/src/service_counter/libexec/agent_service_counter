@@ -7,9 +7,8 @@ https://kuhn-ruess.de
 
 from json import dumps
 from os import environ
-from requests import get
+import requests
 from sys import argv
-import urllib3
 
 
 class AgentServicecounter():
@@ -46,27 +45,31 @@ class AgentServicecounter():
         omd_root = environ['OMD_ROOT']
         omd_site = environ['OMD_SITE']
         self._site_url = f"http://localhost:80/{omd_site}/check_mk/api/1.0"
+        self._session = requests.Session()
+        self._session.trust_env = False
 
 
     def get(self, url, params):
         """
         Simple Get
         """
-        # We only talk to localhost, so fine to not verify
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        content = get(
+        content = self._session.get(
             f"{self._site_url}{url}",
-            params = params,
-            headers = {"Authorization": f"Bearer {self._username} {self._secret}"},
-            timeout = self.timeout,
-            verify=False,
+            params=params,
+            headers={"Authorization": f"Bearer {self._username} {self._secret}"},
+            timeout=self.timeout,
+            allow_redirects=False,
         )
-
-        if content.status_code == 200 or content.status_code == 204:
-            return content.json()
-        else:
-            print(content.text)
+        if content.status_code not in {200, 204}:
+            raise RuntimeError(
+                f"Local Checkmk API returned HTTP {content.status_code}"
+            )
+        if not content.content:
             return {}
+        payload = content.json()
+        if not isinstance(payload, dict):
+            raise RuntimeError("Local Checkmk API returned a non-object JSON response")
+        return payload
 
 
     def get_services(self):
@@ -103,7 +106,7 @@ class AgentServicecounter():
                         name, value = label.split(':')
                         service_filter.append({"op": "!=", "left": "host_labels", "right": f"'{name}' '{value}'" })
                         labels.append(label)
-                    service_output.append(f'Labels negaded: {' '.join(labels)}')
+                    service_output.append(f'Labels excluded: {' '.join(labels)}')
                 elif option_name == 'host_name_pattern':
                     # Hostname
                     service_filter.append({"op": "~", "left": "host_name", "right": option})

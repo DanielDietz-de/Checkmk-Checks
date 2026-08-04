@@ -119,3 +119,40 @@ States not present in either list become WARN.
 | `src/bacula_jobs/agent_based/bacula_jobs.py` | Parser, discovery and check. |
 | `src/bacula_jobs/rulesets/bacula_jobs.py` | Job state and age parameters. |
 | `tests/test_bacula_collector.py` | Configuration and command-execution security tests. |
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `bacula_jobs` version `3.1.0`; minimum Checkmk version `2.4.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `bacula_jobs/src/info`; it declares 6 packaged files.
+- Repository MKP artifacts present: `Bacula_Jobs-1.0.mkp`, `Bacula_Jobs-1.1.mkp`, `Bacula_Jobs-2.0.1.mkp`, `Bacula_Jobs-2.0.2.mkp`, `Bacula_Jobs-2.0.mkp`, `bacula_jobs-2.0.3.mkp` (additional historical artifacts omitted).
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/bacula_jobs/agent_based/bacula_jobs.py`, `src/bacula_jobs/agent_based/bakery.py`.
+- **Rulesets:** `src/bacula_jobs/rulesets/bacula_jobs.py`, `src/bacula_jobs/rulesets/bakery.py`.
+- **Check manuals:** `src/bacula_jobs/checkman/bacula_jobs`.
+- **Other packaged source:** `src/agents/plugins/bacula_jobs`.
+- Registered check plug-in names: `bacula_jobs`.
+
+### Validation
+
+- Package-specific tests: `tests/test_bacula_collector.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- No direct remote-network client was detected in the current source.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `bacula_jobs`.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

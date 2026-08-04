@@ -58,3 +58,40 @@ exist.
   given version string, not from the actual last update on the firewall.
 - The service name for the Threat content version is kept as the historical
   typo `TheadID Version` so existing services stay intact.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `palo_alto` version `1.3.1`; minimum Checkmk version `2.4.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `palo_alto/src/info`; it declares 23 packaged files.
+- Repository MKP artifacts present: `palo_alto-1.0.0.mkp`, `palo_alto-1.0.1.mkp`, `palo_alto-1.1.0.mkp`, `palo_alto-1.1.1.mkp`, `palo_alto-1.2.0.mkp`, `palo_alto-1.3.0.mkp` (additional historical artifacts omitted).
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/palo_alto/agent_based/antivirus.py`, `src/palo_alto/agent_based/dos_zone_red.py`, `src/palo_alto/agent_based/gp_tunnels.py`, `src/palo_alto/agent_based/ha.py`, `src/palo_alto/agent_based/panorama.py`, `src/palo_alto/agent_based/sessions.py`, `src/palo_alto/agent_based/threadid.py`, `src/palo_alto/agent_based/urlfilter.py`.
+- **Rulesets:** `src/palo_alto/rulesets/antivirus.py`, `src/palo_alto/rulesets/dos_zone_red.py`, `src/palo_alto/rulesets/gp_tunnels.py`, `src/palo_alto/rulesets/ha.py`, `src/palo_alto/rulesets/panorama.py`, `src/palo_alto/rulesets/sessions.py`, `src/palo_alto/rulesets/threadid.py`, `src/palo_alto/rulesets/urlfilter.py`.
+- **Graphing:** `src/palo_alto/graphing/palo_alto.py`.
+- **Check manuals:** `src/palo_alto/checkman/palo_alto_dos_zone_red`, `src/palo_alto/checkman/palo_alto_ha`, `src/palo_alto/checkman/palo_alto_panorama`, `src/palo_alto/checkman/palo_alto_sessions`, `src/palo_alto/checkman/palo_alto_threadid`, `src/palo_alto/checkman/palo_alto_urlfilter`.
+- Registered check plug-in names: `palo_alto_antivirus`, `palo_alto_dos_zone_red`, `palo_alto_gp_tunnels`, `palo_alto_ha`, `palo_alto_panorama`, `palo_alto_sessions`, `palo_alto_threadid`, `palo_alto_urlfilter`.
+
+### Validation
+
+- Package-specific tests: `tests/test_palo_alto_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- No direct remote-network client was detected in the current source.
+
+### Troubleshooting
+
+- No literal Checkmk section header was detected. Inspect the executable or notification exit status and the Checkmk log relevant to the component type.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

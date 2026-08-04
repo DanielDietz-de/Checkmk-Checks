@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Metric, graph, and perfometer definitions for alteon_application_switch: metrics."""
+
 from cmk.graphing.v1 import metrics, Title
 
 # CPU Metrics (verwendet dynamische Namen: "1sec", "4sec", "64sec")

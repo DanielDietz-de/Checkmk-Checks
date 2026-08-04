@@ -71,3 +71,40 @@ Two parsing helpers in `src/storcli2/agent_based/utils/storcli2.py` handle key-v
 - The agent plugin is Windows-only.
 - `StorCli2 Status` has no tolerance: any value change versus discovery time becomes CRIT; use the discovery filter to exclude noisy keys.
 - Temperature levels are hardcoded defaults (50/60 C) unless overridden via the standard *Temperature* ruleset.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `storcli2` version `1.0.4`; minimum Checkmk version `2.3.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `storcli2/src/info`; it declares 12 packaged files.
+- Repository MKP artifacts present: `storcli2-1.0.0.mkp`, `storcli2-1.0.1.mkp`, `storcli2-1.0.2.mkp`, `storcli2-1.0.3.mkp`, `storcli2-1.0.4.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/storcli2/agent_based/enclosure_list.py`, `src/storcli2/agent_based/pd_list.py`, `src/storcli2/agent_based/status.py`, `src/storcli2/agent_based/temp.py`, `src/storcli2/agent_based/tool.py`, `src/storcli2/agent_based/utils/storcli2.py`, `src/storcli2/agent_based/vd_list.py`, `src/storcli2/agent_based/version.py`.
+- **Rulesets:** `src/storcli2/rulesets/bakery_storcli2.py`, `src/storcli2/rulesets/status.py`.
+- **Bakery:** `src/lib/check_mk/base/cee/plugins/bakery/storcli2.py`.
+- **Other packaged source:** `src/agents/windows/plugins/storcli2.ps1`.
+- Registered check plug-in names: `storcli2_enclosure_list`, `storcli2_pd_list`, `storcli2_status`, `storcli2_temp`, `storcli2_tool`, `storcli2_vd_list`, `storcli2_version`.
+
+### Validation
+
+- Package-specific tests: `tests/test_storcli2_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- No direct remote-network client was detected in the current source.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `storcli2_tool`.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

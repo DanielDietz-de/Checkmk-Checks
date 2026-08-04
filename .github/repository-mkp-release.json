@@ -7,6 +7,5 @@
     "acgateway",
     "switch_port_sync"
   ],
-  "release": "checkmk-2.5.0p9-repository-refresh",
-  "usable_until": "2.5.99"
+  "release": "checkmk-2.5.0p9-repository-refresh"
 }

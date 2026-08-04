@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Metric, graph, and perfometer definitions for cohesity: metrics."""
+
 
 from cmk.graphing.v1 import Title
 from cmk.graphing.v1.metrics import Metric, Unit, SINotation, DecimalNotation, Color, WarningOf, CriticalOf

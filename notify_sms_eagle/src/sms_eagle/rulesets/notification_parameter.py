@@ -59,6 +59,16 @@ def _parameters_sms_eagle():
                 ),
                 required=False,
             ),
+            "allow_insecure_http": DictElement(
+                parameter_form=BooleanChoice(
+                    title=Title("Allow insecure HTTP"),
+                    help_text=Help(
+                        "Permit clear-text HTTP to a remote appliance. Keep this disabled and use HTTPS whenever credentials leave the local host."
+                    ),
+                    prefill=DefaultValue(False),
+                ),
+                required=False,
+            ),
         },
     )
 

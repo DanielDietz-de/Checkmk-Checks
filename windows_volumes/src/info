@@ -1,8 +1,7 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Monitors Windows volumes that are mounted into a folder '
-                '(instead of a drive letter). The agent plug-in is deployable '
-                'via the agent bakery and reports each folder mount; the check '
-                'evaluates health status and filesystem usage using the '
+ 'description': 'Monitors Windows volumes that are mounted into a folder (instead of a drive '
+                'letter). The agent plug-in is deployable via the agent bakery and reports each '
+                'folder mount; the check evaluates health status and filesystem usage using the '
                 'standard filesystem rule.\n',
  'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
  'files': {'agents': ['plugins/windows_volumes.ps1'],
@@ -16,4 +15,5 @@
  'title': 'Windows Volumes (folder mount points)',
  'version': '1.0.0',
  'version.min_required': '2.3.0',
- 'version.packaged': '2.3.0p1'}
+ 'version.packaged': '2.3.0p1',
+ 'version.usable_until': None}

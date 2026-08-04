@@ -37,3 +37,38 @@ All three checks detect A10 devices via `sysObjectID` `.1.3.6.1.4.1.22610.1.3.22
 
 - Uses the pre-2.0 `check_info` API. Still loads on newer Checkmk versions as long as the legacy API is available; needs porting to `cmk.agent_based.v2` if it ever drops.
 - Power supplies that are in state `absent` or `off` at discovery time are not created as services.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `a10_loadbalancer` version `2.0.1`; minimum Checkmk version `2.4.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `a10_loadbalancer/src/info`; it declares 6 packaged files.
+- Repository MKP artifacts present: `a10_loadbalancer-1.0.1.mkp`, `a10_loadbalancer-1.0.2.mkp`, `a10_loadbalancer-1.0.mkp`, `a10_loadbalancer-2.0.0.mkp`, `a10_loadbalancer-2.0.1.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/a10_loadbalancer/agent_based/a10_loadbalancer_fan.py`, `src/a10_loadbalancer/agent_based/a10_loadbalancer_power.py`, `src/a10_loadbalancer/agent_based/a10_loadbalancer_temp.py`.
+- **Check manuals:** `src/a10_loadbalancer/checkman/a10_loadbalancer_fan`, `src/a10_loadbalancer/checkman/a10_loadbalancer_power`, `src/a10_loadbalancer/checkman/a10_loadbalancer_temp`.
+- Registered check plug-in names: `a10_loadbalancer_fan`, `a10_loadbalancer_power`, `a10_loadbalancer_temp`.
+
+### Validation
+
+- Package-specific tests: `tests/test_a10_loadbalancer_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- No direct remote-network client was detected in the current source.
+
+### Troubleshooting
+
+- No literal Checkmk section header was detected. Inspect the executable or notification exit status and the Checkmk log relevant to the component type.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

@@ -187,11 +187,11 @@ def _normalize_alertmanager_override(
     return []
 
 
-def _release_usable_until(manifest: dict[str, Any], default: str) -> str:
-    """Use the workflow cap only when the package has no explicit evidence cap."""
+def _release_usable_until(manifest: dict[str, Any]) -> str | None:
+    """Preserve the canonical upper compatibility claim without broadening it."""
 
     explicit = manifest.get("version.usable_until")
-    return default if explicit is None else str(explicit)
+    return None if explicit is None else str(explicit)
 
 
 def main() -> None:
@@ -208,7 +208,6 @@ def main() -> None:
     bump_versions = bool(config.get("bump_versions", False))
     preserved = set(config.get("preserve_versions", []))
     packaged_version = str(config["packaged_version"])
-    usable_until = str(config["usable_until"])
 
     changed: list[str] = []
     migrations: list[str] = []
@@ -234,10 +233,7 @@ def main() -> None:
         else:
             manifest["version"] = old_version
         manifest["version.packaged"] = packaged_version
-        manifest["version.usable_until"] = _release_usable_until(
-            manifest,
-            usable_until,
-        )
+        manifest["version.usable_until"] = _release_usable_until(manifest)
         manifest["download_url"] = (
             "https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/"
             f"{package_dir.name}"

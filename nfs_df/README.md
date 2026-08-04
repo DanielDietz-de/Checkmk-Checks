@@ -46,3 +46,39 @@ filesystem check.
 
 - The plugin only emits output if `waitmax` is available on the target
   host.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `nfs_df` version `1.0.2`; minimum Checkmk version `2.3.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `nfs_df/src/info`; it declares 3 packaged files.
+- Repository MKP artifacts present: `nfs_df-1.0.0.mkp`, `nfs_df-1.0.1.mkp`, `nfs_df-1.0.2.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/nfs_df/agent_based/bakery.py`.
+- **Rulesets:** `src/nfs_df/rulesets/backery.py`.
+- **Other packaged source:** `src/agents/plugins/nfs_df`.
+- No special-agent or agent-based check registration was detected; use the component paths above to identify the package entry point.
+
+### Validation
+
+- Package-specific tests: `tests/test_nfs_df_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- No direct remote-network client was detected in the current source.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `df`.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

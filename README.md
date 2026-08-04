@@ -2,7 +2,7 @@
 
 Community-maintained Checkmk extensions, special agents, agent plug-ins, notification integrations, Bakery plug-ins, rulesets, check plug-ins, manuals, and installable MKP packages.
 
-The repository is maintained under the `DanielDietz-de` organization and contains code from several generations of Checkmk. Package metadata and the generated [`mkp_index.json`](mkp_index.json) are the authoritative package catalog. Historical copyright and license terms remain in [`LICENSE`](LICENSE).
+The repository is maintained under the `DanielDietz-de` organization and contains code from several generations of Checkmk. Executable source and canonical `*/src/info` manifests are authoritative. The generated [`mkp_index.json`](mkp_index.json), README reference blocks, and MKP archives are derived outputs and must be regenerated when source or metadata changes. Historical copyright and license terms remain in [`LICENSE`](LICENSE).
 
 ## Repository status
 
@@ -16,20 +16,20 @@ Use [`mkp_index.json`](mkp_index.json) to search by package name, title, descrip
 
 ```text
 <package>/
-├── README.md              Package-specific operation and migration guidance
-├── <package>-<version>.mkp
-├── <package>-<version>.mkp.sha256
+├── README.md              Narrative guidance plus a generated source inventory
 ├── src/                   Canonical source and package manifest
-└── tests/                 Focused tests, when available
+├── tests/                 Structural and focused behavior tests
+├── <package>-<version>.mkp         Current validated artifact on master
+└── <package>-<version>.mkp.sha256  Matching checksum on master
 ```
 
-Generated MKP files are release artifacts. Source under `src/` is authoritative for review and maintenance.
+Generated MKP files are release artifacts. Pull-request branches may not contain the next current archive yet: CI builds and validates the complete set first, and the post-merge persistence job replaces historical package archives with one validated current MKP and checksum per package. Source under `src/` remains authoritative throughout. Package operational reference blocks are generated from the canonical manifest and current source tree; change code or metadata first and then regenerate documentation.
 
 ## Installation
 
-1. Select a package whose `version.min_required`, `version.packaged`, and `version.usable_until` metadata matches the target Checkmk release.
+1. Select a package whose `version.min_required` and evidence-based compatibility range cover the target Checkmk release. A null `version.usable_until` means no upper release is asserted; it is not an unlimited-support claim.
 2. Read the package README completely, including prerequisites, migration notes, security boundaries, and known limitations.
-3. Download the `.mkp` and matching `.sha256` file from the package directory.
+3. On `master`, download the current `.mkp` and matching `.sha256` from the package directory. For an unmerged pull request, use only the MKP artifact produced by that pull request's successful repository validation workflow. Do not substitute an older same-name archive.
 4. Verify the checksum before installation:
 
    ```bash
@@ -50,7 +50,7 @@ Packages are classified conceptually as:
 - **Source-tested:** focused behavior tests exist, but representative vendor fixtures or live-system evidence may still be limited.
 - **Legacy or unverified:** retained for existing users, with conservative compatibility claims and a requirement that future source changes add tests.
 
-The repository uses a ratchet model: changed package code must meet the current security and test baseline, while existing legacy findings remain explicitly inventoried instead of being silently treated as safe. See [`MAINTENANCE.md`](MAINTENANCE.md) and [`docs/REPOSITORY_AUDIT.md`](docs/REPOSITORY_AUDIT.md).
+Every active package has structural metadata, documentation, and syntax tests. Focused behavior coverage still varies by integration and is reported by each code-derived package reference. The full-tree audit is enforced at every severity with no legacy-finding baseline. See [`MAINTENANCE.md`](MAINTENANCE.md) and [`docs/REPOSITORY_AUDIT.md`](docs/REPOSITORY_AUDIT.md).
 
 ## Security
 
@@ -63,7 +63,8 @@ Repository controls include:
 - deterministic MKP construction and checksum verification;
 - clean-site validation on supported Checkmk versions;
 - changed-code rejection for dynamic execution, shell invocation, secret flattening, disabled TLS verification, and global TLS-warning suppression;
-- a full-tree security and documentation audit that keeps reviewed legacy findings visible and rejects new high-risk findings.
+- a full-tree security and documentation audit that requires zero findings at every defined severity;
+- deterministic metadata, code-derived documentation, module-docstring, and repository syntax gates.
 
 These controls reduce risk but do not replace deployment-specific review. Many plug-ins run with Checkmk site-user or agent privileges and may handle infrastructure credentials.
 
@@ -75,14 +76,16 @@ Useful repository checks include:
 
 ```bash
 python3 tools/ci/pin_supply_chain.py --check
+python3 tools/ci/sync_package_metadata.py
+python3 tools/ci/generate_package_reference.py
+python3 tools/ci/manage_module_docstrings.py
+python3 tools/ci/check_python_syntax.py
 python3 tools/ci/repository_guard.py --base <base-sha> --head <head-sha>
-python3 tools/ci/full_repository_audit.py \
-  --baseline .github/repository-audit-baseline.json \
-  --fail-on high
+python3 tools/ci/full_repository_audit.py --fail-on low
 python3 -m unittest discover -s tests -p 'test_ci_*.py' -v
 ```
 
-Package-specific tests normally run with `pytest -q <package>/tests`.
+Package tests must also collect successfully together with `pytest -q */tests`; CI then reruns each package directory independently for attributable failures.
 
 ## Support
 

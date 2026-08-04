@@ -78,3 +78,38 @@ The following service labels can force the service level to `0` (`Keine_Bereitsc
 | `tests/test_service_now_notify.py` | URL, retry, assignment and recovery regression tests. |
 
 The middleware payload field names remain customer-specific (`QUELLE`, `ZIEL`, `KURZBESCHREIBUNG`, and so on). `DISPOSITION` currently maps service level `0` to `Keine_Bereitschaft` and `10` to `Bereitschaft`; other values become `N/A`.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `service_now_notify` version `2.2.0`; minimum Checkmk version `2.4.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `service_now_notify/src/info`; it declares 2 packaged files.
+- Repository MKP artifacts present: `service_now_notify-2.0.21.mkp`, `service_now_notify-2.1.0.mkp`, `service_now_notify-2.1.1.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Rulesets:** `src/service_now_notify/rulesets/service_now_notify.py`.
+- **Notifications:** `src/notifications/service_now_notify`.
+- No special-agent or agent-based check registration was detected; use the component paths above to identify the package entry point.
+
+### Validation
+
+- Package-specific tests: `tests/test_service_now_notify.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- The notification obtains its credential from the Checkmk notification context or environment at runtime; no credential is stored in package source or generated documentation.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+
+### Troubleshooting
+
+- No literal Checkmk section header was detected. Inspect the executable or notification exit status and the Checkmk log relevant to the component type.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

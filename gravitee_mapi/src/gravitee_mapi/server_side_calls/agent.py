@@ -15,7 +15,7 @@ class ConfigParser(BaseModel):
 def agent_arguments(params: ConfigParser, host_config: HostConfig):
     args: list[str | Secret] = [
         "--host-name", host_config.name,
-        "--token", params.token,
+        "--token-id", params.token,
         "--environment", params.environment,
         "--interval", str(params.interval),
     ]

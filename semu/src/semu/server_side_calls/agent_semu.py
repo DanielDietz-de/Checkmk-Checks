@@ -22,15 +22,15 @@ class AgentSEMUParams(BaseModel):
 
 
 def generate_semu_agent_command(params: AgentSEMUParams, host_config: HostConfig):
-    args = []
-    args.append(host_config.name)
-    args.append(params.username)
-    args.append(params.password.unsafe())
-
     yield SpecialAgentCommand(
-        command_arguments = (
-            [arg for arg in args]
-        )
+        command_arguments=[
+            "--hostname",
+            host_config.name,
+            "--username",
+            params.username,
+            "--password-id",
+            params.password,
+        ]
     )
 
 

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Agent-based parsing, discovery, and check logic for hp_proliant_fix: hp proliant da cntlr."""
+
 # Copyright (C) 2026 Kuhn & Rueß GmbH - License: GNU General Public License v2
 #
 # Local override of the built-in ``hp_proliant_da_cntlr`` check.

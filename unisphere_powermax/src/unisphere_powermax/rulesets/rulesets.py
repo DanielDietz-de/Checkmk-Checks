@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Setup ruleset definitions for the unisphere_powermax integration: rulesets."""
+
 
 from cmk.rulesets.v1 import Title, Help, Label
 from cmk.rulesets.v1.form_specs import (
@@ -167,7 +169,7 @@ def _valuespec_special_agent_unisphere_powermax():
                         help_text = Help("To avoid stale checks and high load on the "\
                                          "Unisphere API, long running queries can be cached. "\
                                          "The default cache time is 30 minutes. To disable "\
-                                         "the cache, enter a cach time smaler than "\
+                                         "the cache, enter a cache time smaller than "\
                                          "the check interval."),
                         prefill = InputHint(30)
                     ),

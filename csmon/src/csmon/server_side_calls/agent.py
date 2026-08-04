@@ -18,7 +18,7 @@ def csmon_arguments(params, host_config):
     args: list[str | Secret] = [
         "--hostname", host_config.name,
         "--username", params.username,
-        "--password", params.password,
+        "--password-id", params.password,
     ]
     yield SpecialAgentCommand(command_arguments=args)
 

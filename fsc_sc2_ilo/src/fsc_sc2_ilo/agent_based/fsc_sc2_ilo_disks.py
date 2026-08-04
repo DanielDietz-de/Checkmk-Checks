@@ -1,3 +1,5 @@
+"""Agent-based parsing, discovery, and check logic for fsc_sc2_ilo: fsc sc2 ilo disks."""
+
 from collections.abc import Mapping
 from typing import Any
 

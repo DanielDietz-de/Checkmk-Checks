@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8; py-indent-offset: 4 -*-
+"""Agent Bakery deployment definitions for the puppet_agent integration: puppet agent."""
+
 # +-----------------------------------------------------------------+
 # |                                                                 |
 # |        (  ___ \     | \    /\|\     /||\     /|( (    /|        |

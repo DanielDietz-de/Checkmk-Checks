@@ -24,4 +24,5 @@
  'title': 'Raid controller monitoring via StorCLI2 tool',
  'version': '1.0.4',
  'version.min_required': '2.3.0b1',
- 'version.packaged': '2.4.0p9'}
+ 'version.packaged': '2.4.0p9',
+ 'version.usable_until': None}

@@ -58,18 +58,15 @@ def check_health(item, params, section):
     Check health checks for PowerMax systems.
     """
 
-    # @TODO untestet, no data
     health_data = section[item]
 
     state = State.OK
-    info_text = ""
-
-    health_data_result = health_data.get('result')
+    health_data_result = health_data.get("result")
     info_text = f"result: {health_data_result}"
-    l = params.get('criticality', 'crit')
+    criticality = params.get("criticality", "crit")
 
-    if not health_data.get('result'):
-        if l == 'warn':
+    if not health_data_result:
+        if criticality == "warn":
             state = State.WARN
         else:
             state = State.CRIT
@@ -78,12 +75,15 @@ def check_health(item, params, section):
     if check_age_h >= params.get('max_age', 168):
         state = State.UNKNOWN
         max_age_h = params.get('max_age', 168)
-        info_text = f"health check is too old! age: {check_age_h} s >= {max_age_h} hours"
+        info_text = (
+            f"health check is too old: age {check_age_h:.1f} hours "
+            f">= {max_age_h} hours"
+        )
 
     yield Metric(name='health_check_age',
                  value=check_age_h)
 
-    yield Result(state=state, summaary=info_text)
+    yield Result(state=state, summary=info_text)
 
 check_plugin_unisphere_powermax_health_check = CheckPlugin(
     name = "unisphere_powermax_health_check",

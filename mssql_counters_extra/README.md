@@ -62,3 +62,39 @@ All parameters use `SimpleLevels` with sensible defaults.
 | `mssql_counters_latches` | `MSSQL <instance> Latch Waits` | `latch_waits_per_sec`, `latch_wait_time`, `avg_latch_wait_time` |
 | `mssql_counters_memory` | `MSSQL Memory <instance>` | `perf_LazyWrites`, `perf_page_life_expectancy`, `perf_MemoryGrantsPending`, `perf_MemoryUsage` |
 | `mssql_counters_work_files_tables` | `MSSQL <instance> WorkFiles and WorkTables` | `perf_WorkFiles`, `perf_WorkTables` |
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `mssql_counters_extra` version `2.1.2`; minimum Checkmk version `2.4.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `mssql_counters_extra/src/info`; it declares 11 packaged files.
+- Repository MKP artifacts present: `mssql_counters_ext-1.0.1.mkp`, `mssql_counters_ext-1.0.mkp`, `mssql_counters_ext-2.0.6.mkp`, `mssql_counters_ext-2.0.7.mkp`, `mssql_counters_extra-1.0.2.mkp`, `mssql_counters_extra-1.0.3.mkp` (additional historical artifacts omitted).
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/mssql_counters_extra/agent_based/mssql_counters_access_methods.py`, `src/mssql_counters_extra/agent_based/mssql_counters_connections.py`, `src/mssql_counters_extra/agent_based/mssql_counters_latches.py`, `src/mssql_counters_extra/agent_based/mssql_counters_memory.py`, `src/mssql_counters_extra/agent_based/mssql_counters_work_files_tables.py`.
+- **Rulesets:** `src/mssql_counters_extra/rulesets/mssql_counters_access_methods.py`, `src/mssql_counters_extra/rulesets/mssql_counters_connections.py`, `src/mssql_counters_extra/rulesets/mssql_counters_latches.py`, `src/mssql_counters_extra/rulesets/mssql_counters_memory.py`, `src/mssql_counters_extra/rulesets/mssql_counters_work_files_tables.py`.
+- **Check manuals:** `src/mssql_counters_extra/checkman/mssql_counters_connections`.
+- Registered check plug-in names: `mssql_counters_access_methods`, `mssql_counters_connections`, `mssql_counters_latches`, `mssql_counters_memory`, `mssql_counters_work_files_tables`.
+
+### Validation
+
+- Package-specific tests: `tests/test_mssql_counters_extra_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- No direct remote-network client was detected in the current source.
+
+### Troubleshooting
+
+- No literal Checkmk section header was detected. Inspect the executable or notification exit status and the Checkmk log relevant to the component type.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

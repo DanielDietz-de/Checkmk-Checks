@@ -15,7 +15,7 @@ def generate_veritas_command(params: VeritasParams, host_config: HostConfig):
         command_arguments=(
             params.api_url,
             "-u", params.username,
-            "-p", params.password,
+            "--password-id", params.password,
         )
     )
 

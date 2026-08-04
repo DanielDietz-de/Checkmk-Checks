@@ -1,5 +1,7 @@
 #!/usr/bin/python
 # -*- encoding: utf-8; py-indent-offset: 4 -*-
+"""Checkmk extension support code for hp_proliant_status: hp proliant status."""
+
 
 condition_map = {
     '1': ('other', 3),  # the status could not be determined or not present.

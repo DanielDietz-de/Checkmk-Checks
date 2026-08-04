@@ -17,7 +17,7 @@ def icinga_arguments(params, host_config):
     args: list[str | Secret] = [
         "--hostname", params.host_name,
         "--username", params.username,
-        "--password", params.password,
+        "--password-id", params.password,
     ]
     if not params.ssl_verify:
         args.append("--no-verify")

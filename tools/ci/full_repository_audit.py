@@ -20,6 +20,8 @@ from typing import Any, Iterable
 SCHEMA_VERSION = 1
 SEVERITY = {"info": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
 SOURCE_SUFFIXES = {".py", ".sh", ".bash", ".php", ".rb", ".ps1"}
+EXCLUDED_SOURCE_PARTS = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", "dist", "tests", "testdata"}
+CREDENTIAL_NAME_RE = re.compile(r"(?:^|_)(?:SECRET|PASSWORD|TOKEN|API_KEY|ACCESS_KEY)(?:_|$)", re.I)
 ROOT_DOCS = ("README.md", "SECURITY.md", "CONTRIBUTING.md", "MAINTENANCE.md", "SUPPORT.md", "LICENSE")
 REQUIRED_ROOT_DOCUMENTS = ROOT_DOCS
 META_FIELDS = ("name", "title", "description", "version", "version.min_required", "version.packaged", "version.usable_until", "files")
@@ -126,9 +128,14 @@ def audit_package(root: Path, package: Path, primary: dict[str, Any]) -> list[Fi
                     result.append(finding("medium", "metadata.representation-mismatch", root, info_json, 1, f"{field} differs between src/info and src/info.json", "synchronize both metadata representations"))
     for field in META_FIELDS:
         value = primary.get(field)
-        valid = isinstance(value, dict) and bool(value) if field == "files" else isinstance(value, str) and bool(value.strip())
+        if field == "files":
+            valid = isinstance(value, dict) and bool(value)
+        elif field == "version.usable_until":
+            valid = field in primary and (value is None or isinstance(value, str) and bool(value.strip()))
+        else:
+            valid = isinstance(value, str) and bool(value.strip())
         if not valid:
-            result.append(finding("medium", "docs.metadata-incomplete", root, primary_path, 1, f"package metadata field {field!r} is missing or empty", f"document {field} in canonical metadata"))
+            result.append(finding("medium", "docs.metadata-incomplete", root, primary_path, 1, f"package metadata field {field!r} is missing or invalid", f"document {field} in canonical metadata without inventing unsupported compatibility claims"))
     readme = package / "README.md"
     if not readme.is_file():
         return result + [finding("high", "docs.package-readme-missing", root, readme, 1, "active package has no README", "add package installation, configuration, validation, security, and troubleshooting guidance")]
@@ -140,6 +147,35 @@ def audit_package(root: Path, package: Path, primary: dict[str, Any]) -> list[Fi
         if not any(term in normalized for term in terms):
             result.append(finding("low", "docs.package-section-missing", root, readme, 1, f"package README does not appear to cover {section}", f"add a {section} section or state why it is not applicable"))
     return result
+
+
+def audit_secret_boundary(root: Path, package: Path) -> list[Finding]:
+    """Verify that safe Checkmk Secret references are resolved by the executable."""
+    server_files = sorted((package / "src").glob("*/server_side_calls/*.py"))
+    if not server_files:
+        return []
+    server_text = "\n".join(read(path) for path in server_files)
+    # A single occurrence can be an unused import in legacy modules. Multiple uses
+    # indicate a Secret annotation, command argument, or typed argv collection.
+    if server_text.count("Secret") < 2 or ".unsafe(" in server_text:
+        return []
+    agents = sorted((package / "src").glob("*/libexec/agent_*"))
+    if not agents:
+        return []
+    agent_text = "\n".join(read(path) for path in agents)
+    if "password_store" in agent_text and any(token in agent_text for token in ("lookup", "resolve_secret", "dereference_secret")):
+        return []
+    return [
+        finding(
+            "high",
+            "security.secret-reference-unresolved",
+            root,
+            server_files[0],
+            1,
+            "server-side calls pass a safe Secret reference but the executable does not resolve the Checkmk password store",
+            "accept an explicit *-id option and resolve it inside the special agent",
+        )
+    ]
 
 
 def source_language(path: Path) -> str | None:
@@ -156,14 +192,13 @@ def source_language(path: Path) -> str | None:
 
 
 def source_files(root: Path, active: Iterable[tuple[Path, dict[str, Any]]]) -> Iterable[Path]:
-    roots = [package / "src" for package, _ in active]
-    roots += [root / "tools", root / ".github/scripts"]
-    for base in roots:
-        if base.is_dir():
-            for path in sorted(base.rglob("*")):
-                if path.is_file() and source_language(path):
-                    yield path
-    for path in sorted(root.glob("*.py")):
+    del active  # discovery covers packaged, archived, tooling, and standalone utility source
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(root)
+        if any(part in EXCLUDED_SOURCE_PARTS for part in relative.parts):
+            continue
         if source_language(path):
             yield path
 
@@ -186,9 +221,48 @@ def audit_python(root: Path, path: Path, text: str) -> list[Finding]:
     if ast.get_docstring(tree, clean=False) is None:
         result.append(finding("low", "docs.module-docstring-missing", root, path, 1, "Python source file has no module docstring", "describe purpose, inputs, outputs, and safety boundaries"))
     for node in ast.walk(tree):
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            value = node.value
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                literal = value.value.strip()
+                for target in targets:
+                    if not isinstance(target, ast.Name) or not CREDENTIAL_NAME_RE.search(target.id):
+                        continue
+                    looks_like_env_name = target.id.upper().endswith("_ENV") and bool(
+                        re.fullmatch(r"[A-Z][A-Z0-9_]+", literal)
+                    )
+                    looks_like_option = literal.startswith("--")
+                    looks_like_placeholder = literal.lower() in {
+                        "example", "placeholder", "changeme", "change-me", "secret", "password", "token"
+                    }
+                    if len(literal) >= 8 and not (looks_like_env_name or looks_like_option or looks_like_placeholder):
+                        result.append(
+                            finding(
+                                "critical",
+                                "security.hardcoded-credential",
+                                root,
+                                path,
+                                getattr(node, "lineno", 1),
+                                f"credential-like constant {target.id} contains a literal value",
+                                "remove the value, rotate any matching credential, and read it from a secret store at runtime",
+                            )
+                        )
         if not isinstance(node, ast.Call):
             continue
         name, line = call_name(node.func), getattr(node, "lineno", 1)
+        if name == "disable_warnings" or name.endswith(".disable_warnings"):
+            result.append(
+                finding(
+                    "high",
+                    "security.tls-warning-suppression",
+                    root,
+                    path,
+                    line,
+                    "TLS warnings are disabled globally",
+                    "remove global warning suppression and configure trust explicitly",
+                )
+            )
         if name in {"eval", "exec"}:
             result.append(finding("critical", "security.dynamic-code-execution", root, path, line, f"built-in {name}() executes dynamic code", "replace dynamic execution with explicit parsing and validation"))
         if name in {"os.system", "os.popen", "commands.getoutput", "commands.getstatusoutput"}:
@@ -200,6 +274,9 @@ def audit_python(root: Path, path: Path, text: str) -> list[Finding]:
         for keyword in node.keywords:
             if keyword.arg == "verify" and isinstance(keyword.value, ast.Constant) and keyword.value.value is False:
                 result.append(finding("high", "security.tls-verification-disabled", root, path, getattr(keyword.value, "lineno", line), "TLS certificate verification is disabled", "enable verification and support an explicit private CA bundle"))
+        if name.endswith((".get", ".post", ".put", ".patch", ".delete", ".request")) and (name.startswith("requests.") or ".session." in name.lower() or name.startswith("session.")):
+            if not any(keyword.arg == "timeout" for keyword in node.keywords):
+                result.append(finding("medium", "security.network-timeout-missing", root, path, line, f"network call {name} has no explicit timeout", "set a bounded connect/read timeout"))
         if name in {"pickle.load", "pickle.loads", "marshal.load", "marshal.loads"}:
             result.append(finding("high", "security.unsafe-deserialization", root, path, line, f"{name} accepts executable or unsafe data", "use bounded JSON with schema validation"))
     return result
@@ -271,6 +348,7 @@ def build_report(root: Path, baseline: set[str]) -> dict[str, Any]:
     findings = audit_root_docs(root)
     for package, data in active:
         findings += audit_package(root, package, data)
+        findings += audit_secret_boundary(root, package)
     sources = list(source_files(root, active))
     for path in sources:
         findings += audit_source(root, path)

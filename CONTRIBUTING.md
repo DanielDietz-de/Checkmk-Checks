@@ -4,7 +4,7 @@ Contributions are welcome when they are scoped, testable, secure, and maintainab
 
 ## Before changing code
 
-1. Identify the canonical package directory and read its `README.md` and `src/info` metadata.
+1. Identify the canonical package directory and inspect its executable source, registrations, tests, and `src/info` manifest before relying on its README.
 2. Confirm whether the package is runtime-validated, source-tested, or legacy/unverified.
 3. Define the behavioral and security boundary before implementation.
 4. Remove production-specific names, addresses, credentials, IDs, logs, walks, and customer data from examples and fixtures.
@@ -62,7 +62,7 @@ Use representative sanitized fixtures where behavior depends on a vendor payload
 
 Update the package README whenever installation, configuration, permissions, credentials, service discovery, output, compatibility, failure behavior, or removal changes. Include exact host context for commands and distinguish Checkmk-server, monitored-host, and network-device steps.
 
-Update manuals and inline documentation with the code. Do not claim compatibility beyond tested evidence.
+Code and canonical metadata drive documentation. Fix or change implementation and tests first, update human-written manuals and rationale second, then regenerate the package operational reference. Do not preserve documentation that conflicts with executable behavior, and do not claim compatibility beyond tested evidence.
 
 ## Local validation
 
@@ -70,18 +70,19 @@ Run the relevant checks before opening a pull request:
 
 ```bash
 python3 tools/ci/pin_supply_chain.py --check
+python3 tools/ci/sync_package_metadata.py
+python3 tools/ci/generate_package_reference.py
+python3 tools/ci/manage_module_docstrings.py
+python3 tools/ci/check_python_syntax.py
 python3 -m unittest discover -s tests -p 'test_ci_*.py' -v
 pytest -q <package>/tests
-python3 update_readmes.py --check
 ```
 
 For a branch comparison, also run:
 
 ```bash
 python3 tools/ci/repository_guard.py --base <base-sha> --head <head-sha>
-python3 tools/ci/full_repository_audit.py \
-  --baseline .github/repository-audit-baseline.json \
-  --fail-on high
+python3 tools/ci/full_repository_audit.py --fail-on low
 ```
 
 The authoritative workflow additionally builds all active MKPs and validates supported packages in clean Checkmk sites.

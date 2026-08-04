@@ -570,3 +570,41 @@ cmk -R
 - state files use locks and atomic replacement;
 - Bakery scriptlets refuse to change a symbolic-link configuration path;
 - repository checks do not fetch, merge, push, repair, or modify local refs.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `oxidized_backup` version `1.1.1`; minimum Checkmk version `2.4.0b1`; maximum asserted version: 2.5.99.
+- Canonical manifest: `oxidized_backup/src/info`; it declares 8 packaged files.
+- Repository MKP artifacts present: `oxidized_backup-1.0.0.mkp`, `oxidized_backup-1.0.1.mkp`, `oxidized_backup-1.1.0.mkp`, `oxidized_backup-1.1.1.mkp`.
+- Checksum files present: `oxidized_backup-1.0.0.mkp.sha256`, `oxidized_backup-1.0.1.mkp.sha256`, `oxidized_backup-1.1.0.mkp.sha256`, `oxidized_backup-1.1.1.mkp.sha256`.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/oxidized_backup/agent_based/oxidized_backup.py`.
+- **Rulesets:** `src/oxidized_backup/rulesets/ruleset_oxidized_backup_bakery.py`.
+- **Bakery:** `src/lib/python3/cmk/base/cee/plugins/bakery/oxidized_backup.py`.
+- **Check manuals:** `src/oxidized_backup/checkman/oxidized_backup`.
+- **Other packaged source:** `src/agents/plugins/oxidized_backup`, `src/oxidized_backup/bakery_common.py`, `src/oxidized_backup/deployment/oxidized_backup-hook.yml`, `src/oxidized_backup/deployment/oxidized_backup.json`.
+- Registered check plug-in names: `oxidized_backup`.
+
+### Validation
+
+- Package-specific tests: `tests/test_agent_oxidized_backup.py`, `tests/test_bakery_common.py`, `tests/test_bakery_module.py`, `tests/test_examples.py`, `tests/test_mkp_builder.py`, `tests/test_oxidized_backup_check_plugin.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `oxidized_backup`.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

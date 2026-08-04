@@ -5,10 +5,23 @@ Consulting and Development
 https://kuhn-ruess.de
 """
 import argparse
+from pathlib import Path
 import requests
 from requests.auth import HTTPBasicAuth
 from json import JSONDecodeError
 from urllib.parse import unquote, quote, urlencode
+
+
+def _resolve_secret_reference(reference: str) -> str:
+    """Resolve a Checkmk password-store reference without exposing it in argv."""
+    try:
+        secret_id, store_path = reference.split(":", 1)
+    except ValueError as exc:
+        raise ValueError("invalid Checkmk password-store reference") from exc
+    from cmk.utils.password_store import lookup
+
+    return lookup(Path(store_path), secret_id)
+
 
 
 class AgentSapALM():
@@ -38,20 +51,19 @@ class AgentSapALM():
                 print(f"DEBUG: POST request to {access_token_url}")
                 print(f"DEBUG: Request data: {data}")
                 print(f"DEBUG: Request auth: Basic (client_id: {self.client_id})")
-                print(f"DEBUG: Request auth: Basic (client_secret: {self.client_secret})")
+                print("DEBUG: Request auth: Basic (client secret redacted)")
 
-            resp = requests.post(access_token_url, data=data, auth=auth, proxies=self.proxy)
+            resp = requests.post(access_token_url, data=data, auth=auth, proxies=self.proxy, timeout=30, allow_redirects=False)
 
             if self.debug:
                 print(f"DEBUG: Response status: {resp.status_code}")
                 print(f"DEBUG: Response headers: {dict(resp.headers)}")
-                print(f"DEBUG: Response content: {resp.text}")
+                print(f"DEBUG: Response size: {len(resp.content)} bytes")
 
             try:
                 self.access_token = resp.json()['access_token']
             except (KeyError, JSONDecodeError):
-                print(resp.text)
-                raise Exception("Cant fetch token")
+                raise RuntimeError(f"Cannot fetch token (HTTP {resp.status_code})")
         return self.access_token
 
     def get_metric(self):
@@ -69,9 +81,9 @@ class AgentSapALM():
         if self.debug:
             print(f"DEBUG: GET request to {metric_url}")
             print(f"DEBUG: Request params: {service_id_filter}")
-            print(f"DEBUG: Request headers: {headers}")
+            print("DEBUG: Request headers include a bearer token (redacted)")
 
-        resp = requests.get(metric_url, headers=headers, proxies=self.proxy)
+        resp = requests.get(metric_url, headers=headers, proxies=self.proxy, timeout=30, allow_redirects=False)
 
         if self.debug:
             print(f"DEBUG: Response status: {resp.status_code}")
@@ -95,12 +107,18 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument('--client-id', dest='client_id', required=True, help="oAuth Client ID")
-    parser.add_argument(
+    secret_group = parser.add_mutually_exclusive_group(required=True)
+    secret_group.add_argument(
         '--client-secret',
         dest='client_secret',
-        required=True,
-        help="oAuth Client Secret",
+        help="OAuth client secret for direct command-line testing",
     )
+    secret_group.add_argument(
+        '--client-secret-id',
+        dest='client_secret_id',
+        help="Checkmk password-store reference",
+    )
+
     parser.add_argument('--proxy', dest='proxy', help="Proxy to use")
     parser.add_argument('--filter', dest='filter', required=True, help="Filter to use")
     parser.add_argument(
@@ -117,7 +135,11 @@ if __name__ == "__main__":
     agent = AgentSapALM()
     agent.instance_name = args.instance_name
     agent.client_id = args.client_id
-    agent.client_secret = args.client_secret
+    agent.client_secret = (
+        args.client_secret
+        if args.client_secret is not None
+        else _resolve_secret_reference(args.client_secret_id)
+    )
     proxy = {}
     if args.proxy:
         proxy['https'] = args.proxy

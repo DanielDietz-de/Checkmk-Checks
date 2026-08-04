@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Agent-based parsing, discovery, and check logic for cisco_catalyst_9k_redundancy: cisco catalyst 9k redundancy."""
+
 
 from cmk.agent_based.v2 import (
     CheckPlugin,

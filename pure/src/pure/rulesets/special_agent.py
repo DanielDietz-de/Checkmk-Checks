@@ -10,7 +10,11 @@ from cmk.rulesets.v1 import Help, Title
 from cmk.rulesets.v1.form_specs import (
     DictElement,
     Dictionary,
+    BooleanChoice,
+    Float,
+    InputHint,
     Password,
+    String,
 )
 from cmk.rulesets.v1.form_specs.validators import LengthInRange
 from cmk.rulesets.v1.rule_specs import (
@@ -30,6 +34,18 @@ def _valuespec_special_agent_pure():
                     custom_validate = (LengthInRange(min_value=1),),
                 ),
                 required = True,
+            ),
+            "timeout": DictElement(
+                parameter_form=Float(title=Title("Request timeout in seconds"), prefill=InputHint(30.0)),
+            ),
+            "ca_file": DictElement(
+                parameter_form=String(title=Title("Private CA bundle path")),
+            ),
+            "no_cert_check": DictElement(
+                parameter_form=BooleanChoice(
+                    title=Title("Disable TLS certificate verification"),
+                    help_text=Help("Use only as an explicit temporary compatibility exception."),
+                ),
             ),
         },
     )

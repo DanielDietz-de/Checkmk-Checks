@@ -1,3 +1,5 @@
+"""Setup ruleset definitions for the service_now_notify integration: service now notify."""
+
 from cmk.rulesets.v1 import Help, Title
 from cmk.rulesets.v1.form_specs import (
     DefaultValue,

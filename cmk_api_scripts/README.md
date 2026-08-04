@@ -1,37 +1,48 @@
-# CMK API Script
+# Checkmk API scripts
 
+These scripts are standalone repository utilities, not MKP payloads. Their code
+and tests define behavior; this document summarizes the current implementation.
 
-## activate_changes.py
-Activate changes with the CMK2.x API. Please set Url, User and Password inside the Script
+## `activate_changes.py`
 
-Note: If the Activation fails, the Checkmk API as least of 2.2.0p14 still returns an OK state.
-The Script therfore can't detect that.
-### Features:
-- Detect open Changes
-- Trigger Activate Changes
-- Waits for Activate to be finsh
-- Exits if changes are made while the script is started.
-- use -d for Debug Outputs
+Activates pending changes through the supported Checkmk REST API.
 
+Credentials are never stored in the script or accepted as a command-line
+argument. Set them at runtime:
 
-## exchange_publish.py
-Publish new plugin versions to the Checkmk Exchange (exchange.checkmk.com).
-Logs in, compares the newest local `<plugin>/<plugin>-<version>.mkp` against the
-version currently published on the Exchange, and uploads a new version for every
-package that is behind. Uploads go to the Exchange review queue (not instantly live).
-
-Credentials come from the environment (never hard-coded): `EXCHANGE_USER` and
-`EXCHANGE_PASSWORD`. If `EXCHANGE_PASSWORD` is unset you are prompted with getpass.
-
+```bash
+export CHECKMK_SITE_URL='https://checkmk.example.com/mysite'
+export CHECKMK_USER='automation'
+export CHECKMK_SECRET='read-from-a-secret-store'
+python3 activate_changes.py
 ```
+
+`CHECKMK_SECRET` may be omitted for an interactive hidden prompt. The script:
+
+- requires HTTPS for remote servers unless `--allow-http` is deliberately set;
+- verifies TLS by default and supports `--ca-file` for a private CA;
+- rejects redirects and URL-embedded credentials;
+- uses bounded request timeouts and response diagnostics;
+- obtains the pending-change ETag before activation;
+- waits for the activation run to complete;
+- supports `--no-verify` only as an explicit diagnostic opt-out.
+
+Run `python3 activate_changes.py --help` for the complete current interface.
+
+## `exchange_publish.py`
+
+Publishes new plugin versions to the Checkmk Exchange. It compares the newest
+local `<plugin>/<plugin>-<version>.mkp` with the published version and uploads
+packages that are behind.
+
+Credentials come from `EXCHANGE_USER` and `EXCHANGE_PASSWORD`. If
+`EXCHANGE_PASSWORD` is unset, the script prompts with `getpass`.
+
+```bash
 EXCHANGE_USER=you@example.com python3 exchange_publish.py \
-    --repo /path/to/Checkmk-Checks --dry-run
+  --repo /path/to/Checkmk-Checks --dry-run
 ```
-### Features / flags:
-- `--dry-run` — only show what would be uploaded
-- `--only name1,name2` — restrict to these plugins
-- `--exclude name1,name2` — skip these plugins (e.g. packages owned by another author)
-- `--limit N` — upload at most N packages
-- `--description "..."` — version changelog text (`{ver}` / `{name}` placeholders)
-- Auto-detects outdated packages; handles Exchange name collisions by picking the
-  highest published version (the active package).
+
+Relevant flags include `--dry-run`, `--only`, `--exclude`, `--limit`, and
+`--description`. Inspect `python3 exchange_publish.py --help` for the executable
+contract.

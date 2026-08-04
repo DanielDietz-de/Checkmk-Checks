@@ -1,10 +1,10 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'This check monitors the change of an input or if an input is '
-                'missing\n',
+ 'description': 'This check monitors the change of an input or if an input is missing\n',
  'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
  'files': {'cmk_addons_plugins': ['gude_ats/agent_based/ats.py']},
  'name': 'gude_ats',
  'title': 'GUDE ATS Input Monitoring',
  'version': '2.0.3',
  'version.min_required': '2.3.0b1',
- 'version.packaged': '2.4.0p5'}
+ 'version.packaged': '2.4.0p5',
+ 'version.usable_until': None}

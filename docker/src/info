@@ -1,7 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
  'description': 'Agent-Based Docker Monitoring.\n'
-                'Useful if you have fixed sets of Containers running on a '
-                'Host.\n',
+                'Useful if you have fixed sets of Containers running on a Host.\n',
  'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
  'files': {'agents': ['plugins/check_docker.py'],
            'cmk_addons_plugins': ['docker/agent_based/docker_containers.py',
@@ -15,4 +14,5 @@
  'title': 'Agent Based Docker Monitoring',
  'version': '2.1.1',
  'version.min_required': '2.4.0b1',
- 'version.packaged': '2.5.0'}
+ 'version.packaged': '2.5.0',
+ 'version.usable_until': None}

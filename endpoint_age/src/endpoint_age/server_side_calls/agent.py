@@ -1,3 +1,5 @@
+"""Server-side command construction for the endpoint_age integration: agent."""
+
 import json
 
 from pydantic import BaseModel, Field

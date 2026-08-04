@@ -28,7 +28,7 @@ def generate_cmdbsyncer_command(params: CMDBSyncerParams, host_config: HostConfi
         params.api_url,
         "--username",
         params.username,
-        "--password",
+        "--password-id",
         params.password,
         "--timeout",
         params.timeout,

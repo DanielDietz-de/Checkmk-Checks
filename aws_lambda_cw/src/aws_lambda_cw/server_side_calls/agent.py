@@ -35,7 +35,7 @@ class ConfigParser(BaseModel):
 def agent_arguments(params: ConfigParser, host_config: HostConfig):
     args: list[str | Secret] = [
         "--access-key-id", params.access_key_id,
-        "--secret-key", params.secret_key,
+        "--secret-key-id", params.secret_key,
         "--region", params.region,
     ]
     if params.role_arn:

@@ -23,7 +23,6 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 PACKAGED_VERSION = "2.5.0p9"
-USABLE_UNTIL = "2.5.99"
 _SAFE_PACKAGE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 # Source roots below <package>/src for each Checkmk package component. Some
@@ -56,7 +55,6 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, default=Path("dist/repository-mkps"))
     parser.add_argument("--package", action="append", default=[])
     parser.add_argument("--packaged-version", default=PACKAGED_VERSION)
-    parser.add_argument("--usable-until", default=USABLE_UNTIL)
     return parser.parse_args()
 
 
@@ -72,7 +70,7 @@ def discover_package_dirs(repository: Path, selected: list[str]) -> list[Path]:
     return package_dirs
 
 
-def read_manifest(package_dir: Path, packaged_version: str, usable_until: str) -> dict[str, Any]:
+def read_manifest(package_dir: Path, packaged_version: str) -> dict[str, Any]:
     info_path = package_dir / "src" / "info"
     manifest = ast.literal_eval(info_path.read_text(encoding="utf-8"))
     if not isinstance(manifest, dict):
@@ -97,8 +95,9 @@ def read_manifest(package_dir: Path, packaged_version: str, usable_until: str) -
     manifest["version"] = str(manifest["version"])
     manifest["version.min_required"] = str(manifest["version.min_required"])
     explicit_usable_until = manifest.get("version.usable_until")
-    if explicit_usable_until is not None:
-        manifest["version.usable_until"] = str(explicit_usable_until)
+    manifest["version.usable_until"] = (
+        str(explicit_usable_until) if explicit_usable_until is not None else None
+    )
     for field in (
         "name",
         "version",
@@ -108,15 +107,14 @@ def read_manifest(package_dir: Path, packaged_version: str, usable_until: str) -
         if field not in manifest:
             continue
         value = manifest[field]
+        if field == "version.usable_until" and value is None:
+            continue
         if not isinstance(value, str) or not _SAFE_PACKAGE_TOKEN.fullmatch(value):
             raise ValueError(f"{info_path}: unsafe {field} value {value!r}")
 
     manifest["version.packaged"] = packaged_version
-    # The workflow-wide value is a default for packages without an explicit
-    # compatibility cap. An evidence-based lower cap in canonical metadata must
-    # survive packaging unchanged; broadening it would create a false support
-    # claim in the distributable itself.
-    manifest.setdefault("version.usable_until", usable_until)
+    # Preserve the canonical compatibility claim exactly. ``None`` means no
+    # upper release has been asserted and must never be widened during packaging.
     manifest["download_url"] = (
         "https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/"
         f"{package_dir.name}"
@@ -305,7 +303,7 @@ def main() -> None:
 
     metadata: list[dict[str, str]] = []
     for package_dir in discover_package_dirs(repository, args.package):
-        manifest = read_manifest(package_dir, args.packaged_version, args.usable_until)
+        manifest = read_manifest(package_dir, args.packaged_version)
         package_path = build_package(package_dir, output_root, manifest)
         relative_output = package_path.relative_to(output_root)
         metadata.append(

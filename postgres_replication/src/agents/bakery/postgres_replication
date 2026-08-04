@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8; py-indent-offset: 4 -*-
+"""Agent Bakery deployment definitions for the postgres_replication integration: postgres replication."""
+
 
 
 def bake_postgres_replication(opsys, conf, conf_dir, plugins_dir):

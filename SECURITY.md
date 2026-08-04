@@ -26,14 +26,14 @@ Support is determined per package by these canonical metadata fields:
 
 A repository-wide Checkmk validation run confirms package loading, registration, manuals, packaging, and core reload behavior for the configured Checkmk targets. It does not prove every vendor API response, SNMP firmware variant, permission model, or production topology.
 
-Legacy or unverified packages may remain available for existing deployments. Their presence is not a security certification. Review the package README, [`MAINTENANCE.md`](MAINTENANCE.md), and the current repository audit before deployment.
+Structurally validated or legacy-generation packages may remain available for existing deployments. Their presence is not a security certification. Inspect current source and tests first, then use the code-derived README reference, [`MAINTENANCE.md`](MAINTENANCE.md), and the current repository audit as supporting evidence.
 
 ## Security expectations
 
 Contributions must follow these boundaries unless a narrowly scoped, documented, and tested exception is unavoidable:
 
 - never commit secrets, private keys, production credentials, or unsanitized customer data;
-- do not flatten Checkmk `Secret` objects into ordinary strings in server-side command construction;
+- do not flatten Checkmk `Secret` objects into ordinary strings in server-side command construction; pass password-store references and resolve them only in the executable;
 - do not use `eval`, `exec`, `os.system`, `shell=True`, or executable configuration formats;
 - require verified TLS for credential-bearing network traffic and support a deliberate private CA path where appropriate;
 - reject redirects and inherited proxy settings where they could leak credentials or cross a trust boundary;

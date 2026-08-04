@@ -1,3 +1,5 @@
+"""Agent-based parsing, discovery, and check logic for cohesity: cohesity metadata."""
+
 # 2021 created by Sven Rueß, sritd.de
 
 from cmk.agent_based.v2 import (
@@ -15,7 +17,7 @@ def parse_cohesity_metadata(string_table):
     section = {}
     for row in string_table:
         item = row[0]
-        
+
         try:
             number = float(row[1])
         except ValueError:
@@ -34,10 +36,11 @@ agent_section_cohesity_metadata_usage = AgentSection(
 def discovery_cohesity_metadata(section):
     yield Service()
 
+
 def check_cohesity_metadata(params, section):
-    levels = params.get("levels_pct", ('fixed', (None, None)))
+    levels = params.get("levels_pct", ("fixed", (None, None)))
     warn_pct, crit_pct = levels[1]
-        
+
     used_metadata_space_pct = None
     avail_metadata_space = None
 

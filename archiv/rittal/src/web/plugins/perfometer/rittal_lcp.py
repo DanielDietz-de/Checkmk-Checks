@@ -1,5 +1,7 @@
 #!/usr/bin/python
 # -*- encoding: utf-8; py-indent-offset: 4 -*-
+"""Checkmk extension support code for rittal: rittal lcp."""
+
 # +-----------------------------------------------------------------+
 # |                                                                 |
 # |        (  ___ \     | \    /\|\     /||\     /|( (    /|        |

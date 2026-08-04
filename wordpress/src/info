@@ -1,5 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Read-only WordPress core version monitoring without executing WordPress application code.',
+ 'description': 'Read-only WordPress core version monitoring without executing WordPress '
+                'application code.',
  'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/wordpress',
  'files': {'agents': ['plugins/wp_instances.php'],
            'cmk_addons_plugins': ['wordpress/agent_based/bakery.py',
@@ -9,4 +10,5 @@
  'title': 'Wordpress Instance Monitoring',
  'version': '1.0.1',
  'version.min_required': '2.4.0p1',
- 'version.packaged': '2.4.0p8'}
+ 'version.packaged': '2.4.0p8',
+ 'version.usable_until': None}

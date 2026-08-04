@@ -1,3 +1,5 @@
+"""Setup ruleset definitions for the bhome_notify integration: notification parameter."""
+
 from cmk.rulesets.v1 import Help, Title
 from cmk.rulesets.v1.form_specs import (
     DefaultValue,

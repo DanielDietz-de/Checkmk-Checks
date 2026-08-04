@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Agent-based parsing, discovery, and check logic for cisco_vpc: cisco vpc role."""
+
 
 from cmk.agent_based.v2 import (
     CheckPlugin,

@@ -9,8 +9,21 @@ https://kuhn-ruess.de
 import argparse
 import json
 import time
+from pathlib import Path
 
 import requests
+
+
+def _resolve_secret_reference(reference: str) -> str:
+    """Resolve a Checkmk password-store reference without exposing it in argv."""
+    try:
+        secret_id, store_path = reference.split(":", 1)
+    except ValueError as exc:
+        raise ValueError("invalid Checkmk password-store reference") from exc
+    from cmk.utils.password_store import lookup
+
+    return lookup(Path(store_path), secret_id)
+
 
 
 class AgentGraviteeMapi:
@@ -119,11 +132,16 @@ if __name__ == "__main__":
         required=True,
         help="Gravitee MAPI host name (e.g. mapi.example.com)"
     )
-    parser.add_argument(
+    token_group = parser.add_mutually_exclusive_group(required=True)
+    token_group.add_argument(
         "--token",
-        required=True,
-        help="Bearer token for authentication"
+        help="Bearer token for direct command-line testing",
     )
+    token_group.add_argument(
+        "--token-id",
+        help="Checkmk password-store reference",
+    )
+
     parser.add_argument(
         "--environment",
         required=False,
@@ -154,7 +172,7 @@ if __name__ == "__main__":
 
     agent = AgentGraviteeMapi()
     agent.host_name = args.host_name
-    agent.token = args.token
+    agent.token = args.token if args.token is not None else _resolve_secret_reference(args.token_id)
     agent.environment = args.environment
     agent.interval = args.interval
     agent.verify_ssl = not args.no_verify_ssl

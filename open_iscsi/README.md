@@ -87,3 +87,42 @@ mactx_frames: 2920663232
 - Default thresholds in both stats checks are `(0, 0)` for every
   counter, i.e. disabled — levels must be set explicitly via WATO to
   alert on anything.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `open_iscsi` version `2.0.1`; minimum Checkmk version `2.4.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `open_iscsi/src/info`; it declares 11 packaged files.
+- Repository MKP artifacts present: `open-iscsi-0.1.mkp`, `open-iscsi-0.2.mkp`, `open-iscsi-0.3.mkp`, `open_iscsi-1.0.0.mkp`, `open_iscsi-1.0.1.mkp`, `open_iscsi-2.0.0.mkp` (additional historical artifacts omitted).
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/open_iscsi/agent_based/open_iscsi_host_stats.py`, `src/open_iscsi/agent_based/open_iscsi_session_stats.py`, `src/open_iscsi/agent_based/open_iscsi_sessions.py`.
+- **Rulesets:** `src/open_iscsi/rulesets/open_iscsi_host_stats.py`, `src/open_iscsi/rulesets/open_iscsi_session_stats.py`.
+- **Graphing:** `src/open_iscsi/graphing/open_iscsi.py`.
+- **Bakery:** `src/agents/bakery/open-iscsi`.
+- **Check manuals:** `src/open_iscsi/checkman/open_iscsi_host_stats`, `src/open_iscsi/checkman/open_iscsi_session_stats`, `src/open_iscsi/checkman/open_iscsi_sessions`.
+- **Other packaged source:** `src/agents/plugins/open-iscsi`.
+- Registered check plug-in names: `open_iscsi_host_stats`, `open_iscsi_session_stats`, `open_iscsi_sessions`.
+
+### Validation
+
+- Package-specific tests: `tests/test_open_iscsi_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `open-iscsi_host_stats`, `open-iscsi_session_stats`, `open-iscsi_sessions`, `open_iscsi_host_stats`, `open_iscsi_session_stats`, `open_iscsi_sessions`.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

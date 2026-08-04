@@ -52,3 +52,40 @@ Rule: **Setup -> Agents -> Agent rules -> DF Inventory: Filesystem Ownership Dat
 - Linux plugin uses `cut -d ";"` while `/etc/passwd` uses `:` as the delimiter — the shipped Linux plugin as committed will only emit a row if `$MAIL` already contains an `@`, so behaviour depends on whether the `cut` output lines up on your distribution.
 - `notification_parameter.py` takes a "risky path" into `cmk.gui.wato._notification_parameter._mail` and subclasses the private `NotificationParameterMail`. A comment flags that this can break across Checkmk updates.
 - The `df_mail` wrapper depends on the inventory file existing; if it is missing for a host the wrapper falls through to the default mail script without overriding the contact.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `df_inventory` version `2.1.1`; minimum Checkmk version `2.4.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `df_inventory/src/info`; it declares 8 packaged files.
+- Repository MKP artifacts present: `df_inventory-1.0.0.mkp`, `df_inventory-1.0.1.mkp`, `df_inventory-1.0.2.mkp`, `df_inventory-2.0.0.mkp`, `df_inventory-2.0.1.mkp`, `df_inventory-2.0.2.mkp` (additional historical artifacts omitted).
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/df_inventory/agent_based/bakery.py`, `src/df_inventory/agent_based/inventorize_df.py`.
+- **Rulesets:** `src/df_inventory/rulesets/df_inventory.py`, `src/df_inventory/rulesets/notification_parameter.py`.
+- **Notifications:** `src/notifications/df_mail`.
+- **Other packaged source:** `src/agents/plugins/df_inventory_aix.sh`, `src/agents/plugins/df_inventory_linux.sh`, `src/agents/plugins/df_inventory_solaris.sh`.
+- No special-agent or agent-based check registration was detected; use the component paths above to identify the package entry point.
+
+### Validation
+
+- Package-specific tests: `tests/test_df_inventory_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- No direct remote-network client was detected in the current source.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `inventorize_df`.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Agent-based parsing, discovery, and check logic for discover_os_labels: bakery."""
+
 
 from typing import Any  # type: ignore
 from pathlib import Path

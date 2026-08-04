@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Agent-based parsing, discovery, and check logic for wordpress: wp instances."""
+
 
 import itertools
 import json

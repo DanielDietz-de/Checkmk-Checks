@@ -53,3 +53,40 @@ Available WATO rulesets:
 | `alteon_sessions` | Levels for session counters. |
 | `alteon_throughput` | Levels for current throughput. |
 | `alteon_vrrp_status` | Expected VRRP state mapping. |
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `alteon_application_switch` version `3.0.0-dev3`; minimum Checkmk version `2.3.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `alteon_application_switch/src/info`; it declares 25 packaged files.
+- Repository MKP artifacts present: `alteon_application_switch-2.1.8.mkp`, `alteon_application_switch-2.1.9.mkp`, `alteon_application_switch-3.0.0-dev1.mkp`, `alteon_application_switch-3.0.0-dev2.mkp`, `alteon_application_switch-3.0.0-dev3.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/alteon_application_switch/agent_based/alteon_cpu.py`, `src/alteon_application_switch/agent_based/alteon_interface.py`, `src/alteon_application_switch/agent_based/alteon_memory.py`, `src/alteon_application_switch/agent_based/alteon_rserver.py`, `src/alteon_application_switch/agent_based/alteon_sessions.py`, `src/alteon_application_switch/agent_based/alteon_sessions_slb.py`, `src/alteon_application_switch/agent_based/alteon_sessions_ssl.py`, `src/alteon_application_switch/agent_based/alteon_throughput.py` and 2 more.
+- **Rulesets:** `src/alteon_application_switch/rulesets/alteon_cpu.py`, `src/alteon_application_switch/rulesets/alteon_memory.py`, `src/alteon_application_switch/rulesets/alteon_sessions.py`, `src/alteon_application_switch/rulesets/alteon_throughput.py`, `src/alteon_application_switch/rulesets/alteon_vrrp_status.py`.
+- **Graphing:** `src/alteon_application_switch/graphing/metrics.py`.
+- **Check manuals:** `src/alteon_application_switch/checkman/alteon_cpu`, `src/alteon_application_switch/checkman/alteon_memory`, `src/alteon_application_switch/checkman/alteon_rserver`, `src/alteon_application_switch/checkman/alteon_sessions`, `src/alteon_application_switch/checkman/alteon_sessions_slb`, `src/alteon_application_switch/checkman/alteon_sessions_ssl`, `src/alteon_application_switch/checkman/alteon_throughput`, `src/alteon_application_switch/checkman/alteon_vrrp_status` and 1 more.
+- Registered check plug-in names: `alteon_cpu`, `alteon_interface`, `alteon_memory`, `alteon_rserver`, `alteon_sessions`, `alteon_sessions_slb`, `alteon_sessions_ssl`, `alteon_throughput`, `alteon_vrrp_status`, `alteon_vserver`.
+
+### Validation
+
+- Package-specific tests: `tests/test_alteon_application_switch_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- No direct remote-network client was detected in the current source.
+
+### Troubleshooting
+
+- No literal Checkmk section header was detected. Inspect the executable or notification exit status and the Checkmk log relevant to the component type.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

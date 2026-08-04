@@ -1,3 +1,5 @@
+"""Checkmk extension support code for palo_alto_antivirus: palo alto antivirus."""
+
 from cmk.gui.i18n import _
 from cmk.gui.valuespec import (
     Dictionary,

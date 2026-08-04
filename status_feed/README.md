@@ -72,3 +72,42 @@ Scrivito           = https://status.scrivito.com/incidents.atom
 | `tests/test_http_boundary.py` | SSRF, XML and parser-limit regression tests. |
 
 Existing `aws_status_rss` rules and services still do not migrate automatically; configure `status_feed` and rediscover when replacing that legacy package.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `status_feed` version `1.1.0`; minimum Checkmk version `2.3.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `status_feed/src/info`; it declares 6 packaged files.
+- Repository MKP artifacts present: `status_feed-0.1.0.mkp`, `status_feed-1.0.0.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/status_feed/agent_based/status_feed.py`.
+- **Server-side calls:** `src/status_feed/server_side_calls/agent.py`.
+- **Rulesets:** `src/status_feed/rulesets/agent.py`, `src/status_feed/rulesets/status_feed.py`.
+- **Executables:** `src/status_feed/libexec/agent_status_feed`.
+- **Check manuals:** `src/status_feed/checkman/status_feed`.
+- Registered special-agent names: `status_feed`.
+- Registered check plug-in names: `status_feed`.
+
+### Validation
+
+- Package-specific tests: `tests/test_status_feed_http_boundary.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `status_feed`.
+- For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
+<!-- code-derived-reference:end -->

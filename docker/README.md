@@ -67,3 +67,41 @@ If you raise the polling interval, adjust *Normal check interval for service che
 
 - The Bakery ruleset uses the legacy pre-2.3 WATO API (`rulespec_registry`, `HostRulespec`); it will need porting if that API is removed.
 - The agent plugin requires the `docker` PyPI package installed on every monitored host.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `docker` version `2.1.1`; minimum Checkmk version `2.4.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `docker/src/info`; it declares 8 packaged files.
+- Repository MKP artifacts present: `docker-1.0.mkp`, `docker-1.1.0.mkp`, `docker-1.1.1.mkp`, `docker-1.1.2.mkp`, `docker-1.1.3.mkp`, `docker-1.1.4.mkp` (additional historical artifacts omitted).
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/docker/agent_based/docker_containers.py`, `src/docker/agent_based/docker_images.py`, `src/docker/agent_based/docker_info.py`, `src/docker/agent_based/docker_utils.py`.
+- **Rulesets:** `src/docker/rulesets/rulesets.py`.
+- **Graphing:** `src/docker/graphing/docker.py`.
+- **Bakery:** `src/lib/python3/cmk/base/cee/plugins/bakery/docker.py`.
+- **Other packaged source:** `src/agents/plugins/check_docker.py`.
+- Registered check plug-in names: `docker_containers`, `docker_images`, `docker_info`.
+
+### Validation
+
+- Package-specific tests: `tests/test_docker_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `docker_containers`, `docker_images`, `docker_info`.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

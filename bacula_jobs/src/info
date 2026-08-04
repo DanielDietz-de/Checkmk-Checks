@@ -1,5 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Secure Bacula/Bareos catalog monitoring through bounded JSON configuration and non-shell MySQL or PostgreSQL client execution.\n',
+ 'description': 'Secure Bacula/Bareos catalog monitoring through bounded JSON configuration and '
+                'non-shell MySQL or PostgreSQL client execution.\n',
  'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/bacula_jobs',
  'files': {'agents': ['plugins/bacula_jobs'],
            'cmk_addons_plugins': ['bacula_jobs/agent_based/bacula_jobs.py',
@@ -11,4 +12,5 @@
  'title': 'Bacula / Bareos Jobs Monitoring',
  'version': '3.1.0',
  'version.min_required': '2.4.0b1',
- 'version.packaged': '2.5.0'}
+ 'version.packaged': '2.5.0',
+ 'version.usable_until': None}

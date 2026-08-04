@@ -76,3 +76,39 @@ is hardcoded in the check plugin.
   extend the script to monitor more users.
 - The 10-day CRIT threshold is hardcoded in the check plugin; there is no
   `check_ruleset_name`.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `password_age` version `3.0.3`; minimum Checkmk version `2.3.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `password_age/src/info`; it declares 4 packaged files.
+- Repository MKP artifacts present: `password_age-3.0.0.mkp`, `password_age-3.0.1.mkp`, `password_age-3.0.2.mkp`, `password_age-3.0.3.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/password_age/agent_based/bakery.py`, `src/password_age/agent_based/passwort_age.py`.
+- **Rulesets:** `src/password_age/rulesets/bakery.py`.
+- **Other packaged source:** `src/agents/plugins/password_age.sh`.
+- Registered check plug-in names: `password_age`.
+
+### Validation
+
+- Package-specific tests: `tests/test_password_age_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- No direct remote-network client was detected in the current source.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `password_age`.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

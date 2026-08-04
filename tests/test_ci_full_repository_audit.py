@@ -126,5 +126,88 @@ class FullRepositoryAuditTests(unittest.TestCase):
                 )
 
 
+    def test_nullable_upper_compatibility_is_valid(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self.make_root(temporary)
+            info = root / "example" / "src" / "info"
+            metadata = audit.metadata(info)
+            metadata["version.usable_until"] = None
+            info.write_text(repr(metadata), encoding="utf-8")
+            report = audit.build_report(root, set())
+            incomplete = [
+                item for item in report["findings"]
+                if item["rule_id"] == "docs.metadata-incomplete"
+                and "version.usable_until" in item["message"]
+            ]
+            self.assertEqual(incomplete, [])
+
+    def test_detects_unbounded_network_call(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self.make_root(temporary)
+            source = root / "example" / "src" / "example" / "plugin.py"
+            source.write_text(
+                '"""Network client."""\nimport requests\nrequests.get("https://example.invalid")\n',
+                encoding="utf-8",
+            )
+            report = audit.build_report(root, set())
+            rules = {item["rule_id"] for item in report["findings"]}
+            self.assertIn("security.network-timeout-missing", rules)
+
+    def test_safe_secret_requires_agent_side_resolution(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self.make_root(temporary)
+            package = root / "example"
+            server = package / "src" / "example" / "server_side_calls" / "agent.py"
+            server.parent.mkdir(parents=True)
+            server.write_text(
+                '"""Command builder."""\nfrom cmk.server_side_calls.v1 import Secret\nVALUE: Secret\nARGS = [Secret(1)]\n',
+                encoding="utf-8",
+            )
+            executable = package / "src" / "example" / "libexec" / "agent_example"
+            executable.parent.mkdir(parents=True)
+            executable.write_text(
+                '#!/usr/bin/env python3\n"""Agent."""\nprint("ok")\n',
+                encoding="utf-8",
+            )
+            report = audit.build_report(root, set())
+            rules = {item["rule_id"] for item in report["findings"]}
+            self.assertIn("security.secret-reference-unresolved", rules)
+            executable.write_text(
+                '#!/usr/bin/env python3\n"""Agent."""\nfrom cmk.utils import password_store\npassword_store.lookup(None, "id")\n',
+                encoding="utf-8",
+            )
+            report = audit.build_report(root, set())
+            rules = {item["rule_id"] for item in report["findings"]}
+            self.assertNotIn("security.secret-reference-unresolved", rules)
+
+    def test_scans_standalone_source_and_detects_literal_credentials(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self.make_root(temporary)
+            utility = root / "stuff" / "utility.py"
+            utility.parent.mkdir(parents=True)
+            utility.write_text(
+                '"""Standalone utility."""\nSECRET = "01234567-89ab-cdef-0123-456789abcdef"\n',
+                encoding="utf-8",
+            )
+            report = audit.build_report(root, set())
+            rules = {item["rule_id"] for item in report["findings"]}
+            self.assertIn("security.hardcoded-credential", rules)
+            self.assertGreaterEqual(report["source_files"], 2)
+
+    def test_detects_unqualified_tls_warning_suppression(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self.make_root(temporary)
+            source = root / "example" / "src" / "example" / "plugin.py"
+            source.write_text(
+                '"""Unsafe warning policy."""\n'
+                'from urllib3 import disable_warnings\n'
+                'disable_warnings()\n',
+                encoding="utf-8",
+            )
+            report = audit.build_report(root, set())
+            rules = {item["rule_id"] for item in report["findings"]}
+            self.assertIn("security.tls-warning-suppression", rules)
+
+
 if __name__ == "__main__":
     unittest.main()

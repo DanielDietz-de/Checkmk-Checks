@@ -1,3 +1,5 @@
+"""Setup ruleset definitions for the endpoint_age integration: agent."""
+
 from cmk.rulesets.v1 import Help, Title
 from cmk.rulesets.v1.form_specs import (
     CascadingSingleChoice,

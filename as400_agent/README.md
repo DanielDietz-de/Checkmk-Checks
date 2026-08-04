@@ -76,3 +76,41 @@ Rule: **Setup -> Agents -> Other integrations -> AS400 Agent**
 - No thresholds or allow/deny lists on job state; the jobs check plugin has no `check_ruleset_name` wired up.
 - Every active job becomes a service, so discovery on busy LPARs can produce a very large number of services.
 - ASP usage levels currently use the check plugin's built-in defaults; no WATO ruleset for tuning them is shipped yet.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `as400_agent` version `0.0.7`; minimum Checkmk version `2.3.0p1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `as400_agent/src/info`; it declares 5 packaged files.
+- Repository MKP artifacts present: `as400_agent-0.0.1.mkp`, `as400_agent-0.0.2.mkp`, `as400_agent-0.0.3.mkp`, `as400_agent-0.0.4.mkp`, `as400_agent-0.0.5.mkp`, `as400_agent-0.0.6.mkp` (additional historical artifacts omitted).
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/as400_agent/agent_based/asp.py`, `src/as400_agent/agent_based/jobs.py`.
+- **Server-side calls:** `src/as400_agent/server_side_calls/agent_as400.py`.
+- **Rulesets:** `src/as400_agent/rulesets/ruleset.py`.
+- **Executables:** `src/as400_agent/libexec/agent_as400_agent`.
+- Registered special-agent names: `as400_agent`.
+- Registered check plug-in names: `as400_agent_asp`, `as400_agent_jobs`.
+
+### Validation
+
+- Package-specific tests: `tests/test_as400_agent_secret_command_arguments.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- Server-side calls preserve Checkmk password-store references and the executable resolves them at runtime; direct plaintext options, where present, are limited to isolated command-line diagnostics.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `as400_agent_asp`, `as400_agent_jobs`.
+- For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
+<!-- code-derived-reference:end -->

@@ -1,5 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': '',
+ 'description': 'Monitors ArcGIS Portal federation settings and identity-provider certificates '
+                'through the HTTPS REST API.',
  'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks',
  'files': {'cmk_addons_plugins': ['arcgis_portal/agent_based/certificates.py',
                                   'arcgis_portal/libexec/agent_arcgis_portal',
@@ -9,4 +10,5 @@
  'title': 'Arcgis Portal Monitoring',
  'version': '0.0.4',
  'version.min_required': '2.4.0',
- 'version.packaged': '2.4.0p18'}
+ 'version.packaged': '2.4.0p18',
+ 'version.usable_until': None}

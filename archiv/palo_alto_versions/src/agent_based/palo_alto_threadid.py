@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""Agent-based parsing, discovery, and check logic for palo_alto_versions: palo alto threadid."""
+
 
 from .agent_based_api.v1 import (
     all_of,

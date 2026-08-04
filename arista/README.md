@@ -42,3 +42,39 @@ Items are discovered by unit:
 
 - Uses the pre-2.0 `check_info` API with `temperature.include` and `fan.include`. Will keep working as long as Checkmk still ships the legacy API and include files.
 - Entity descriptions starting with `PhyAlaska` are skipped for the temperature discovery to avoid spurious sensors.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `arista` version `2.0.1`; minimum Checkmk version `2.4.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `arista/src/info`; it declares 5 packaged files.
+- Repository MKP artifacts present: `arista-1.0.0.mkp`, `arista-1.0.1.mkp`, `arista-1.0.2.mkp`, `arista-1.0.4.mkp`, `arista-2.0.0.mkp`, `arista-2.0.1.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/arista/agent_based/arista.py`.
+- **Rulesets:** `src/arista/rulesets/arista_voltage.py`.
+- **Check manuals:** `src/arista/checkman/arista`, `src/arista/checkman/arista_fan`, `src/arista/checkman/arista_voltage`.
+- Registered check plug-in names: `arista`, `arista_fan`, `arista_voltage`.
+
+### Validation
+
+- Package-specific tests: `tests/test_arista_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- No direct remote-network client was detected in the current source.
+
+### Troubleshooting
+
+- No literal Checkmk section header was detected. Inspect the executable or notification exit status and the Checkmk log relevant to the component type.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

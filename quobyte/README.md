@@ -101,3 +101,43 @@ normal *Parameters for discovered services* tree.
   on the Python type annotation.
 - Quota parsing assumes a single `current_usage` entry per quota - the
   source explicitly notes this may be wrong for multi-metric quotas.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `quobyte` version `2.1.1`; minimum Checkmk version `2.4.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `quobyte/src/info`; it declares 14 packaged files.
+- Repository MKP artifacts present: `quobyte-1.0.0.mkp`, `quobyte-1.1.0.mkp`, `quobyte-1.1.1.mkp`, `quobyte-1.1.2.mkp`, `quobyte-1.1.3.mkp`, `quobyte-1.1.4.mkp` (additional historical artifacts omitted).
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/quobyte/agent_based/devices.py`, `src/quobyte/agent_based/healthmanager.py`, `src/quobyte/agent_based/quota.py`, `src/quobyte/agent_based/services.py`, `src/quobyte/agent_based/volumes.py`.
+- **Server-side calls:** `src/quobyte/server_side_calls/quobyte.py`.
+- **Rulesets:** `src/quobyte/rulesets/agent.py`, `src/quobyte/rulesets/devices.py`, `src/quobyte/rulesets/volumes.py`.
+- **Executables:** `src/quobyte/libexec/agent_quobyte`.
+- **Graphing:** `src/quobyte/graphing/graphs.py`, `src/quobyte/graphing/metrics.py`, `src/quobyte/graphing/perfometer.py`.
+- **Check manuals:** `src/quobyte/checkman/quobyte_devices`.
+- Registered special-agent names: `quobyte`.
+- Registered check plug-in names: `quobyte_devices`, `quobyte_healthmanager`, `quobyte_quotas`, `quobyte_services`, `quobyte_volumes`.
+
+### Validation
+
+- Package-specific tests: `tests/test_quobyte_secret_command_arguments.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- Server-side calls preserve Checkmk password-store references and the executable resolves them at runtime; direct plaintext options, where present, are limited to isolated command-line diagnostics.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `quobyte_devices`, `quobyte_healthmanager`, `quobyte_quotas`, `quobyte_services`, `quobyte_volumes`.
+- For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
+<!-- code-derived-reference:end -->

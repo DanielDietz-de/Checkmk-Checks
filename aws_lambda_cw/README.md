@@ -64,3 +64,42 @@ Rule: **Setup → Agents → Other integrations → AWS Lambda (CloudWatch)**
 
 Rule: **Setup → Services → Service monitoring rules → AWS Lambda (CloudWatch)**
 configures the upper levels for errors, error rate, throttles and duration.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `aws_lambda_cw` version `1.1.0`; minimum Checkmk version `2.3.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `aws_lambda_cw/src/info`; it declares 6 packaged files.
+- Repository MKP artifacts present: `aws_lambda_cw-1.0.0.mkp`, `aws_lambda_cw-1.1.0.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/aws_lambda_cw/agent_based/aws_lambda_cw.py`.
+- **Server-side calls:** `src/aws_lambda_cw/server_side_calls/agent.py`.
+- **Rulesets:** `src/aws_lambda_cw/rulesets/agent.py`, `src/aws_lambda_cw/rulesets/aws_lambda_cw.py`.
+- **Executables:** `src/aws_lambda_cw/libexec/agent_aws_lambda_cw`.
+- **Check manuals:** `src/aws_lambda_cw/checkman/aws_lambda_cw`.
+- Registered special-agent names: `aws_lambda_cw`.
+- Registered check plug-in names: `aws_lambda_cw`.
+
+### Validation
+
+- Package-specific tests: `tests/test_aws_lambda_cw_secret_command_arguments.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- Server-side calls preserve Checkmk password-store references and the executable resolves them at runtime; direct plaintext options, where present, are limited to isolated command-line diagnostics.
+- No direct remote-network client was detected in the current source.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `aws_lambda_cw`.
+- For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
+<!-- code-derived-reference:end -->

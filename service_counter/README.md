@@ -63,6 +63,43 @@ Each entry in the *Service Definition* list may combine any of:
 
 ## Known limitations
 
-- TLS verification against localhost is disabled (`verify=False`).
+- The site-local automation credential is restricted to a validated loopback URL. The default local HTTP connection does not cross a network boundary; explicit remote URLs retain TLS verification unless the operator deliberately opts out.
 - The special agent uses the site-local automation secret, so it must run on (or as) the Checkmk site user.
 - Filters are combined with `and`; there is no `or` between sub-conditions within a single entry.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `service_counter` version `2.1.4`; minimum Checkmk version `2.4.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `service_counter/src/info`; it declares 3 packaged files.
+- Repository MKP artifacts present: `service_counter-1.0.0.mkp`, `service_counter-1.0.1.mkp`, `service_counter-2.0.0.mkp`, `service_counter-2.0.1.mkp`, `service_counter-2.1.1.mkp`, `service_counter-2.1.3.mkp` (additional historical artifacts omitted).
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Server-side calls:** `src/service_counter/server_side_calls/service_counter.py`.
+- **Rulesets:** `src/service_counter/rulesets/service_counter.py`.
+- **Executables:** `src/service_counter/libexec/agent_service_counter`.
+- Registered special-agent names: `service_counter`.
+
+### Validation
+
+- Package-specific tests: `tests/test_service_counter_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+- The source reads the local Checkmk automation secret. It must only transmit that credential to a validated loopback site URL.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `local`.
+- For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
+<!-- code-derived-reference:end -->

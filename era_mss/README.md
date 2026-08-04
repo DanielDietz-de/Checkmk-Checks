@@ -48,3 +48,39 @@ OID base is `.1.3.6.1.4.1.11588.1.5` (ERA MIB). Each subsystem walks its own sub
 
 - The `info` file declares destination paths under `era_surveillance_systems/...` while the source on disk lives under `era_mss/...`. The MKP will be packed from whatever the `info` file lists, so double-check the destination namespace before shipping.
 - Packaged version is a dev build (`1.0.0-dev3`).
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `era_mss` version `1.0.1`; minimum Checkmk version `2.4.0p15`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `era_mss/src/info`; it declares 24 packaged files.
+- Repository MKP artifacts present: `era_mss-1.0.0-dev1.mkp`, `era_mss-1.0.0-dev2.mkp`, `era_mss-1.0.0-dev3.mkp`, `era_mss-1.0.0-dev4.mkp`, `era_mss-1.0.0.mkp`, `era_mss-1.0.1.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/era_mss/agent_based/bvim.py`, `src/era_mss/agent_based/main.py`, `src/era_mss/agent_based/musr.py`, `src/era_mss/agent_based/ntp.py`, `src/era_mss/agent_based/outchann.py`, `src/era_mss/agent_based/rmtr.py`, `src/era_mss/agent_based/rx.py`, `src/era_mss/agent_based/switch.py` and 3 more.
+- **Rulesets:** `src/era_mss/rulesets/era_outchann.py`, `src/era_mss/rulesets/era_rx.py`, `src/era_mss/rulesets/era_vserver.py`.
+- **Check manuals:** `src/era_mss/checkman/era_bvim`, `src/era_mss/checkman/era_main`, `src/era_mss/checkman/era_musr`, `src/era_mss/checkman/era_ntp`, `src/era_mss/checkman/era_outchann`, `src/era_mss/checkman/era_rmtr`, `src/era_mss/checkman/era_rx`, `src/era_mss/checkman/era_switch` and 2 more.
+- Registered check plug-in names: `era_bvim`, `era_main`, `era_musr`, `era_ntp`, `era_outchann`, `era_rmtr`, `era_rx`, `era_switch`, `era_tx`, `era_vserver`.
+
+### Validation
+
+- Package-specific tests: `tests/test_era_mss_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- No direct remote-network client was detected in the current source.
+
+### Troubleshooting
+
+- No literal Checkmk section header was detected. Inspect the executable or notification exit status and the Checkmk log relevant to the component type.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

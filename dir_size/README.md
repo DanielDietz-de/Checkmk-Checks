@@ -50,3 +50,39 @@ If no levels are configured the service reports only the current folder size wit
 
 - **Service:** `Size of <path>` — one per configured directory.
 - **Metric:** `bytes` — current folder size.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `dir_size` version `2.0.5`; minimum Checkmk version `2.3.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `dir_size/src/info`; it declares 5 packaged files.
+- Repository MKP artifacts present: `dir_size-1.0.0.mkp`, `dir_size-2.0.0.mkp`, `dir_size-2.0.1.mkp`, `dir_size-2.0.2.mkp`, `dir_size-2.0.3.mkp`, `dir_size-2.0.4.mkp` (additional historical artifacts omitted).
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/dir_size/agent_based/bakery.py`, `src/dir_size/agent_based/dir_size.py`.
+- **Rulesets:** `src/dir_size/rulesets/bakery.py`, `src/dir_size/rulesets/rules.py`.
+- **Other packaged source:** `src/agents/plugins/dir_size.sh`.
+- Registered check plug-in names: `dir_size`.
+
+### Validation
+
+- Package-specific tests: `tests/test_dir_size_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- No direct remote-network client was detected in the current source.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `dir_size`.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

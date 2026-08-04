@@ -53,7 +53,7 @@ jobs:
           fi
           printf 'base=%s\nhead=%s\n' "$base" "$head" >>"$GITHUB_OUTPUT"
 
-      - name: Enforce changed-code baseline
+      - name: Enforce changed-code policy
         env:
           BASE_SHA: ${{ steps.range.outputs.base }}
           HEAD_SHA: ${{ steps.range.outputs.head }}
@@ -62,10 +62,22 @@ jobs:
           --base "$BASE_SHA"
           --head "$HEAD_SHA"
 
+      - name: Verify canonical metadata mirrors
+        run: python3 tools/ci/sync_package_metadata.py
+
+      - name: Verify code-derived package documentation
+        run: python3 tools/ci/generate_package_reference.py
+
+      - name: Verify package module documentation
+        run: python3 tools/ci/manage_module_docstrings.py
+
+      - name: Verify repository Python syntax
+        run: python3 tools/ci/check_python_syntax.py
+
       - name: Audit complete repository
         run: >-
           python3 tools/ci/full_repository_audit.py
-          --fail-on none
+          --fail-on low
           --output repository-audit.json
 
       - name: Create audited source snapshot

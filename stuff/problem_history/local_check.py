@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Checkmk extension support code for stuff: local check."""
+
 import socket
 import json
 
