@@ -54,6 +54,8 @@ CI runs the audit with `--fail-on low`. The accepted repository state is therefo
 - `tools/ci/manage_module_docstrings.py` requires concise role-specific module descriptions for packaged Python source.
 - `tools/ci/check_python_syntax.py` validates Python syntax across the repository, including extensionless legacy Checkmk checks.
 
+The package-reference network detector covers recognized Python, PHP, shell, PowerShell, Perl, Ruby, and Java client patterns. A negative static result is deliberately qualified and is never documented as proof that a package cannot perform remote access.
+
 These tools detect staleness; they do not manufacture unsupported compatibility or behavioral claims. `version.usable_until = None` explicitly records that no upper Checkmk version is asserted.
 
 ## Severity and remediation
