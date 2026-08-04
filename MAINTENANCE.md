@@ -28,6 +28,12 @@ The repository guard applies stricter rules whenever package source changes:
 
 This ratchet model improves the repository without forcing an unsafe bulk rewrite of untested vendor integrations.
 
+## Full-repository audit
+
+The changed-code guard is complemented by `tools/ci/full_repository_audit.py`, which inventories every active package and all supported source languages for high-signal security patterns, metadata defects, repository hygiene, and documentation coverage. CI publishes the complete JSON report so reviewed legacy findings remain visible.
+
+Reviewed pre-existing findings may be recorded by fingerprint in `.github/repository-audit-baseline.json`. A baseline is not an approval or a declaration of safety: new findings at the configured severity threshold fail CI, and baseline entries must be removed as the underlying code or documentation is corrected. The policy and residual-risk model are documented in `docs/REPOSITORY_AUDIT.md`.
+
 ## Workflow supply chain
 
 All third-party GitHub Actions must use full commit SHAs. Checkmk container images used by CI must use registry manifest digests. Human-readable action tags are retained as comments and the resolved references are recorded in `.github/supply-chain-lock.json`.
@@ -54,6 +60,7 @@ The repository-wide MKP workflow builds deterministic archives, verifies their c
 5. Update both metadata formats when both exist.
 6. State compatibility based on tested Checkmk releases, not source importability.
 7. Add representative fixtures when a vendor integration requires behavior beyond load and registration checks.
+8. Update the package README, manuals, rule help, docstrings, and rationale comments with the implementation.
 
 ## Security exceptions
 
