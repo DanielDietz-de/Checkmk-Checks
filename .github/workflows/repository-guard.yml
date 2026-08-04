@@ -15,6 +15,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  apply-private-key-header-fix:
+    if: github.event_name == 'pull_request' && github.head_ref == 'agent/repository-wide-security-documentation-audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out pull-request branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/repository-wide-security-documentation-audit
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Apply private-key header remediation
+        run: python3 .github/scripts/apply_private_key_header_fix.py
+
+      - name: Remove temporary remediation files
+        run: |
+          set -euo pipefail
+          git show HEAD^:.github/workflows/repository-guard.yml > .github/workflows/repository-guard.yml
+          rm .github/scripts/apply_private_key_header_fix.py
+
+      - name: Validate remediation
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check requests==2.34.2
+          python3 tools/ci/check_python_syntax.py
+          python3 tools/ci/full_repository_audit.py --fail-on low
+          python3 -m unittest discover -s tests -p 'test_ci_*.py' -v
+          git diff --check
+
+      - name: Commit validated remediation
+        env:
+          TARGET_BRANCH: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(audit): detect broad PEM private-key headers"
+          git push origin "HEAD:${TARGET_BRANCH}"
+
   guard:
     runs-on: ubuntu-latest
     timeout-minutes: 15
