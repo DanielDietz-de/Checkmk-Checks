@@ -15,6 +15,370 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  apply-urllib-timeout-fix:
+    if: github.event_name == 'pull_request' && github.head_ref == 'agent/repository-wide-security-documentation-audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out pull-request branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/repository-wide-security-documentation-audit
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Apply urllib timeout remediation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+
+          def replace_once(path: Path, old: str, new: str, label: str) -> None:
+              text = path.read_text(encoding="utf-8")
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected exactly one {label} block in {path}")
+              path.write_text(text.replace(old, new), encoding="utf-8")
+
+
+          audit_path = Path("tools/ci/full_repository_audit.py")
+          replace_once(
+              audit_path,
+              '''def call_name(node: ast.AST) -> str:
+              if isinstance(node, ast.Name):
+                  return node.id
+              if isinstance(node, ast.Attribute):
+                  parent = call_name(node.value)
+                  return f"{parent}.{node.attr}" if parent else node.attr
+              return ""
+
+
+          def audit_python(root: Path, path: Path, text: str) -> list[Finding]:
+          ''',
+              '''def call_name(node: ast.AST) -> str:
+              if isinstance(node, ast.Name):
+                  return node.id
+              if isinstance(node, ast.Attribute):
+                  parent = call_name(node.value)
+                  return f"{parent}.{node.attr}" if parent else node.attr
+              return ""
+
+
+          def assigned_names(target: ast.AST) -> set[str]:
+              """Return stable names assigned by a Python target expression."""
+              if isinstance(target, (ast.Name, ast.Attribute)):
+                  name = call_name(target)
+                  return {name} if name else set()
+              if isinstance(target, (ast.Tuple, ast.List)):
+                  return {name for item in target.elts for name in assigned_names(item)}
+              return set()
+
+
+          def urllib_callable_names(tree: ast.AST) -> tuple[set[str], set[str]]:
+              """Resolve imported names for urllib urlopen and build_opener."""
+              urlopen_names = {"urllib.request.urlopen"}
+              builder_names = {"urllib.request.build_opener"}
+              for node in ast.walk(tree):
+                  if isinstance(node, ast.Import):
+                      for alias in node.names:
+                          if alias.name == "urllib.request":
+                              prefix = alias.asname or alias.name
+                              urlopen_names.add(f"{prefix}.urlopen")
+                              builder_names.add(f"{prefix}.build_opener")
+                  elif isinstance(node, ast.ImportFrom):
+                      if node.module == "urllib":
+                          for alias in node.names:
+                              if alias.name == "request":
+                                  prefix = alias.asname or alias.name
+                                  urlopen_names.add(f"{prefix}.urlopen")
+                                  builder_names.add(f"{prefix}.build_opener")
+                      elif node.module == "urllib.request":
+                          for alias in node.names:
+                              local = alias.asname or alias.name
+                              if alias.name == "urlopen":
+                                  urlopen_names.add(local)
+                              elif alias.name == "build_opener":
+                                  builder_names.add(local)
+              return urlopen_names, builder_names
+
+
+          def is_urllib_opener_expression(
+              node: ast.AST | None,
+              opener_names: set[str],
+              builder_names: set[str],
+          ) -> bool:
+              """Return whether an expression constructs or aliases a urllib opener."""
+              if isinstance(node, ast.Call):
+                  return call_name(node.func) in builder_names
+              if isinstance(node, (ast.Name, ast.Attribute)):
+                  return call_name(node) in opener_names
+              if isinstance(node, ast.IfExp):
+                  return is_urllib_opener_expression(
+                      node.body, opener_names, builder_names
+                  ) or is_urllib_opener_expression(node.orelse, opener_names, builder_names)
+              return False
+
+
+          def urllib_opener_names(tree: ast.AST, builder_names: set[str]) -> set[str]:
+              """Resolve direct and aliased urllib opener variables and attributes."""
+              assignments: list[tuple[list[ast.AST], ast.AST | None]] = []
+              for node in ast.walk(tree):
+                  if isinstance(node, ast.Assign):
+                      assignments.append((list(node.targets), node.value))
+                  elif isinstance(node, ast.AnnAssign):
+                      assignments.append(([node.target], node.value))
+              result: set[str] = set()
+              changed = True
+              while changed:
+                  changed = False
+                  for targets, value in assignments:
+                      if not is_urllib_opener_expression(value, result, builder_names):
+                          continue
+                      for target in targets:
+                          for name in assigned_names(target):
+                              if name not in result:
+                                  result.add(name)
+                                  changed = True
+              return result
+
+
+          def audit_python(root: Path, path: Path, text: str) -> list[Finding]:
+          ''',
+              "urllib helper",
+          )
+          replace_once(
+              audit_path,
+              '''    result = []
+              if ast.get_docstring(tree, clean=False) is None:
+          ''',
+              '''    result = []
+              urllib_urlopen_names, urllib_builder_names = urllib_callable_names(tree)
+              urllib_openers = urllib_opener_names(tree, urllib_builder_names)
+              if ast.get_docstring(tree, clean=False) is None:
+          ''',
+              "urllib symbol initialization",
+          )
+          replace_once(
+              audit_path,
+              '''        if name.endswith((".get", ".post", ".put", ".patch", ".delete", ".request")) and (name.startswith("requests.") or ".session." in name.lower() or name.startswith("session.")):
+                      if not any(keyword.arg == "timeout" for keyword in node.keywords):
+                          result.append(finding("medium", "security.network-timeout-missing", root, path, line, f"network call {name} has no explicit timeout", "set a bounded connect/read timeout"))
+          ''',
+              '''        requests_call = name.endswith(
+                      (".get", ".post", ".put", ".patch", ".delete", ".request")
+                  ) and (
+                      name.startswith("requests.")
+                      or ".session." in name.lower()
+                      or name.startswith("session.")
+                  )
+                  urllib_call = name in urllib_urlopen_names or (
+                      name.endswith(".open") and name.removesuffix(".open") in urllib_openers
+                  )
+                  timeout_keyword = any(keyword.arg == "timeout" for keyword in node.keywords)
+                  if requests_call and not timeout_keyword:
+                      result.append(finding("medium", "security.network-timeout-missing", root, path, line, f"network call {name} has no explicit timeout", "set a bounded connect/read timeout"))
+                  if urllib_call and not (timeout_keyword or len(node.args) >= 3):
+                      result.append(finding("medium", "security.network-timeout-missing", root, path, line, f"urllib network call {name} has no explicit timeout", "set a bounded timeout keyword or third positional timeout argument"))
+          ''',
+              "network timeout audit",
+          )
+
+          exchange_path = Path("cmk_api_scripts/exchange_publish.py")
+          replace_once(
+              exchange_path,
+              'BASE = "https://exchange.checkmk.com"\n',
+              'BASE = "https://exchange.checkmk.com"\nDEFAULT_TIMEOUT = 30.0\n',
+              "Exchange timeout constant",
+          )
+          replace_once(
+              exchange_path,
+              '''class Exchange:
+              def __init__(self):
+                  self.cj = http.cookiejar.CookieJar()
+          ''',
+              '''class Exchange:
+              def __init__(self, timeout=DEFAULT_TIMEOUT):
+                  timeout = float(timeout)
+                  if timeout <= 0:
+                      raise ValueError("timeout must be greater than zero")
+                  self.timeout = timeout
+                  self.cj = http.cookiejar.CookieJar()
+          ''',
+              "Exchange constructor",
+          )
+          replace_once(
+              exchange_path,
+              '            r = opener.open(req)\n',
+              '            r = opener.open(req, timeout=self.timeout)\n',
+              "Exchange opener timeout",
+          )
+          replace_once(
+              exchange_path,
+              '    ap.add_argument("--limit", type=int, default=0)\n',
+              '    ap.add_argument("--limit", type=int, default=0)\n    ap.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="bounded HTTP timeout in seconds")\n',
+              "Exchange timeout option",
+          )
+          replace_once(
+              exchange_path,
+              '    ex = Exchange()\n',
+              '    ex = Exchange(timeout=args.timeout)\n',
+              "Exchange timeout wiring",
+          )
+
+          audit_tests = Path("tests/test_ci_full_repository_audit.py")
+          replace_once(
+              audit_tests,
+              '''    def test_safe_secret_requires_agent_side_resolution(self):
+          ''',
+              '''    def test_detects_unbounded_urllib_calls(self):
+                  with tempfile.TemporaryDirectory() as temporary:
+                      root = self.make_root(temporary)
+                      source = root / "example" / "src" / "example" / "plugin.py"
+                      source.write_text(
+                          '\"\"\"Urllib client.\"\"\"\\n'
+                          'from urllib import request as urllib_request\\n'
+                          'class Client:\\n'
+                          '    def __init__(self):\\n'
+                          '        self.op = urllib_request.build_opener()\\n'
+                          '    def fetch(self, req):\\n'
+                          '        opener = self.op\\n'
+                          '        return opener.open(req)\\n'
+                          'urllib_request.urlopen("https://example.invalid")\\n',
+                          encoding="utf-8",
+                      )
+                      report = audit.build_report(root, set())
+                      findings = [
+                          item for item in report["findings"]
+                          if item["rule_id"] == "security.network-timeout-missing"
+                      ]
+                      self.assertEqual(len(findings), 2)
+
+              def test_accepts_bounded_urllib_calls(self):
+                  with tempfile.TemporaryDirectory() as temporary:
+                      root = self.make_root(temporary)
+                      source = root / "example" / "src" / "example" / "plugin.py"
+                      source.write_text(
+                          '\"\"\"Bounded urllib client.\"\"\"\\n'
+                          'from urllib.request import Request, build_opener, urlopen\\n'
+                          'opener = build_opener()\\n'
+                          'req = Request("https://example.invalid")\\n'
+                          'opener.open(req, None, 5.0)\\n'
+                          'urlopen(req, timeout=5.0)\\n',
+                          encoding="utf-8",
+                      )
+                      report = audit.build_report(root, set())
+                      rules = {item["rule_id"] for item in report["findings"]}
+                      self.assertNotIn("security.network-timeout-missing", rules)
+
+              def test_safe_secret_requires_agent_side_resolution(self):
+          ''',
+              "urllib audit regression tests",
+          )
+
+          standalone_tests = Path("tests/test_ci_standalone_utilities.py")
+          replace_once(
+              standalone_tests,
+              'ACTIVATE = ROOT / "cmk_api_scripts" / "activate_changes.py"\n',
+              'ACTIVATE = ROOT / "cmk_api_scripts" / "activate_changes.py"\nEXCHANGE = ROOT / "cmk_api_scripts" / "exchange_publish.py"\n',
+              "Exchange test path",
+          )
+          replace_once(
+              standalone_tests,
+              '''    def test_removed_legacy_web_api_examples_are_absent(self):
+          ''',
+              '''    def test_exchange_publish_uses_bounded_timeout(self):
+                  spec = importlib.util.spec_from_file_location("exchange_publish_test", EXCHANGE)
+                  assert spec is not None and spec.loader is not None
+                  module = importlib.util.module_from_spec(spec)
+                  sys.modules[spec.name] = module
+                  spec.loader.exec_module(module)
+
+                  class Response:
+                      headers = {}
+
+                      @staticmethod
+                      def getcode():
+                          return 200
+
+                      @staticmethod
+                      def read():
+                          return b"ok"
+
+                  class Opener:
+                      timeout = None
+
+                      def open(self, request, *, timeout):
+                          del request
+                          self.timeout = timeout
+                          return Response()
+
+                  exchange = module.Exchange(timeout=7.5)
+                  opener = Opener()
+                  exchange.op = opener
+                  self.assertEqual(exchange._req("GET", "https://example.invalid")[0], 200)
+                  self.assertEqual(opener.timeout, 7.5)
+
+              def test_exchange_publish_rejects_nonpositive_timeout(self):
+                  spec = importlib.util.spec_from_file_location("exchange_publish_timeout_test", EXCHANGE)
+                  assert spec is not None and spec.loader is not None
+                  module = importlib.util.module_from_spec(spec)
+                  sys.modules[spec.name] = module
+                  spec.loader.exec_module(module)
+                  with self.assertRaisesRegex(ValueError, "greater than zero"):
+                      module.Exchange(timeout=0)
+
+              def test_removed_legacy_web_api_examples_are_absent(self):
+          ''',
+              "Exchange timeout regression tests",
+          )
+
+          readme_path = Path("cmk_api_scripts/README.md")
+          replace_once(
+              readme_path,
+              '''Relevant flags include `--dry-run`, `--only`, `--exclude`, `--limit`, and
+          `--description`. Inspect `python3 exchange_publish.py --help` for the executable
+          contract.
+          ''',
+              '''All Exchange HTTP calls use a bounded timeout of 30 seconds by default. Use
+          `--timeout` to set a different positive timeout for the current run.
+
+          Relevant flags include `--dry-run`, `--only`, `--exclude`, `--limit`,
+          `--timeout`, and `--description`. Inspect `python3 exchange_publish.py --help`
+          for the executable contract.
+          ''',
+              "Exchange timeout documentation",
+          )
+          PY
+
+      - name: Validate remediation
+        run: |
+          set -euo pipefail
+          python3 tools/ci/check_python_syntax.py
+          python3 tools/ci/full_repository_audit.py --fail-on low
+          python3 -m unittest discover -s tests -p 'test_ci_*.py' -v
+          git diff --check
+
+      - name: Commit validated remediation
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            tools/ci/full_repository_audit.py \
+            cmk_api_scripts/exchange_publish.py \
+            cmk_api_scripts/README.md \
+            tests/test_ci_full_repository_audit.py \
+            tests/test_ci_standalone_utilities.py
+          git diff --cached --check
+          git commit -m "fix: audit and bound urllib network calls"
+          git push origin HEAD:agent/repository-wide-security-documentation-audit
+
   guard:
     runs-on: ubuntu-latest
     timeout-minutes: 15
