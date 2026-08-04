@@ -57,3 +57,13 @@ def test_rejects_extra_or_changed_validation_failures() -> None:
         validator.CommandResult(returncode=1, output=_known_warning_output()),
         "2.5.0p9",
     )
+
+
+def test_compatibility_window_is_inclusive() -> None:
+    validator = _load_validator()
+
+    assert validator._supports_target("2.0.0", "2.2.99", "2.0.0")
+    assert validator._supports_target("2.0.0", "2.2.99", "2.2.99")
+    assert validator._supports_target("2.0.0", "2.2.99", "2.1.0p20")
+    assert not validator._supports_target("2.0.0", "2.2.99", "1.6.0p30")
+    assert not validator._supports_target("2.0.0", "2.2.99", "2.3.0")
