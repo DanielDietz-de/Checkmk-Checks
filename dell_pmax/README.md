@@ -4,11 +4,11 @@
 ![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.3.0-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.4.0-blue)
 <!-- compatibility-badges:end -->
 
-Special agent for Dell EMC PowerMax (VMAX) arrays. It talks to the Unisphere for PowerMax REST API and produces services for Unisphere version, JVM/CPU/memory stats of the Unisphere server, server- and array-level alerts, and storage resource pool usage. This is a modernised port of the `dellpmax-agent` plugin originally published on the Checkmk Exchange by Mario Schwab and Achim Geisler.
+Special agent for Dell EMC PowerMax (VMAX) arrays. It talks to the Unisphere for PowerMax REST API and produces services for Unisphere version, JVM/CPU/memory stats of the Unisphere server, server- and array-level alerts, and storage resource pool usage. TLS certificate verification is enabled by default, with support for a private CA bundle and an explicit temporary compatibility opt-out. This is a modernised port of the `dellpmax-agent` plugin originally published on the Checkmk Exchange by Mario Schwab and Achim Geisler.
 
 ## How it works
 
-The special agent `agent_dellpmax` authenticates via HTTP basic auth against `https://<address>:<port>/univmax/restapi/` (default port 8443) and emits sections with `sep(124)`:
+The special agent `agent_dellpmax` authenticates via HTTP basic auth against `https://<address>:<port>/univmax/restapi/` (default port 8443) and emits sections with `sep(124)`. The Checkmk password-store reference is resolved by the executable, requests use a bounded timeout, and contradictory private-CA plus verification-opt-out settings are rejected before command construction.
 
 - `version` -> `<<<dellpmax_systeminfo>>>` — Unisphere version string.
 - `management/RuntimeUsage/read` -> `<<<dellpmax_systemstats>>>` — heap (max/used), cpu usage, memory total/used. Split into three services (`Heap`, `CPU`, `Memory`) reusing `cmk.plugins.lib.memory` and `cpu_util`.
@@ -22,21 +22,22 @@ Each SRP produces three services (`Subscribed Capacity <srp>`, `Snapshot Capacit
 
 | Path | Purpose |
 | --- | --- |
-| `src/dell_pmax/libexec/agent_dellpmax` | Special agent (Unisphere REST client). |
+| `src/dell_pmax/libexec/agent_dellpmax` | Special agent and bounded Unisphere REST client. |
 | `src/dell_pmax/agent_based/dellpmax_info.py` | `Version Info` service. |
 | `src/dell_pmax/agent_based/dellpmax_system_stats.py` | `Heap`, `CPU`, `Memory` services from Unisphere runtime usage. |
 | `src/dell_pmax/agent_based/dellpmax_alerts_server.py` | `Server alerts` service. |
 | `src/dell_pmax/agent_based/dellpmax_alerts_symm.py` | `Array alerts` and `Performance alerts` services. |
 | `src/dell_pmax/agent_based/dellpmax_storage_pools.py` | `Subscribed Capacity`, `Snapshot Capacity`, `Usable Capacity` per SRP. |
-| `src/dell_pmax/rulesets/agent_dellpmax.py` | Special agent rule (username, password). |
-| `src/dell_pmax/server_side_calls/agent_pmax.py` | Command line generation. |
+| `src/dell_pmax/rulesets/agent_dellpmax.py` | Special-agent rule for credentials, port, timeout, and TLS controls. |
+| `src/dell_pmax/server_side_calls/agent_pmax.py` | Validated command construction using the Checkmk password store. |
 
 ## Installation
 
 1. Install the MKP on the Checkmk site.
-2. Create a host for the Unisphere appliance and configure the special agent rule below.
-3. The API user only needs read-only monitoring role.
-4. Run service discovery.
+2. Create a host for the Unisphere appliance and configure the special-agent rule below.
+3. Use an API account with only the read-only monitoring role.
+4. For a private PKI, make the CA bundle readable by the Checkmk site user and configure its absolute path.
+5. Run service discovery.
 
 ## Configuration
 
@@ -44,8 +45,14 @@ Rule: **Setup -> Agents -> Other integrations -> Dell Powermax**
 
 | Parameter | Type | Meaning |
 | --- | --- | --- |
-| `username` | String | Unisphere user with monitoring role. |
-| `password` | Password | Password for the user. |
+| `username` | String | Unisphere user with the read-only monitoring role. |
+| `password` | Password | Password retained as a Checkmk password-store reference until agent-side resolution. |
+| `port` | Integer | Unisphere REST API port; default `8443`. |
+| `timeout` | Float | Bounded request timeout in seconds; default `30`. |
+| `ca_file` | String | Optional private CA bundle path used for TLS verification. |
+| `no_cert_check` | BooleanChoice | Explicit temporary certificate-verification opt-out. It is mutually exclusive with `ca_file`. |
+
+Prefer the system trust store or `ca_file`. Use `no_cert_check` only as a documented temporary exception while repairing the appliance certificate chain.
 
 ## Services & metrics
 
@@ -57,9 +64,9 @@ Rule: **Setup -> Agents -> Other integrations -> Dell Powermax**
 
 ## Known limitations
 
-- TLS certificate verification is hardcoded to off in the special agent.
-- The WARN/CRIT thresholds for storage pools are hardcoded in the check plugin and not exposed via WATO.
-- `port` cannot be configured through the ruleset; the special agent defaults to 8443.
+- The WARN/CRIT thresholds for storage pools are hardcoded in the check plugin and are not exposed through the ruleset.
+- Requests are not retried; transient API or network failures are reported by the special agent and retried on the next Checkmk execution.
+- The integration depends on the Unisphere REST API paths currently used by supported PowerMax releases; validate after appliance upgrades.
 
 <!-- code-derived-reference:start -->
 ## Code-derived operational reference
