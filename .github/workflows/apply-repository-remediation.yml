@@ -1,10 +1,19 @@
 name: Apply reviewed repository remediation
 
 on:
+  push:
+    branches:
+      - agent/repository-wide-security-documentation-audit
+    paths:
+      - .github/workflows/apply-repository-remediation.yml
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: apply-repository-remediation-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   apply:
