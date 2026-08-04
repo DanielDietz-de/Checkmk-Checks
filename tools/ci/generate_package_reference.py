@@ -18,6 +18,35 @@ CHECK_NAME_RES = (
     re.compile(r"CheckPlugin\(\s*name\s*=\s*[\"']([^\"']+)", re.S),
     re.compile(r"register\.check_plugin\([^)]*?name\s*=\s*[\"']([^\"']+)", re.S),
 )
+NETWORK_CLIENT_RES = (
+    re.compile(
+        r"\b(?:requests|urllib(?:\.request)?|httpx|aiohttp|httplib2|"
+        r"ServerProxy|pyodbc|socket|ftplib|smtplib)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\b(?:curl_(?:init|exec|setopt|setopt_array|multi_init)|"
+        r"file_get_contents\s*\(|fsockopen\s*\(|stream_socket_client\s*\(|"
+        r"wp_remote_(?:get|post|request|head)\b|"
+        r"fopen\s*\(\s*[\"']https?://)",
+        re.I,
+    ),
+    re.compile(
+        r"(?m)(?:^|[;&|]\s*|\$\()\s*(?:curl|wget|ssh|scp|sftp|ftp|nc|netcat|"
+        r"snmpget|snmpwalk|openssl\s+s_client)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\b(?:Invoke-WebRequest|Invoke-RestMethod|System\.Net\.WebClient|"
+        r"System\.Net\.Http\.HttpClient|Test-NetConnection|New-PSSession)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\b(?:Net::HTTP|HTTP::Tiny|LWP::UserAgent|Faraday|RestClient|"
+        r"java\.net\.http|HttpURLConnection|OkHttpClient)\b",
+        re.I,
+    ),
+)
 
 
 def manifest(path: Path) -> dict[str, Any]:
@@ -37,6 +66,11 @@ def source_texts(package: Path) -> list[tuple[Path, str]]:
         except (OSError, UnicodeError):
             continue
     return result
+
+
+def detects_network_access(files: list[tuple[Path, str]]) -> bool:
+    """Conservatively detect network clients across supported source languages."""
+    return any(regex.search(text) for _, text in files for regex in NETWORK_CLIENT_RES)
 
 
 def component_lines(package: Path, files: list[tuple[Path, str]]) -> list[str]:
@@ -92,7 +126,7 @@ def derive_reference(root: Path, package: Path, data: dict[str, Any]) -> str:
         re.search(r"\b(?:lookup|resolve_secret|dereference_secret)\b", joined)
     )
     notification_context_secret = "get_password_from_env_or_context" in joined
-    network_access = bool(re.search(r"\b(?:requests|urllib\.request|httpx|ServerProxy|pyodbc|socket)\b", joined))
+    network_access = detects_network_access(files)
     tls_optout = bool(re.search(r"no[-_]cert[-_]check|no[-_]verify|verify_ssl\s*=|verify\s*=\s*False", joined, re.I))
     local_automation = "automation.secret" in joined
     version = data.get("version")
@@ -156,7 +190,11 @@ def derive_reference(root: Path, package: Path, data: dict[str, Any]) -> str:
     if network_access:
         lines.append("- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.")
     else:
-        lines.append("- No direct remote-network client was detected in the current source.")
+        lines.append(
+            "- Static analysis did not identify a supported direct remote-network client. "
+            "This is not proof of network isolation; review extensionless and non-Python "
+            "executables before deployment."
+        )
     if tls_optout:
         lines.append("- An explicit TLS-verification opt-out is present. Verification remains the secure default; use the opt-out only as a documented temporary exception and prefer a private CA bundle.")
     if local_automation:
