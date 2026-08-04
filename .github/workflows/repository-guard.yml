@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - master
-      - agent/repository-wide-security-documentation-audit
   workflow_dispatch:
 
 permissions:
@@ -17,13 +16,14 @@ concurrency:
 
 jobs:
   apply-reviewed-remediation:
-    if: github.event_name == 'push' && github.ref_name == 'agent/repository-wide-security-documentation-audit'
+    if: github.event_name == 'pull_request' && github.head_ref == 'agent/repository-wide-security-documentation-audit'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Check out remediation branch
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: agent/repository-wide-security-documentation-audit
           fetch-depth: 0
 
       - name: Apply reviewed source archive
@@ -62,7 +62,7 @@ jobs:
 
       - name: Commit reviewed remediation
         env:
-          BRANCH_NAME: ${{ github.ref_name }}
+          BRANCH_NAME: ${{ github.head_ref }}
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
@@ -73,7 +73,7 @@ jobs:
           git push origin "HEAD:${BRANCH_NAME}"
 
   guard:
-    if: github.event_name != 'push' || github.ref_name != 'agent/repository-wide-security-documentation-audit'
+    if: github.event_name != 'pull_request' || github.head_ref != 'agent/repository-wide-security-documentation-audit'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
