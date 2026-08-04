@@ -62,5 +62,20 @@ jobs:
           --base "$BASE_SHA"
           --head "$HEAD_SHA"
 
+      - name: Audit complete repository
+        run: >-
+          python3 tools/ci/full_repository_audit.py
+          --fail-on none
+          --output repository-audit.json
+
+      - name: Upload repository audit
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: repository-audit
+          path: repository-audit.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Test CI guard tools
         run: python3 -m unittest discover -s tests -p 'test_ci_*.py' -v
