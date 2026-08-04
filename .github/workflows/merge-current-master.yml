@@ -1,0 +1,55 @@
+name: Diagnose current master integration
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    paths:
+      - ".github/workflows/merge-current-master.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnose-master-integration-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'agent/repository-wide-security-documentation-audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out audited branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Diagnose merge with current master
+        env:
+          EXPECTED_PARENT: 071cd0275b9db524660d6d27b7f119132b8cb611
+          EXPECTED_MASTER: 7972e92c2cf612342608bd4f674e2e8f6a9ab8f9
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          git fetch --no-tags origin master
+          test "$(git rev-parse origin/master)" = "$EXPECTED_MASTER"
+          set +e
+          git merge --no-commit --no-ff origin/master
+          merge_rc=$?
+          set -e
+          echo "Merge return code: $merge_rc"
+          echo "Unmerged paths:"
+          git diff --name-only --diff-filter=U || true
+          echo "Status:"
+          git status --short
+          if [ "$merge_rc" -eq 0 ]; then
+            git add -A
+            echo "Merged tree: $(git write-tree)"
+          fi
+          exit 1
