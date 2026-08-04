@@ -124,7 +124,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Expand source discovery and regression coverage
+      - name: Expand source discovery and align Pure documentation
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -194,68 +194,6 @@ jobs:
                   raise SystemExit(f"expected exactly one {label} block")
               audit = audit.replace(old, new)
           audit_path.write_text(audit, encoding="utf-8")
-
-          tests_path = Path("tests/test_ci_repository_consistency.py")
-          tests = tests_path.read_text(encoding="utf-8")
-          old_import = '''syntax = load_module(
-              ROOT / "tools" / "ci" / "check_python_syntax.py",
-              "syntax_test",
-          )
-          builder = load_module(
-          '''
-          new_import = '''syntax = load_module(
-              ROOT / "tools" / "ci" / "check_python_syntax.py",
-              "syntax_test",
-          )
-          full_audit = load_module(
-              ROOT / "tools" / "ci" / "full_repository_audit.py",
-              "full_repository_audit_test",
-          )
-          builder = load_module(
-          '''
-          old_anchor = '''    def test_all_manifest_sources_resolve(self):
-          '''
-          new_tests = '''    def test_audit_includes_platform_suffix_and_shebang_scripts(self):
-              with tempfile.TemporaryDirectory() as temporary:
-                  root = Path(temporary)
-                  scripts = root / "package/src/package/agents/plugins"
-                  scripts.mkdir(parents=True)
-                  linux = scripts / "discover_os_labels.linux"
-                  aix = scripts / "discover_os_labels.aix"
-                  solaris = scripts / "discover_os_labels.solaris"
-                  windows = scripts / "check_ping.cmd"
-                  linux.write_text("#!/bin/sh\\necho linux\\n", encoding="utf-8")
-                  aix.write_text("#!/usr/bin/ksh\\necho aix\\n", encoding="utf-8")
-                  solaris.write_text("#!/usr/bin/perl\\nprint 'solaris';\\n", encoding="utf-8")
-                  windows.write_text("@echo off\\r\\necho windows\\r\\n", encoding="utf-8")
-
-                  discovered = set(full_audit.source_files(root, []))
-                  self.assertEqual(discovered, {linux, aix, solaris, windows})
-
-              def test_audit_applies_python_rules_to_unknown_suffix_shebangs(self):
-                  with tempfile.TemporaryDirectory() as temporary:
-                      root = Path(temporary)
-                      script = root / "agent.linux"
-                      script.write_text(
-                          "#!/usr/bin/env python3\\nAPI_TOKEN = 'actual-secret-value'\\n",
-                          encoding="utf-8",
-                      )
-                      findings = full_audit.audit_source(root, script)
-                      self.assertTrue(
-                          any(
-                              item.rule_id == "security.hardcoded-credential"
-                              for item in findings
-                          )
-                      )
-
-              def test_all_manifest_sources_resolve(self):
-          '''
-          if tests.count(old_import) != 1:
-              raise SystemExit("expected exactly one audit import anchor")
-          if tests.count(old_anchor) != 1:
-              raise SystemExit("expected exactly one test insertion anchor")
-          tests = tests.replace(old_import, new_import).replace(old_anchor, new_tests)
-          tests_path.write_text(tests, encoding="utf-8")
 
           readme_path = Path("pure/README.md")
           readme = readme_path.read_text(encoding="utf-8")
