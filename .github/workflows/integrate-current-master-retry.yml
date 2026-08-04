@@ -74,7 +74,7 @@ jobs:
 
       - name: Build and validate corrected integrated candidate
         env:
-          EXPECTED_PARENT: 5dffc776d94de7c69552bcd70f1f2563629a894d
+          EXPECTED_PARENT: 560cbbbfbfd3f136004ea60a6404e20da8ad2264
           EXPECTED_MASTER: 7972e92c2cf612342608bd4f674e2e8f6a9ab8f9
           MERGE_BASE: 5f70214a6070cb4e765cefe4eacf4321ae587617
         run: |
@@ -91,6 +91,37 @@ jobs:
           if old not in text:
               raise SystemExit("audit secret-boundary marker missing")
           audit.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          for relative in (
+              "adfs_certificates/tests/test_adfs_certificates_transport.py",
+              "ucp_health/tests/test_ucp_health_security_defaults.py",
+          ):
+              path = Path(relative)
+              text = path.read_text(encoding="utf-8")
+              old = (
+                  "            and isinstance(node.func, ast.Attribute)\n"
+                  "            and node.func.attr in {\"get\", \"post\", \"request\"}\n"
+              )
+              new = (
+                  "            and isinstance(node.func, ast.Attribute)\n"
+                  "            and isinstance(node.func.value, ast.Name)\n"
+                  "            and node.func.value.id == \"requests\"\n"
+                  "            and node.func.attr in {\"get\", \"post\", \"request\"}\n"
+              )
+              if old not in text:
+                  raise SystemExit(f"HTTP-call test marker missing in {relative}")
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          ruleset = Path("arcgis_portal/src/arcgis_portal/rulesets/agent.py")
+          text = ruleset.read_text(encoding="utf-8")
+          old = "Diagnostic output appears in the special agent's stderr."
+          new = (
+              "Only the request method, URL without query parameters, HTTP status, "
+              "and response size are logged; response bodies and credentials are excluded."
+          )
+          if old not in text:
+              raise SystemExit("ArcGIS diagnostic-help marker missing")
+          ruleset.write_text(text.replace(old, new, 1), encoding="utf-8")
           PY
           bash /tmp/regenerate.sh
           rm .github/workflows/integrate-current-master-retry.yml
