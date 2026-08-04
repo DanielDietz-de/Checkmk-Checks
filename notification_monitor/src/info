@@ -1,13 +1,13 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Monitor failed Checkmk notifications on the local site without exposing the site '
-                'automation secret to remote URLs.',
+ 'description': 'Monitor failed Checkmk notifications on the local site without exposing the site automation secret to '
+                'remote URLs.',
  'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/notification_monitor',
  'files': {'cmk_addons_plugins': ['notification_monitor/rulesets/sepcial_agent.py',
                                   'notification_monitor/server_side_calls/special_agent.py',
                                   'notification_monitor/libexec/agent_notification_monitor']},
  'name': 'notification_monitor',
  'title': 'Monitor Failed Notifications',
- 'version': '1.0.0-dev3',
+ 'version': '1.0.0-dev4',
  'version.min_required': '2.3.0',
- 'version.packaged': '2.4.0p8',
+ 'version.packaged': '2.5.0p9',
  'version.usable_until': None}

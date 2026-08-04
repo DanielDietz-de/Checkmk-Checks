@@ -2,15 +2,15 @@
  'description': 'Use output of sensors (lm-sensors) for monitoring CPU temperatures.\n'
                 'Plugin is used to generate output and send to server.\n'
                 'Discovery rule is used to select CPUs by name.\n',
- 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
+ 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/lnx_sensors',
  'files': {'agents': ['plugins/lnx_sensors'],
            'cmk_addons_plugins': ['lnx_sensors/agent_based/lnx_cpu.py',
                                   'lnx_sensors/rulesets/agent_bakery_lnx_sensors.py',
-                                  'lnx_sensors/rulesets/lnx_cpu.py',
-                                  'lnx_sensors/agent_based/agent_bakery_lnx_sensors.py']},
+                                  'lnx_sensors/rulesets/lnx_cpu.py'],
+           'lib': ['python3/cmk/base/cee/plugins/bakery/lnx_sensors.py']},
  'name': 'lnx_sensors',
  'title': 'Monitoring Linux sensors',
- 'version': '1.0.5',
+ 'version': '1.0.6',
  'version.min_required': '2.3.0b1',
- 'version.packaged': '2.5.0',
+ 'version.packaged': '2.5.0p9',
  'version.usable_until': None}

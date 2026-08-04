@@ -91,7 +91,7 @@ This section is generated from the canonical manifest and current source tree. E
 ### Security
 
 - No Checkmk password or secret form was detected in the current package source.
-- No direct remote-network client was detected in the current source.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
 
 ### Troubleshooting
 

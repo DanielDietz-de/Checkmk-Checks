@@ -81,7 +81,7 @@ This section is generated from the canonical manifest and current source tree. E
 ### Security
 
 - No Checkmk password or secret form was detected in the current package source.
-- No direct remote-network client was detected in the current source.
+- Static analysis did not identify a supported direct remote-network client. This is not proof of network isolation; review extensionless and non-Python executables before deployment.
 
 ### Troubleshooting
 

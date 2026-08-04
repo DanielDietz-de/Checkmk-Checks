@@ -72,7 +72,7 @@ This section is generated from the canonical manifest and current source tree. E
 ### Security
 
 - The notification handles a credential at runtime. Verify its retrieval and logging boundary in the notification source.
-- No direct remote-network client was detected in the current source.
+- Static analysis did not identify a supported direct remote-network client. This is not proof of network isolation; review extensionless and non-Python executables before deployment.
 
 ### Troubleshooting
 

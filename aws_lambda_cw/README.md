@@ -96,7 +96,7 @@ This section is generated from the canonical manifest and current source tree. E
 ### Security
 
 - Server-side calls preserve Checkmk password-store references and the executable resolves them at runtime; direct plaintext options, where present, are limited to isolated command-line diagnostics.
-- No direct remote-network client was detected in the current source.
+- Static analysis did not identify a supported direct remote-network client. This is not proof of network isolation; review extensionless and non-Python executables before deployment.
 
 ### Troubleshooting
 

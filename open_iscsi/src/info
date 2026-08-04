@@ -1,6 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
  'description': 'Monitor Open-iSCSI sessions and iSOE hosts\n(Based on Frank Fegert)',
- 'download_url': 'https://kuhn-ruess.de/en/checkmk_checks.html',
+ 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/open_iscsi',
  'files': {'agents': ['plugins/open-iscsi', 'bakery/open-iscsi'],
            'cmk_addons_plugins': ['open_iscsi/agent_based/open_iscsi_host_stats.py',
                                   'open_iscsi/agent_based/open_iscsi_session_stats.py',
@@ -14,7 +14,7 @@
  'name': 'open_iscsi',
  'num_files': 11,
  'title': 'Open-iSCSI session and iSOE host checks',
- 'version': '2.0.1',
+ 'version': '2.0.2',
  'version.min_required': '2.4.0b1',
- 'version.packaged': '2.5.0',
+ 'version.packaged': '2.5.0p9',
  'version.usable_until': None}

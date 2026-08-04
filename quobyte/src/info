@@ -1,6 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
  'description': 'Webapi based monitoring for Quobyte storage\n',
- 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
+ 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/quobyte',
  'files': {'cmk_addons_plugins': ['quobyte/agent_based/devices.py',
                                   'quobyte/agent_based/healthmanager.py',
                                   'quobyte/agent_based/quota.py',
@@ -17,7 +17,7 @@
                                   'quobyte/libexec/agent_quobyte']},
  'name': 'quobyte',
  'title': 'Quobyte Monitoring',
- 'version': '2.1.1',
+ 'version': '2.1.2',
  'version.min_required': '2.4.0b1',
- 'version.packaged': '2.5.0',
+ 'version.packaged': '2.5.0p9',
  'version.usable_until': None}

@@ -1,6 +1,6 @@
 {'author': 'Daniel Dietz',
- 'description': 'Verifies Oxidized collection, Git backup artifacts, repository integrity, remote '
-                'Git synchronization, and supports Checkmk Agent Bakery deployment.',
+ 'description': 'Verifies Oxidized collection, Git backup artifacts, repository integrity, remote Git synchronization, '
+                'and supports Checkmk Agent Bakery deployment.',
  'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/oxidized_backup',
  'files': {'agents': ['plugins/oxidized_backup'],
            'cmk_addons_plugins': ['oxidized_backup/agent_based/oxidized_backup.py',
@@ -12,7 +12,7 @@
            'lib': ['python3/cmk/base/cee/plugins/bakery/oxidized_backup.py']},
  'name': 'oxidized_backup',
  'title': 'Oxidized Backup Verification',
- 'version': '1.1.1',
+ 'version': '1.1.2',
  'version.min_required': '2.4.0b1',
  'version.packaged': '2.5.0p9',
  'version.usable_until': '2.5.99'}

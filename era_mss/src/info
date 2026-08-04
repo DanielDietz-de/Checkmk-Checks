@@ -1,6 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
  'description': 'SNMP Based monitoring Plugins to monitor the ERA MSS System from www.era.aero\n',
- 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks',
+ 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/era_mss',
  'files': {'cmk_addons_plugins': ['era_mss/agent_based/bvim.py',
                                   'era_mss/agent_based/main.py',
                                   'era_mss/agent_based/musr.py',
@@ -27,7 +27,7 @@
                                   'era_mss/rulesets/era_vserver.py']},
  'name': 'era_mss',
  'title': 'ERA MSS Target Processor Monitoring',
- 'version': '1.0.1',
+ 'version': '1.0.2',
  'version.min_required': '2.4.0p15',
- 'version.packaged': '2.4.0p15',
+ 'version.packaged': '2.5.0p9',
  'version.usable_until': None}

@@ -1,6 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
  'description': 'Monitor the installed Puppet Agent',
- 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/tree/master/puppet_agent',
+ 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/puppet_agent',
  'files': {'agents': ['bakery/puppet_agent', 'plugins/puppet_agent.sh', 'plugins/puppet_agent.ps1'],
            'cmk_addons_plugins': ['puppet_agent/agent_based/puppet_agent.py',
                                   'puppet_agent/rulesets/puppet_agent.py',
@@ -8,7 +8,7 @@
  'name': 'puppet_agent',
  'num_files': 6,
  'title': 'Puppet Agent Monitor',
- 'version': '2.0.1',
+ 'version': '2.0.2',
  'version.min_required': '2.4.0b1',
- 'version.packaged': '2.5.0',
+ 'version.packaged': '2.5.0p9',
  'version.usable_until': None}

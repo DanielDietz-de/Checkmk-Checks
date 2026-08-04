@@ -1,12 +1,11 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Creates tenant-neutral Ivanti/Cherwell incidents over verified HTTPS and safely '
-                'acknowledges related Checkmk Event Console problems.\n',
+ 'description': 'Creates tenant-neutral Ivanti/Cherwell incidents over verified HTTPS and safely acknowledges related '
+                'Checkmk Event Console problems.\n',
  'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/cherwell_notify',
- 'files': {'cmk_addons_plugins': ['cherwell_notify/rulesets/cherwell_notify.py'],
-           'notifications': ['cherwell_notify']},
+ 'files': {'cmk_addons_plugins': ['cherwell_notify/rulesets/cherwell_notify.py'], 'notifications': ['cherwell_notify']},
  'name': 'cherwell_notify',
  'title': 'Cherwell notification script',
- 'version': '2.1.0',
+ 'version': '2.1.1',
  'version.min_required': '2.3.0b1',
- 'version.packaged': '2.4.0p7',
+ 'version.packaged': '2.5.0p9',
  'version.usable_until': None}

@@ -1,7 +1,6 @@
 {'author': 'Kuhn & Ruess GmbH',
- 'description': 'This check can work standalone or in addition to the integrated Checkmk Azure '
-                'Monitoring. It provides piggyback data in the same way as the included one, so '
-                'the hosts will see Addional Services.\n'
+ 'description': 'This check can work standalone or in addition to the integrated Checkmk Azure Monitoring. It provides '
+                'piggyback data in the same way as the included one, so the hosts will see Addional Services.\n'
                 '\n'
                 '- firewall ip config\n'
                 '- firewall policy\n'
@@ -19,7 +18,7 @@
                 '- virutalnetworks subnets\n'
                 '- virtualnetworks general\n'
                 '- virutalnetworks peerings\n',
- 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks',
+ 'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/azure_extras',
  'files': {'cmk_addons_plugins': ['azure_extra/agent_based/azure_extra_virtualnetworks.py',
                                   'azure_extra/libexec/agent_azure_extra',
                                   'azure_extra/rulesets/agent.py',
@@ -32,7 +31,7 @@
                                   'azure_extra/checkman/azure_vpn_gateway_bgp_tunnel']},
  'name': 'azure_extras',
  'title': 'Addional Azure Monitoring',
- 'version': '1.3.0',
+ 'version': '1.3.1',
  'version.min_required': '2.4.0p18',
- 'version.packaged': '2.4.0p18',
+ 'version.packaged': '2.5.0p9',
  'version.usable_until': None}
