@@ -99,6 +99,44 @@ class RepositoryConsistencyTests(unittest.TestCase):
             readme = root / "example/README.md"
             self.assertIn(reference.START, readme.read_text(encoding="utf-8"))
 
+    def test_reference_detects_non_python_network_clients(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self.make_package(temporary)
+            source = root / "example/src/example/agent_based"
+            (source / "probe.php").write_text(
+                "<?php $body = file_get_contents('https://example.invalid');\n",
+                encoding="utf-8",
+            )
+            (source / "probe.sh").write_text(
+                "#!/bin/sh\ncurl --fail https://example.invalid/status\n",
+                encoding="utf-8",
+            )
+            package = root / "example"
+            block = reference.derive_reference(
+                root,
+                package,
+                reference.manifest(package / "src/info"),
+            )
+            self.assertIn(
+                "The source performs network or remote-system access.",
+                block,
+            )
+            self.assertNotIn("No direct remote-network client", block)
+
+    def test_reference_qualifies_negative_network_detection(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self.make_package(temporary)
+            package = root / "example"
+            block = reference.derive_reference(
+                root,
+                package,
+                reference.manifest(package / "src/info"),
+            )
+            self.assertIn(
+                "This is not proof of network isolation",
+                block,
+            )
+
     def test_repository_facts_are_derived_from_manifests(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
