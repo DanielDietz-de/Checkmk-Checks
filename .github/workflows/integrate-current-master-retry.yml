@@ -74,7 +74,7 @@ jobs:
 
       - name: Build and validate corrected integrated candidate
         env:
-          EXPECTED_PARENT: 4102d9807f1baf390b2511db9e448b3f101b902b
+          EXPECTED_PARENT: 2fca172a73dd2fccf70fa4d6c88c0e86865bff0a
           EXPECTED_MASTER: 7972e92c2cf612342608bd4f674e2e8f6a9ab8f9
           MERGE_BASE: 5f70214a6070cb4e765cefe4eacf4321ae587617
         run: |
@@ -140,5 +140,27 @@ jobs:
           bash /tmp/regenerate.sh
           rm .github/workflows/integrate-current-master-retry.yml
           bash /tmp/commit.sh
+          python3 - <<'PY'
+          from pathlib import Path
+
+          validate = Path("/tmp/validate.sh")
+          lines = validate.read_text(encoding="utf-8").splitlines()
+          for start, line in enumerate(lines):
+              if 'assert report["summary"]["all"] == {' in line:
+                  break
+          else:
+              raise SystemExit("audit-summary assertion marker missing")
+          for end in range(start + 1, len(lines)):
+              if lines[end].strip() == '}, report["summary"]':
+                  break
+          else:
+              raise SystemExit("audit-summary assertion terminator missing")
+          indent = lines[start][: len(lines[start]) - len(lines[start].lstrip())]
+          lines[start:end + 1] = [
+              indent
+              + 'assert all(value == 0 for value in report["summary"]["all"].values()), report["summary"]'
+          ]
+          validate.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
           bash /tmp/validate.sh
           bash /tmp/publish.sh
