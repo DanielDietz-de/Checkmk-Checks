@@ -1,20 +1,8 @@
-#!/usr/bin/env python3
+"""Server-side command wiring for the SAP Cloud ALM special agent."""
 
-"""
-Kuhn & Rueß GmbH
-Consulting and Development
-https://kuhn-ruess.de
-"""
-
-from pydantic import BaseModel
 from urllib.parse import quote_plus
-
-from cmk.server_side_calls.v1 import (
-    HostConfig,
-    Secret,
-    SpecialAgentCommand,
-    SpecialAgentConfig,
-)
+from pydantic import BaseModel
+from cmk.server_side_calls.v1 import HostConfig, Secret, SpecialAgentCommand, SpecialAgentConfig
 
 
 class AgentSapAlmParams(BaseModel):
@@ -26,26 +14,19 @@ class AgentSapAlmParams(BaseModel):
 
 
 def generate_agent_command(params: AgentSapAlmParams, host_config: HostConfig):
-    args = []
-    args.append('--instance')
-    args.append(params.instance)
-    args.append('--client-id')
-    args.append(params.client_id)
-    args.append('--client-secret')
-    args.append(params.client_secret.unsafe())
-    args.append('--filter')
-    args.append(quote_plus(params.metric_filter))
+    args: list[str | Secret] = [
+        "--instance", params.instance,
+        "--client-id", params.client_id,
+        "--client-secret", params.client_secret,
+        "--filter", quote_plus(params.metric_filter),
+    ]
     if params.proxy:
-        args.append('--proxy')
-        args.append(params.proxy)
-
-    yield SpecialAgentCommand(
-        command_arguments = args
-    )
+        args.extend(("--proxy", params.proxy))
+    yield SpecialAgentCommand(command_arguments=args)
 
 
 special_agent_sap_cloud_alm = SpecialAgentConfig(
-    name = "sap_cloud_alm",
-    parameter_parser = AgentSapAlmParams.model_validate,
-    commands_function = generate_agent_command,
+    name="sap_cloud_alm",
+    parameter_parser=AgentSapAlmParams.model_validate,
+    commands_function=generate_agent_command,
 )
