@@ -7,16 +7,17 @@ https://kuhn-ruess.de
 """
 
 from argparse import ArgumentParser
+from inspect import signature
 from pathlib import Path
-from sys import argv, exit
+from sys import exit
 
 import math
 
 try:
     import purestorage
 except ImportError:
-    print("Python package purestorage >= 1.4.0 is missing")
-    print("Please install it with: <<<pip3 install --no-deps purestorage>>")
+    print("Python package purestorage 1.19.0 is missing")
+    print("Please install it with: <<<pip3 install --no-deps purestorage==1.19.0>>")
     exit(1)
 
 
@@ -31,15 +32,27 @@ def _resolve_secret_reference(reference: str) -> str:
     return lookup(Path(store_path), secret_id)
 
 
+def _validate_purestorage_client() -> None:
+    """Require the tested FlashArray constructor contract before connecting."""
+    required = {"verify_https", "ssl_cert", "request_kwargs"}
+    available = set(signature(purestorage.FlashArray).parameters)
+    missing = sorted(required - available)
+    if missing:
+        version = getattr(purestorage, "VERSION", "unknown")
+        raise RuntimeError(
+            "unsupported purestorage client "
+            f"{version}: missing FlashArray parameters {', '.join(missing)}; "
+            "install purestorage==1.19.0"
+        )
+
+
 def get_alerts():
-    """"
-    Get alerts
-    """
+    """Get active FlashArray alert counts."""
     print("<<<pure_fa_errors>>>")
     crit = 0
     warn = 0
     info = 0
-    error = ''
+    error = ""
 
     try:
         for alert in FA.list_messages(open=True):
@@ -58,175 +71,197 @@ def get_alerts():
         print(f"info {info}")
         print(f"error {error}")
     except OSError:
-        print(f"Could not get alerts")
+        print("Could not get alerts")
         exit(1)
+
 
 def get_hardware():
-    """
-    Get Hardware Infos
-    """
+    """Get FlashArray hardware information and cache drive serial numbers."""
     print("<<<pure_hardware>>>")
-    # {'details': None,
-    #  'identify': 'off',
-    #  'index': 0,
-    #  'model': 'DFSC1',
-    #  'name': 'SH9.SC0',
-    #  'serial': 'PSMFxxxxxx15',
-    #  'slot': None,
-    #  'speed': None,
-    #  'status': 'ok',
-    #  'temperature': 32,
-    #  'voltage': None},
-
     try:
         for comp in FA.list_hardware():
-            if comp['status'] == 'not_installed':
+            if comp["status"] == "not_installed":
                 continue
-            # Filter Drives
-            if not comp['name'].startswith(('CH', 'SH')) or 'PWR' in comp['name']:
-                print(f"{comp['name']} {comp['status']} {comp['serial']} {comp['speed']} {comp['temperature']} {comp['voltage']} {comp['slot']}")
-            HARDWARE_CACHE[comp['name']] = {
-                'serial': comp['serial'],
-            }
+            if not comp["name"].startswith(("CH", "SH")) or "PWR" in comp["name"]:
+                print(
+                    f"{comp['name']} {comp['status']} {comp['serial']} "
+                    f"{comp['speed']} {comp['temperature']} {comp['voltage']} "
+                    f"{comp['slot']}"
+                )
+            HARDWARE_CACHE[comp["name"]] = {"serial": comp["serial"]}
     except OSError:
-        print(f"Could not get hardware")
+        print("Could not get hardware")
         exit(1)
+
 
 def get_drives():
+    """Get installed FlashArray drive information."""
     print("<<<pure_drives>>>")
-    #{'status': 'healthy',
-    # 'protocol': 'NVMe',
-    # 'name': 'SH9.BAY13',
-    # 'last_evac_completed':
-    # '1970-01-01T00:00:00Z',
-    # 'details': None,
-    # 'capacity': 1041902862336,
-    # 'type': 'SSD',
-    # 'last_failure':
-    # '1970-01-01T00:00:00Z'}
-
     try:
         for drive in FA.list_drives():
-            if drive['status'] == 'unused':
+            if drive["status"] == "unused":
                 continue
-            details = HARDWARE_CACHE[drive['name']]
-            print(f"{drive['name']} {drive['status']} {details['serial']} {drive['type']} {drive['capacity']}")
+            details = HARDWARE_CACHE[drive["name"]]
+            print(
+                f"{drive['name']} {drive['status']} {details['serial']} "
+                f"{drive['type']} {drive['capacity']}"
+            )
     except OSError:
-        print(f"Could not get drives")
+        print("Could not get drives")
         exit(1)
 
+
 def get_array():
+    """Get FlashArray identity and software information."""
     print("<<<pure_array>>>")
     array_info = FA.get()
-    print (f"{array_info['array_name']} {array_info['version']} {array_info['revision']} {array_info['id']}")
+    print(
+        f"{array_info['array_name']} {array_info['version']} "
+        f"{array_info['revision']} {array_info['id']}"
+    )
+
 
 def truncate(number, decimals=0):
-    """
-    Returns a value truncated to a specific number of decimal places.
-    """
+    """Return a number truncated to a specific number of decimal places."""
     if not isinstance(decimals, int):
         raise TypeError("decimal places must be an integer.")
-    elif decimals < 0:
+    if decimals < 0:
         raise ValueError("decimal places has to be 0 or more.")
-    elif decimals == 0:
+    if decimals == 0:
         return math.trunc(number)
 
-    factor = 10.0 ** decimals
+    factor = 10.0**decimals
     return math.trunc(number * factor) / factor
 
+
 def render_size(value):
-    units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+    """Render a byte count using a compact binary unit."""
+    units = ["B", "KB", "MB", "GB", "TB", "PB"]
     unit_index = 0
 
     while value > 1000 and unit_index < 4:
         value /= 1024
         unit_index += 1
-    return "{:.2f} {}".format(value, [unit_index])
+    return "{:.2f} {}".format(value, units[unit_index])
+
 
 def get_volumes():
+    """Emit FlashArray volume capacity in Checkmk df format."""
     print("<<<df>>>")
     try:
         for volume in FA.list_volumes(names=["*"], space=True):
-            volumes_byte = int(volume['volumes'])
-            snapshots_byte = int(volume['snapshots'])
-            size_byte = int(volume['size'])
+            volumes_byte = int(volume["volumes"])
+            snapshots_byte = int(volume["snapshots"])
+            size_byte = int(volume["size"])
 
             fs_used_kb = int((volumes_byte + snapshots_byte) / 1024)
             fs_free_kb = int((size_byte - volumes_byte - snapshots_byte) / 1024)
             fs_size_kb = int(size_byte / 1024)
-            print(f"{volume['name']} {fs_size_kb} {fs_used_kb} {fs_free_kb} / {volume['name']}")
-    except (OSError,purestorage.PureHTTPError) as excp:
+            print(
+                f"{volume['name']} {fs_size_kb} {fs_used_kb} {fs_free_kb} "
+                f"/ {volume['name']}"
+            )
+    except (OSError, purestorage.PureHTTPError) as excp:
         print(f"Could not get volumes - {excp}")
 
+
 def get_arrayperformance():
+    """Emit per-volume FlashArray performance counters."""
     print("<<<pure_arrayperformance>>>")
     try:
-        for perfometer in FA.list_volumes(names=["*"], action='monitor'):
-            print(f"{perfometer['name']} {perfometer['reads_per_sec']} {perfometer['writes_per_sec']} {perfometer['output_per_sec']} {perfometer['input_per_sec']} {perfometer['usec_per_read_op']} {perfometer['usec_per_write_op']}")
-    except (OSError,purestorage.PureHTTPError) as excp:
+        for perfometer in FA.list_volumes(names=["*"], action="monitor"):
+            print(
+                f"{perfometer['name']} {perfometer['reads_per_sec']} "
+                f"{perfometer['writes_per_sec']} {perfometer['output_per_sec']} "
+                f"{perfometer['input_per_sec']} {perfometer['usec_per_read_op']} "
+                f"{perfometer['usec_per_write_op']}"
+            )
+    except (OSError, purestorage.PureHTTPError) as excp:
         print(f"Could not get array volume performance - {excp}")
 
+
 def get_arraydetails():
+    """Emit per-volume FlashArray reduction and space details."""
     print("<<<pure_arraydetails>>>")
     try:
         for details in FA.list_volumes(names=["*"], space=True):
-            print(f"{details['name']} {details['data_reduction']} {details['total_reduction']} {details['shared_space']} {details['thin_provisioning']} {details['snapshots']} {details['volumes']} {details['size']}")
-
-    except (OSError,purestorage.PureHTTPError) as excp:
+            print(
+                f"{details['name']} {details['data_reduction']} "
+                f"{details['total_reduction']} {details['shared_space']} "
+                f"{details['thin_provisioning']} {details['snapshots']} "
+                f"{details['volumes']} {details['size']}"
+            )
+    except (OSError, purestorage.PureHTTPError) as excp:
         print(f"Could not get array volume details - {excp}")
 
+
 def get_arraycertificates():
-#{'issued_to': '', 'locality': None, 'key_size': 2048, 'common_name': None, 'issued_by': '', 'country': None, 'state': None, 'valid_to': 1992478139000, 'organizational_unit': 'Pure Storage, Inc.', 'valid_from': 1677118139000, 'email': None, 'organization': 'Pure Storage, Inc.', 'name': 'management', 'status': 'self-signed'}
+    """Emit FlashArray management-certificate metadata."""
     print("<<<pure_arraycertificates>>>")
     try:
         for certificate in FA.list_certificates():
-            organizational_unit = certificate.get('organizational_unit','').replace(' ', '_')
-            organization = certificate.get('organization', '').replace(' ', '_')
-            print(f"{certificate['name']} {certificate['common_name']} {certificate['status']} {certificate['valid_from']} {certificate['valid_to']} {organizational_unit}|{organization}")
-    except (OSError,purestorage.PureHTTPError) as excp:
+            organizational_unit = certificate.get("organizational_unit", "").replace(
+                " ", "_"
+            )
+            organization = certificate.get("organization", "").replace(" ", "_")
+            print(
+                f"{certificate['name']} {certificate['common_name']} "
+                f"{certificate['status']} {certificate['valid_from']} "
+                f"{certificate['valid_to']} {organizational_unit}|{organization}"
+            )
+    except (OSError, purestorage.PureHTTPError) as excp:
         print(f"Could not get array certificate - {excp}")
 
-if __name__ == '__main__':
-    parser = ArgumentParser(
-        description="Check Pure storage"
-    )
+
+if __name__ == "__main__":
+    parser = ArgumentParser(description="Check Pure storage")
 
     parser.add_argument("-i", "--ipaddress", type=str)
     token_group = parser.add_mutually_exclusive_group(required=True)
-    token_group.add_argument("-t", "--token", help="API token for direct command-line testing")
+    token_group.add_argument(
+        "-t", "--token", help="API token for direct command-line testing"
+    )
     token_group.add_argument("--token-id", help="Checkmk password-store reference")
     parser.add_argument("--timeout", type=float, default=30.0)
-    parser.add_argument("--ca-file", help="Private CA bundle used for TLS verification")
-    parser.add_argument("--no-cert-check", action="store_true", help="Explicitly disable TLS verification")
+    tls_group = parser.add_mutually_exclusive_group()
+    tls_group.add_argument(
+        "--ca-file", help="Private CA bundle used for TLS verification"
+    )
+    tls_group.add_argument(
+        "--no-cert-check",
+        action="store_true",
+        help="Explicitly disable TLS verification",
+    )
 
     args = parser.parse_args()
-    args.token = args.token if args.token is not None else _resolve_secret_reference(args.token_id)
+    args.token = (
+        args.token
+        if args.token is not None
+        else _resolve_secret_reference(args.token_id)
+    )
 
     HARDWARE_CACHE = {}
 
     try:
-        verify = False if args.no_cert_check else (args.ca_file or True)
+        _validate_purestorage_client()
         FA = purestorage.FlashArray(
             args.ipaddress,
             api_token=args.token,
-            request_kwargs={"verify": verify, "timeout": args.timeout},
+            verify_https=not args.no_cert_check,
+            ssl_cert=args.ca_file,
+            request_kwargs={"timeout": args.timeout},
         )
-
     except OSError:
         print(f"Connection error to host {args.ipaddress}")
         exit(1)
-
-    except ValueError as error_txt:
-        print(f"unknown internal error: {error_txt}")
+    except (RuntimeError, ValueError) as error_txt:
+        print(f"configuration error: {error_txt}")
         exit(1)
-
     except purestorage.purestorage.PureError as error_txt:
-        print(f"purestorge module error {error_txt}")
+        print(f"purestorage module error {error_txt}")
         exit(1)
 
     get_alerts()
-    # We need to get Hardware before the drivers, in order
-    # to have more informations for the drives later
     get_hardware()
     get_drives()
     get_array()
