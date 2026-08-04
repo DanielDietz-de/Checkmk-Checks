@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - name: Check out audited branch
+      - name: Check out integration checkpoint
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.event.pull_request.head.ref }}
@@ -30,26 +30,26 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Diagnose merge with current master
+      - name: Apply exact master delta with three-way merge
         env:
-          EXPECTED_PARENT: 071cd0275b9db524660d6d27b7f119132b8cb611
+          EXPECTED_FIRST_PARENT: 1e57cc5472145950570fb5e62ddbfae2932c3837
           EXPECTED_MASTER: 7972e92c2cf612342608bd4f674e2e8f6a9ab8f9
+          MERGE_BASE: 5f70214a6070cb4e765cefe4eacf4321ae587617
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
-          git fetch --no-tags origin master
-          test "$(git rev-parse origin/master)" = "$EXPECTED_MASTER"
+          test "$(git rev-parse HEAD^1)" = "$EXPECTED_FIRST_PARENT"
+          test "$(git rev-parse HEAD^2)" = "$EXPECTED_MASTER"
+          git diff --binary "$MERGE_BASE" "$EXPECTED_MASTER" > /tmp/current-master.patch
           set +e
-          git merge --no-commit --no-ff origin/master
-          merge_rc=$?
+          git apply --3way --index /tmp/current-master.patch
+          apply_rc=$?
           set -e
-          echo "Merge return code: $merge_rc"
+          echo "Apply return code: $apply_rc"
           echo "Unmerged paths:"
           git diff --name-only --diff-filter=U || true
           echo "Status:"
           git status --short
-          if [ "$merge_rc" -eq 0 ]; then
-            git add -A
-            echo "Merged tree: $(git write-tree)"
+          if [ "$apply_rc" -eq 0 ]; then
+            echo "Integrated tree before regeneration: $(git write-tree)"
           fi
           exit 1
