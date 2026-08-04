@@ -1,0 +1,15 @@
+{'author': 'Kuhn & Rueß GmbH',
+ 'description': 'Special agent that fetches the ADFS federation metadata XML and monitors the embedded X.509 '
+                'certificates for expiry.\n',
+ 'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks',
+ 'files': {'cmk_addons_plugins': ['adfs_certificates/agent_based/certificates.py',
+                                  'adfs_certificates/checkman/adfs_certificates',
+                                  'adfs_certificates/libexec/agent_adfs_certificates',
+                                  'adfs_certificates/rulesets/agent.py',
+                                  'adfs_certificates/server_side_calls/agent.py']},
+ 'name': 'adfs_certificates',
+ 'title': 'ADFS Certificate Monitoring',
+ 'version': '1.0.1',
+ 'version.min_required': '2.4.0',
+ 'version.packaged': '2.4.0p19',
+ 'version.usable_until': None}

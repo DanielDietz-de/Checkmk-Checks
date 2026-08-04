@@ -51,9 +51,9 @@ This section is generated from the canonical manifest and current source tree. E
 
 ### Installation
 
-- Canonical package: `arcgis_portal` version `0.0.4`; minimum Checkmk version `2.4.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical package: `arcgis_portal` version `0.0.5`; minimum Checkmk version `2.4.0`; maximum asserted version: not asserted; validate on the target release.
 - Canonical manifest: `arcgis_portal/src/info`; it declares 4 packaged files.
-- Repository MKP artifacts present: `arcgis_portal-0.0.3.mkp`, `arcgis_portal-0.0.4.mkp`.
+- Repository MKP artifacts present: `arcgis_portal-0.0.3.mkp`, `arcgis_portal-0.0.4.mkp`, `arcgis_portal-0.0.5.mkp`.
 - No committed checksum file is present; do not distribute an unverified locally built artifact.
 - Source under `src/` is authoritative; generated MKP files and this reference must match it.
 

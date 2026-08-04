@@ -1,0 +1,18 @@
+{
+  "author": "Kuhn & Rueß GmbH",
+  "description": "Special agent that queries the Mirantis Kubernetes Engine (MKE / UCP) manager _ping endpoint of one or more nodes and reports the result as Checkmk local checks. Per-node \"UCP Healthy\" checks can be distributed to the node hosts via piggyback (opt-in), while an optional collection check (\"UCP Manager\") aggregates the nodes on the configured host and alerts once a configurable number of nodes is unhealthy.\n",
+  "download_url": "https://github.com/kuhn-ruess/Checkmk-Checks",
+  "files": {
+    "cmk_addons_plugins": [
+      "ucp_health/libexec/agent_ucp_health",
+      "ucp_health/rulesets/agent.py",
+      "ucp_health/server_side_calls/agent.py"
+    ]
+  },
+  "name": "ucp_health",
+  "title": "UCP / MKE Health Monitoring",
+  "version": "1.0.0",
+  "version.min_required": "2.4.0",
+  "version.packaged": "2.4.0p19",
+  "version.usable_until": null
+}

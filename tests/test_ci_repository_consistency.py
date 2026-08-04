@@ -1,4 +1,4 @@
-"""Tests for deterministic metadata, documentation, docstring, and syntax gates."""
+"""Tests for deterministic metadata, documentation, and packaging gates."""
 
 from __future__ import annotations
 
@@ -21,13 +21,35 @@ def load_module(path: Path, name: str):
 
 
 ROOT = Path(__file__).parents[1]
-metadata_sync = load_module(ROOT / "tools" / "ci" / "sync_package_metadata.py", "metadata_sync_test")
-reference = load_module(ROOT / "tools" / "ci" / "generate_package_reference.py", "reference_test")
-docstrings = load_module(ROOT / "tools" / "ci" / "manage_module_docstrings.py", "docstrings_test")
-syntax = load_module(ROOT / "tools" / "ci" / "check_python_syntax.py", "syntax_test")
+metadata_sync = load_module(
+    ROOT / "tools" / "ci" / "sync_package_metadata.py",
+    "metadata_sync_test",
+)
+reference = load_module(
+    ROOT / "tools" / "ci" / "generate_package_reference.py",
+    "reference_test",
+)
+facts = load_module(
+    ROOT / "tools" / "ci" / "sync_repository_facts.py",
+    "facts_test",
+)
+docstrings = load_module(
+    ROOT / "tools" / "ci" / "manage_module_docstrings.py",
+    "docstrings_test",
+)
+syntax = load_module(
+    ROOT / "tools" / "ci" / "check_python_syntax.py",
+    "syntax_test",
+)
+builder = load_module(
+    ROOT / ".github" / "scripts" / "build_repository_mkps.py",
+    "builder_test",
+)
 
 
 class RepositoryConsistencyTests(unittest.TestCase):
+    """Exercise code-derived repository consistency mechanisms."""
+
     def make_package(self, temporary: str) -> Path:
         root = Path(temporary)
         package = root / "example"
@@ -41,9 +63,14 @@ class RepositoryConsistencyTests(unittest.TestCase):
             "version.min_required": "2.4.0",
             "version.packaged": "2.5.0",
             "version.usable_until": None,
-            "files": {"cmk_addons_plugins": ["example/agent_based/plugin.py"]},
+            "files": {
+                "cmk_addons_plugins": ["example/agent_based/plugin.py"]
+            },
         }
-        (package / "src" / "info").write_text(repr(data), encoding="utf-8")
+        (package / "src" / "info").write_text(
+            repr(data),
+            encoding="utf-8",
+        )
         (package / "src" / "info.json").write_text("{}\n", encoding="utf-8")
         (package / "README.md").write_text("# Example\n", encoding="utf-8")
         (source / "plugin.py").write_text("VALUE = 1\n", encoding="utf-8")
@@ -54,8 +81,12 @@ class RepositoryConsistencyTests(unittest.TestCase):
             root = self.make_package(temporary)
             self.assertTrue(metadata_sync.run(root, write=False))
             self.assertEqual(metadata_sync.run(root, write=True), [])
-            canonical = ast.literal_eval((root / "example/src/info").read_text(encoding="utf-8"))
-            mirrored = json.loads((root / "example/src/info.json").read_text(encoding="utf-8"))
+            canonical = ast.literal_eval(
+                (root / "example/src/info").read_text(encoding="utf-8")
+            )
+            mirrored = json.loads(
+                (root / "example/src/info.json").read_text(encoding="utf-8")
+            )
             self.assertEqual(mirrored, canonical)
             self.assertEqual(metadata_sync.run(root, write=False), [])
 
@@ -68,6 +99,33 @@ class RepositoryConsistencyTests(unittest.TestCase):
             readme = root / "example/README.md"
             self.assertIn(reference.START, readme.read_text(encoding="utf-8"))
 
+    def test_repository_facts_are_derived_from_manifests(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "docs").mkdir()
+            for name in ("one", "two"):
+                (root / name / "src").mkdir(parents=True)
+                (root / name / "src" / "info").write_text(
+                    "{}",
+                    encoding="utf-8",
+                )
+            (root / "README.md").write_text(
+                "The repository-wide release workflow currently discovers "
+                "**0 active packages**.\n",
+                encoding="utf-8",
+            )
+            (root / "docs/REPOSITORY_AUDIT.md").write_text(
+                "The report covers **0 active packages**.\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(facts.run(root, write=False))
+            self.assertEqual(facts.run(root, write=True), [])
+            self.assertEqual(facts.run(root, write=False), [])
+            self.assertIn(
+                "**2 active packages**",
+                (root / "README.md").read_text(encoding="utf-8"),
+            )
+
     def test_module_docstring_gate_repairs_missing_docstring(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_package(temporary)
@@ -75,7 +133,11 @@ class RepositoryConsistencyTests(unittest.TestCase):
             self.assertEqual(docstrings.run(root, write=True), [])
             self.assertEqual(docstrings.run(root, write=False), [])
             module = root / "example/src/example/agent_based/plugin.py"
-            self.assertIsNotNone(ast.get_docstring(ast.parse(module.read_text(encoding="utf-8"))))
+            self.assertIsNotNone(
+                ast.get_docstring(
+                    ast.parse(module.read_text(encoding="utf-8"))
+                )
+            )
 
     def test_repository_syntax_gate_covers_legacy_extensionless_checks(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -86,8 +148,29 @@ class RepositoryConsistencyTests(unittest.TestCase):
             broken.write_text("def broken(:\n", encoding="utf-8")
             errors = syntax.validate(root)
             self.assertTrue(any("legacy_check" in error for error in errors))
-            broken.write_text("def valid():\n    return True\n", encoding="utf-8")
+            broken.write_text(
+                "def valid():\n    return True\n",
+                encoding="utf-8",
+            )
             self.assertEqual(syntax.validate(root), [])
+
+    def test_all_manifest_sources_resolve(self):
+        for package in builder.discover_package_dirs(ROOT, []):
+            manifest = builder.read_manifest(package, "2.5.0")
+            for component, entries in manifest["files"].items():
+                for entry in entries:
+                    source = builder._source_path(package, component, entry)
+                    self.assertTrue(source.exists(), source)
+
+    def test_package_lib_directories_are_not_globally_ignored(self):
+        ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        self.assertNotIn("\nlib/\n", "\n" + ignore)
+        self.assertTrue(
+            (
+                ROOT
+                / "cisco_ucs_detect/src/cmk/plugins/lib/cisco_ucs.py"
+            ).is_file()
+        )
 
 
 if __name__ == "__main__":

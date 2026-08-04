@@ -16,6 +16,14 @@
     "mkp": "acgateway/acgateway-2.0.6.mkp"
   },
   {
+    "title": "ADFS Certificate Monitoring",
+    "name": "adfs_certificates",
+    "description": "Special agent that fetches the ADFS federation metadata XML and monitors the embedded X.509 certificates for expiry.\n",
+    "version": "1.0.1",
+    "version_required": "2.4.0",
+    "mkp": "adfs_certificates/adfs_certificates-1.0.1.mkp"
+  },
+  {
     "title": "Agent JSON",
     "name": "agent_json",
     "description": "Query validated HTTPS health JSON and render safely escaped Checkmk local checks.\n",
@@ -59,9 +67,9 @@
     "title": "Arcgis Portal Monitoring",
     "name": "arcgis_portal",
     "description": "Monitors ArcGIS Portal federation settings and identity-provider certificates through the HTTPS REST API.",
-    "version": "0.0.4",
+    "version": "0.0.5",
     "version_required": "2.4.0",
-    "mkp": "arcgis_portal/arcgis_portal-0.0.4.mkp"
+    "mkp": "arcgis_portal/arcgis_portal-0.0.5.mkp"
   },
   {
     "title": "Arista Monitoring",
@@ -507,9 +515,9 @@
     "title": "Palo Alto enhanced checks",
     "name": "palo_alto",
     "description": "Enhanced SNMP checks for Palo Alto:\n- Antivirus signature age\n- GlobalProtect tunnel usage\n- Threat and URL-Filtering database versions\n- Panorama availability\n- DoS Zone RED drops\n- High availability state\n- Session table utilization\n",
-    "version": "1.3.1",
+    "version": "1.3.2",
     "version_required": "2.4.0",
-    "mkp": "palo_alto/palo_alto-1.3.1.mkp"
+    "mkp": "palo_alto/palo_alto-1.3.2.mkp"
   },
   {
     "title": "Password Age",
@@ -694,6 +702,14 @@
     "version": "2.0.1",
     "version_required": "2.4.0b1",
     "mkp": "tridium_station/tridium_station-2.0.1.mkp"
+  },
+  {
+    "title": "UCP / MKE Health Monitoring",
+    "name": "ucp_health",
+    "description": "Special agent that queries the Mirantis Kubernetes Engine (MKE / UCP) manager _ping endpoint of one or more nodes and reports the result as Checkmk local checks. Per-node \"UCP Healthy\" checks can be distributed to the node hosts via piggyback (opt-in), while an optional collection check (\"UCP Manager\") aggregates the nodes on the configured host and alerts once a configurable number of nodes is unhealthy.\n",
+    "version": "1.0.0",
+    "version_required": "2.4.0",
+    "mkp": "ucp_health/ucp_health-1.0.0.mkp"
   },
   {
     "title": "Unisphere PowerMax",

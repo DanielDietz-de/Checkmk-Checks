@@ -48,6 +48,7 @@ CI runs the audit with `--fail-on low`. The accepted repository state is therefo
 
 ## Generated documentation and metadata
 
+- `tools/ci/sync_repository_facts.py` derives repository-level package counts from canonical manifests.
 - `tools/ci/sync_package_metadata.py` treats `src/info` as canonical and requires any existing `src/info.json` to be an exact deterministic rendering.
 - `tools/ci/generate_package_reference.py` derives package README operational blocks from manifests, source paths, registrations, emitted sections, transport and credential patterns, tests, and artifacts.
 - `tools/ci/manage_module_docstrings.py` requires concise role-specific module descriptions for packaged Python source.
@@ -66,7 +67,7 @@ A zero-finding audit means only that the defined deterministic rules found no vi
 
 ## Current audited state
 
-At the completion of this repository-wide remediation, the local deterministic report covers **95 active packages** and reports **0 critical, 0 high, 0 medium, and 0 low findings**. CI regenerates this evidence for every pull request and publishes the JSON report with the exact audited source snapshot.
+At the completion of this repository-wide remediation, the local deterministic report covers **97 active packages** and reports **0 critical, 0 high, 0 medium, and 0 low findings**. CI regenerates this evidence for every pull request and publishes the JSON report with the exact audited source snapshot.
 
 ## What “ready to use” means
 

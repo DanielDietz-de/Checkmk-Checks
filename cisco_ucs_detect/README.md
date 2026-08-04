@@ -37,6 +37,7 @@ This section is generated from the canonical manifest and current source tree. E
 
 ### Configuration and components
 
+- **Other packaged source:** `src/cmk/plugins/lib/cisco_ucs.py`.
 - No special-agent or agent-based check registration was detected; use the component paths above to identify the package entry point.
 
 ### Validation

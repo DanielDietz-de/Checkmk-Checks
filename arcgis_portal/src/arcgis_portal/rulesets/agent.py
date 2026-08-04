@@ -4,8 +4,9 @@
 ArcGIS Portal Special Agent Ruleset
 """
 
-from cmk.rulesets.v1 import Title, Help
+from cmk.rulesets.v1 import Title, Help, Label
 from cmk.rulesets.v1.form_specs import (
+    BooleanChoice,
     Dictionary,
     DictElement,
     String,
@@ -48,6 +49,19 @@ def _valuespec_special_agent_arcgis_portal():
                 parameter_form=String(
                     title=Title("Proxy URL"),
                     help_text=Help("Proxy server URL to use for HTTP(S) requests (e.g., http://proxy.example.com:8080)"),
+                ),
+                required=False,
+            ),
+            "debug": DictElement(
+                parameter_form=BooleanChoice(
+                    title=Title("Debug mode"),
+                    label=Label("Print sanitized request metadata to stderr"),
+                    help_text=Help(
+                        "Useful for troubleshooting IdP/ADFS certificate retrieval. "
+                        "Only the request method, URL without query parameters, "
+                        "HTTP status, and response size are logged; response "
+                        "bodies and credentials are excluded."
+                    ),
                 ),
                 required=False,
             ),

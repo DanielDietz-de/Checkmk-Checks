@@ -62,6 +62,9 @@ jobs:
           --base "$BASE_SHA"
           --head "$HEAD_SHA"
 
+      - name: Verify code-derived repository facts
+        run: python3 tools/ci/sync_repository_facts.py
+
       - name: Verify canonical metadata mirrors
         run: python3 tools/ci/sync_package_metadata.py
 

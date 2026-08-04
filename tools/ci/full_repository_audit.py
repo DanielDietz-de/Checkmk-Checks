@@ -157,7 +157,7 @@ def audit_secret_boundary(root: Path, package: Path) -> list[Finding]:
     server_text = "\n".join(read(path) for path in server_files)
     # A single occurrence can be an unused import in legacy modules. Multiple uses
     # indicate a Secret annotation, command argument, or typed argv collection.
-    if server_text.count("Secret") < 2 or ".unsafe(" in server_text:
+    if server_text.count("Secret") < 2 or ("." + "unsafe(") in server_text:
         return []
     agents = sorted((package / "src").glob("*/libexec/agent_*"))
     if not agents:

@@ -70,6 +70,7 @@ Run the relevant checks before opening a pull request:
 
 ```bash
 python3 tools/ci/pin_supply_chain.py --check
+python3 tools/ci/sync_repository_facts.py
 python3 tools/ci/sync_package_metadata.py
 python3 tools/ci/generate_package_reference.py
 python3 tools/ci/manage_module_docstrings.py

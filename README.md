@@ -6,7 +6,7 @@ The repository is maintained under the `DanielDietz-de` organization and contain
 
 ## Repository status
 
-The repository-wide release workflow currently discovers **95 active packages** from their canonical `*/src/info` manifests. It runs package tests, builds deterministic MKP archives, verifies checksums and package inventories, and validates supported packages in clean Checkmk 2.4 and 2.5 sites before publication.
+The repository-wide release workflow currently discovers **97 active packages** from their canonical `*/src/info` manifests. It runs package tests, builds deterministic MKP archives, verifies checksums and package inventories, and validates supported packages in clean Checkmk 2.4 and 2.5 sites before publication.
 
 A package being present does **not** automatically mean that every device-specific behavior has been validated against live hardware. Use the compatibility fields and documentation in each package directory, and review the assurance model in [`MAINTENANCE.md`](MAINTENANCE.md).
 
@@ -76,6 +76,7 @@ Useful repository checks include:
 
 ```bash
 python3 tools/ci/pin_supply_chain.py --check
+python3 tools/ci/sync_repository_facts.py
 python3 tools/ci/sync_package_metadata.py
 python3 tools/ci/generate_package_reference.py
 python3 tools/ci/manage_module_docstrings.py
