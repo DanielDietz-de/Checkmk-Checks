@@ -192,11 +192,11 @@ def audit_python(root: Path, path: Path, text: str) -> list[Finding]:
         if name in {"eval", "exec"}:
             result.append(finding("critical", "security.dynamic-code-execution", root, path, line, f"built-in {name}() executes dynamic code", "replace dynamic execution with explicit parsing and validation"))
         if name in {"os.system", "os.popen", "commands.getoutput", "commands.getstatusoutput"}:
-            result.append(finding("high", "security.shell-execution", root, path, line, f"{name} invokes a shell", "use subprocess with a validated argument list and shell=False"))
+            result.append(finding("high", "security.shell-execution", root, path, line, f"{name} invokes a shell", "use subprocess with a validated argument list and no shell"))
         if name.startswith("subprocess."):
             for keyword in node.keywords:
                 if keyword.arg == "shell" and isinstance(keyword.value, ast.Constant) and keyword.value.value is True:
-                    result.append(finding("high", "security.subprocess-shell", root, path, getattr(keyword.value, "lineno", line), "subprocess call uses shell=True", "pass an argument list with shell=False"))
+                    result.append(finding("high", "security.subprocess-shell", root, path, getattr(keyword.value, "lineno", line), "subprocess call enables shell execution", "pass a validated argument list without a shell"))
         for keyword in node.keywords:
             if keyword.arg == "verify" and isinstance(keyword.value, ast.Constant) and keyword.value.value is False:
                 result.append(finding("high", "security.tls-verification-disabled", root, path, getattr(keyword.value, "lineno", line), "TLS certificate verification is disabled", "enable verification and support an explicit private CA bundle"))
