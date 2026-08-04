@@ -58,11 +58,8 @@ DOC_SECTIONS = {
     "troubleshooting": ("troubleshoot", "diagnos", "known limitation"),
     "security": ("security", "credential", "permission", "tls"),
 }
-PRIVATE_KEYS = (
-    "-----BEGIN " + "PRIVATE KEY-----",
-    "-----BEGIN RSA " + "PRIVATE KEY-----",
-    "-----BEGIN OPENSSH " + "PRIVATE KEY-----",
-    "-----BEGIN EC " + "PRIVATE KEY-----",
+PRIVATE_KEY_HEADER_RE = re.compile(
+    r"-----BEGIN (?:(?:[A-Z0-9]+(?:[ -][A-Z0-9]+)*) )?PRIVATE KEY-----"
 )
 TOKEN_PATTERNS = (
     (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "AWS access-key identifier"),
@@ -285,20 +282,19 @@ def audit_credential_material(root: Path, path: Path) -> list[Finding]:
         ]
     text = data.decode("utf-8", errors="replace")
     result = []
-    for marker in PRIVATE_KEYS:
-        if marker in text:
-            line = text[: text.index(marker)].count("\n") + 1
-            result.append(
-                finding(
-                    "critical",
-                    "security.private-key-material",
-                    root,
-                    path,
-                    line,
-                    "private-key material appears to be committed",
-                    "revoke and remove the key from history",
-                )
+    for match in PRIVATE_KEY_HEADER_RE.finditer(text):
+        line = text[: match.start()].count("\n") + 1
+        result.append(
+            finding(
+                "critical",
+                "security.private-key-material",
+                root,
+                path,
+                line,
+                "private-key material appears to be committed",
+                "revoke and remove the key from history",
             )
+        )
     for pattern, label in TOKEN_PATTERNS:
         match = pattern.search(text)
         if match:

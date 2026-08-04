@@ -110,6 +110,36 @@ class FullRepositoryAuditTests(unittest.TestCase):
             )
             self.assertGreater(report["credential_files"], report["source_files"])
 
+    def test_detects_encrypted_and_dsa_private_key_headers(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self.make_root(temporary)
+            key_directory = root / "certificates"
+            key_directory.mkdir(parents=True)
+            encrypted = key_directory / "encrypted.pem"
+            encrypted.write_text(
+                "-----BEGIN " + "ENCRYPTED PRIVATE KEY-----\nredacted\n",
+                encoding="utf-8",
+            )
+            dsa = key_directory / "legacy-dsa.key"
+            dsa.write_text(
+                "-----BEGIN " + "DSA PRIVATE KEY-----\nredacted\n",
+                encoding="utf-8",
+            )
+
+            report = audit.build_report(root, set())
+            credential_findings = {
+                (item["path"], item["rule_id"])
+                for item in report["findings"]
+            }
+            self.assertIn(
+                ("certificates/encrypted.pem", "security.private-key-material"),
+                credential_findings,
+            )
+            self.assertIn(
+                ("certificates/legacy-dsa.key", "security.private-key-material"),
+                credential_findings,
+            )
+
     def test_benign_binary_file_is_scanned_without_false_positive(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_root(temporary)
