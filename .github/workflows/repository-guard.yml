@@ -238,14 +238,12 @@ jobs:
           pytest -q tests/test_ci_repository_consistency.py pure/tests/test_pure_integrity.py
           git diff --check
 
-      - name: Commit validated fixes and restore workflows
+      - name: Commit validated source and documentation fixes
         run: |
           set -euo pipefail
-          git restore --source=7fd0c23a8f14b8c2e619bfb7a82ddd6179185cc1 -- .github/workflows/repository-guard.yml
-          rm -f .github/workflows/apply-additional-codex-findings.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add tools/ci/full_repository_audit.py pure/README.md
           git diff --cached --check
           git commit -m "fix: close additional Codex audit gaps"
           git push origin HEAD:agent/repository-wide-security-documentation-audit
