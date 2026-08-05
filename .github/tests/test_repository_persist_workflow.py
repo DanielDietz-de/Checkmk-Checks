@@ -53,6 +53,17 @@ def test_publication_aborts_stale_source_without_failing_or_pushing() -> None:
     assert "if: steps.source.outputs.current == 'true'" in workflow
 
 
+def test_second_stale_check_gates_pr_and_dispatch_steps() -> None:
+    workflow = PUBLICATION.read_text(encoding="utf-8")
+    branch_step = workflow.split("- name: Update automation release branch", maxsplit=1)[1].split(
+        "- name: Open or update release pull request", maxsplit=1
+    )[0]
+    assert "id: branch" in branch_step
+    assert 'echo "published=false"' in branch_step
+    assert 'echo "published=true"' in branch_step
+    assert workflow.count("if: steps.branch.outputs.published == 'true'") == 2
+
+
 def test_workflow_created_release_pr_gets_explicit_exact_head_checks() -> None:
     workflow = PUBLICATION.read_text(encoding="utf-8")
     assert "actions: write" in workflow
