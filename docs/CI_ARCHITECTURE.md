@@ -9,7 +9,7 @@ The CI design has two distinct responsibilities:
 1. validate source changes with the smallest safe package scope; and
 2. publish generated MKP release state without writing directly to the protected default branch.
 
-These responsibilities are deliberately separated. Validation workflows are read-only. Publication starts only after a successful full validation on `master`, writes to a fixed automation branch, and opens or updates a normal pull request.
+These responsibilities are deliberately separated. Validation workflows are read-only. Publication starts only after successful full validation and security guarding of `master`, writes to a fixed automation branch, and opens or updates a normal pull request.
 
 ## Validation modes
 
@@ -17,7 +17,7 @@ These responsibilities are deliberately separated. Validation workflows are read
 
 ### `targeted`
 
-Use targeted validation when every relevant change maps unambiguously to one or more active package directories and is confined to that package's `src/` or `tests/` tree.
+Use targeted validation when every relevant change maps unambiguously to one or more active package directories and is confined to that package's non-manifest `src/` or `tests/` tree.
 
 For each selected package, CI:
 
@@ -26,7 +26,7 @@ For each selected package, CI:
 - builds only its deterministic MKP archive and checksum; and
 - installs and validates only the selected MKPs on the supported Checkmk 2.4 and 2.5 images.
 
-Repository security, metadata, generated-documentation, syntax, and supply-chain guards remain repository-wide and run in the separate repository guard workflow.
+Repository security, metadata, generated-documentation, syntax, supply-chain, and cross-package collision guards remain repository-wide and run in the separate repository guard workflow.
 
 ### `full`
 
@@ -35,6 +35,7 @@ Full validation is mandatory when a change can affect more than one package or t
 Full mode is selected for:
 
 - changes to workflows, repository packaging scripts, release tests, shared CI tooling, generators, or release configuration;
+- changes to canonical package manifests or retained metadata mirrors (`*/src/info` and `*/src/info.json`), because these can change the package universe, package identity, compatibility, or global destination map;
 - generated MKP artifacts or the repository package index;
 - renames, copies, deletions, unknown Git statuses, malformed paths, or incomplete comparison data;
 - changes outside a known active package or an approved documentation-only path;
@@ -46,11 +47,13 @@ The selector fails safe: uncertainty expands validation to the full repository r
 
 ### `none`
 
-Documentation-only changes can skip the expensive package build and Checkmk matrix. The repository guard still validates immutable dependencies, generated facts, metadata mirrors, code-derived documentation, syntax, audit policy, and CI-tool tests.
+Documentation-only changes skip package tests, MKP construction, and Checkmk container work. The existing required job names—including both matrix-expanded Checkmk job names—still run and complete explicit successful no-op steps. This prevents branch-protection rules from waiting indefinitely for checks that were omitted by a job-level condition.
+
+The repository guard still validates immutable dependencies, generated facts, metadata mirrors, code-derived documentation, Python syntax, audit policy, selector tests, and global package invariants.
 
 ## Selector trust model
 
-Active packages are discovered only from canonical top-level `*/src/info` manifests. User-controlled paths are treated as POSIX repository paths and rejected if they are absolute, contain `..`, do not map to a known package, or fall outside an explicitly understood path class.
+Active packages are discovered only from canonical top-level `*/src/info` manifests. User-controlled paths are treated as POSIX repository paths and rejected if they are absolute, contain `..`, contain CR or LF, do not map to a known package, or fall outside an explicitly understood path class.
 
 Rename, copy, and delete operations deliberately force full validation. This avoids under-validating cross-package moves or removals when only one side of the operation appears package-local.
 
@@ -60,6 +63,20 @@ The selector emits structured outputs:
 - `packages`: a JSON array of selected package directories;
 - `package-count`; and
 - a human-readable reason recorded in the workflow summary.
+
+Git changed paths are read with NUL delimiters. Before values are written to GitHub's line-based `$GITHUB_OUTPUT` file, CR and LF are encoded to literal `\\r` and `\\n`. This prevents a malicious filename or exception message from injecting or replacing downstream outputs such as `mode`.
+
+## Lightweight global collision guard
+
+Targeted runtime validation does not install the 96 unaffected packages. To preserve important repository-wide invariants without defeating the optimization, `tools/ci/check_package_collisions.py` runs in the repository guard for every change.
+
+It rejects cross-package collisions in:
+
+- canonical package names;
+- packaged destination paths within the same Checkmk component; and
+- statically declared Checkmk registration names, including check plug-ins, agent and SNMP sections, inventory plug-ins, special agents, active checks, check-parameter rules, and agent-access rules.
+
+Python registrations are inspected with the AST rather than regular expressions, so comments, examples, and docstrings do not create false registrations. Dynamic names and registrations constructed indirectly cannot be proven by static inspection; shared changes, package-manifest changes, pushes, schedules, and manual runs therefore continue to receive full clean-site validation.
 
 ## Read-only validation workflow
 
@@ -89,19 +106,22 @@ The resulting `workflow_dispatch` run is classified as `full`, so the complete p
 
 `.github/workflows/repository-mkp-publication.yml` is triggered by a successful `Repository MKP validation` workflow run for a push to `master`.
 
-It uses the exact source SHA and artifact run that passed validation. Before and immediately before publishing, it verifies that `master` still points to that SHA. If `master` has advanced, the job exits without publishing; the newer validation run becomes authoritative.
+Before it trusts that MKP run, it polls the Actions API for the latest push-triggered `repository-guard.yml` run on the exact same source SHA and requires that guard to complete successfully. Publication therefore cannot proceed from a commit whose package workflow passed while its security, source-integrity, or cross-package guard failed or was canceled.
+
+It then uses the exact source SHA and artifact run that passed validation. Before staging and immediately before updating the automation branch, it verifies that `master` still points to that SHA. If `master` has advanced, the transaction records a non-published result and every later PR or dispatch step is skipped; the newer validation run becomes authoritative.
 
 Publication then:
 
-1. downloads the exact validated full-repository artifact;
-2. verifies checksums, package names, versions, archive manifests, safe paths, and complete package coverage;
-3. stages and regenerates the release state;
-4. rebuilds and byte-compares every package;
-5. rejects unexpected source or workflow changes;
-6. commits only generated release paths;
-7. updates `automation/repository-mkp-release` with `--force-with-lease`;
-8. opens or updates a pull request targeting `master`; and
-9. explicitly dispatches the repository guard and full MKP validation workflows against the exact automation-branch head.
+1. requires the exact source commit's push-triggered security guard to be green;
+2. downloads the exact validated full-repository artifact;
+3. verifies checksums, package names, versions, archive manifests, safe paths, and complete package coverage;
+4. stages and regenerates the release state;
+5. rebuilds and byte-compares every package;
+6. rejects unexpected source or workflow changes;
+7. commits only generated release paths;
+8. updates `automation/repository-mkp-release` with `--force-with-lease`;
+9. opens or updates a pull request targeting `master`; and
+10. explicitly dispatches the repository guard and full MKP validation workflows against the exact automation-branch head.
 
 The workflow never pushes to `master`.
 
@@ -126,11 +146,11 @@ The scheduled dispatcher has `actions: write` only to create the authoritative m
 
 The publication job has the minimum permissions needed for its isolated responsibility:
 
-- `actions: write` to download the validated artifact and explicitly dispatch exact-head release checks;
+- `actions: write` to inspect the exact source guard, download the validated artifact, and dispatch exact-head release checks;
 - `contents: write` to update the dedicated automation branch; and
 - `pull-requests: write` to create or update the release PR.
 
-The workflows use `persist-credentials: false` whenever repository content is checked out. A short-lived `GITHUB_TOKEN` is supplied only to explicit automation-branch pushes, pull-request operations, and workflow dispatches. Third-party actions remain pinned to immutable commit SHAs, and Checkmk images remain pinned by digest.
+The workflows use `persist-credentials: false` whenever repository content is checked out. A short-lived `GITHUB_TOKEN` is supplied only to explicit Actions queries or dispatches, automation-branch pushes, and pull-request operations. Third-party actions remain pinned to immutable commit SHAs, and Checkmk images remain pinned by digest.
 
 The repository or organization must permit GitHub Actions to create pull requests. If that setting is disabled, publication fails closed at PR creation; do not replace the workflow token with an unmanaged personal token merely to bypass policy.
 
@@ -167,7 +187,9 @@ A release preparation step that attempts to modify executable source, tests, wor
 
 ## Concurrency and recursion
 
-Validation uses per-ref concurrency and cancels superseded runs. Scheduled dispatch and publication each use a repository-wide serial concurrency group and do not cancel an in-flight transaction.
+Validation and repository-guard concurrency groups include workflow name, ref, and `github.event_name`. Superseded runs of the same event class can cancel one another, but a scheduled/manual run cannot cancel a push run on `master`, and a push cannot cancel the exact-head manual checks dispatched for a generated release branch.
+
+Scheduled dispatch and publication each use a repository-wide serial concurrency group and do not cancel an in-flight transaction.
 
 The publication workflow only performs work for successful push-triggered validation runs on `master`. Pull-request, scheduled, and manually dispatched validation runs may produce a `workflow_run` event, but the publication job rejects them because their event is not `push` on `master`.
 
@@ -177,11 +199,15 @@ After the generated release PR is merged, `master` is fully validated again. Pub
 
 ### Selector unexpectedly chooses `full`
 
-Read the `MKP validation scope` workflow summary. Full mode is expected for shared tooling, generated artifacts, renames/deletions, unknown top-level paths, scheduled/manual events, and any comparison failure.
+Read the `MKP validation scope` workflow summary. Full mode is expected for shared tooling, canonical package metadata, generated artifacts, renames/deletions, unknown top-level paths, scheduled/manual events, and any comparison failure.
 
 ### Selector chooses `none`
 
-Confirm that the change is documentation-only. Repository-wide guards still run. A source or test path under an active package must result in targeted mode.
+Confirm that the change is documentation-only. Repository-wide guards still run, and the package/build/Checkmk jobs should be successful no-ops rather than absent checks. A non-manifest source or test path under an active package must result in targeted mode.
+
+### Cross-package collision guard fails
+
+Treat the reported identity as a repository-wide compatibility defect. Rename the package, packaged destination, or Checkmk registration deliberately and document any migration impact. Do not suppress the global check merely because only one package was edited.
 
 ### Scheduled validation did not start
 
@@ -191,9 +217,9 @@ Check the `Schedule repository MKP validation` workflow and its `Dispatch weekly
 
 Check, in order:
 
-1. the source `Repository MKP validation` run completed successfully;
-2. it was a push run on `master`;
-3. the validated source SHA was still current when publication ran;
+1. the source `Repository MKP validation` push run completed successfully;
+2. the exact same source SHA has a successful push-triggered `Repository security and supply-chain guard` run;
+3. the validated source SHA was still current at both freshness checks;
 4. the staged generated state actually differs from `master`; and
 5. repository Actions policy permits `GITHUB_TOKEN` to create pull requests.
 
@@ -213,4 +239,4 @@ The release preparation attempted to modify hand-written content or an unknown p
 
 ## Changing this architecture
 
-Any change to the selector, packaging scripts, workflows, release configuration, scheduled dispatcher, or publication tests automatically selects full validation. The change must include focused regression tests and keep this document synchronized with executable behavior.
+Any change to the selector, packaging scripts, workflows, release configuration, scheduled dispatcher, collision guard, or publication tests automatically selects full validation. The change must include focused regression tests and keep this document synchronized with executable behavior.
