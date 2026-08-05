@@ -27,7 +27,8 @@ Checkmk plugin.
 2. Create an API key on the HNAS (`apikey-create`, recommended) or use
    an API user with password.
 3. Configure the rule *Hitachi HNAS via REST API* under
-   *Setup > Agents > Other integrations*.
+   *Setup > Agents > Other integrations*. For a private certificate authority,
+   provide the absolute PEM CA-bundle path instead of disabling verification.
 
 Authentication is done either via the `X-Api-Key` header (recommended
 by Hitachi) or via `X-Subsystem-User`/`X-Subsystem-Password` headers
@@ -59,7 +60,7 @@ This section is generated from the canonical manifest and current source tree. E
 
 ### Validation
 
-- Package-specific tests: `tests/test_hitachi_hnas_rest_integrity.py`.
+- Package-specific tests: `tests/test_hitachi_hnas_rest_integrity.py`, `tests/test_hitachi_hnas_rest_transport.py`.
 - Any behavior change must update or add focused tests before the generated documentation is refreshed.
 
 ### Security
