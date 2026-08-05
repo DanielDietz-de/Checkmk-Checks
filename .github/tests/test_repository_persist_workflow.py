@@ -16,6 +16,20 @@ def test_validation_workflow_is_read_only() -> None:
     assert "contents: write" not in workflow
 
 
+def test_documentation_only_scope_preserves_required_check_names() -> None:
+    workflow = VALIDATION.read_text(encoding="utf-8")
+    tests_job = workflow.split("\n  tests:\n", maxsplit=1)[1].split("\n  build:\n", maxsplit=1)[0]
+    build_job = workflow.split("\n  build:\n", maxsplit=1)[1].split("\n  validate:\n", maxsplit=1)[0]
+    validate_job = workflow.split("\n  validate:\n", maxsplit=1)[1].split(
+        "\n  publication-dry-run:\n", maxsplit=1
+    )[0]
+    for job in (tests_job, build_job, validate_job):
+        header = job.split("\n    steps:\n", maxsplit=1)[0]
+        assert "needs.select.outputs.mode != 'none'" not in header
+        assert "Record documentation-only scope" in job
+    assert "matrix:" in validate_job
+
+
 def test_full_pull_requests_exercise_publication_transaction() -> None:
     workflow = VALIDATION.read_text(encoding="utf-8")
     dry_run = workflow.split("\n  publication-dry-run:\n", maxsplit=1)[1]
