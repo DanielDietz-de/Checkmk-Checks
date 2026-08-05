@@ -33,7 +33,7 @@ def _minimal_manifest(name: str = "safe_package") -> dict[str, object]:
 
 
 def _write_manifest(package: Path, manifest: dict[str, object]) -> None:
-    (package / "src").mkdir(parents=True)
+    (package / "src").mkdir(parents=True, exist_ok=True)
     (package / "src/info").write_text(repr(manifest), encoding="utf-8")
 
 
