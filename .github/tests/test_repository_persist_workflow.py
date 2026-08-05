@@ -5,6 +5,7 @@ from pathlib import Path
 REPOSITORY = Path(__file__).resolve().parents[2]
 VALIDATION = REPOSITORY / ".github/workflows/repository-mkp-ci.yml"
 PUBLICATION = REPOSITORY / ".github/workflows/repository-mkp-publication.yml"
+SCHEDULE = REPOSITORY / ".github/workflows/repository-mkp-schedule.yml"
 GUARD = REPOSITORY / ".github/workflows/repository-guard.yml"
 
 
@@ -69,6 +70,15 @@ def test_guard_supports_release_branch_workflow_dispatch() -> None:
     assert 'elif [[ "$EVENT_NAME" == "push"' in range_step
     assert 'git fetch origin master' in range_step
     assert 'git merge-base origin/master "$CURRENT_SHA"' in range_step
+
+
+def test_weekly_schedule_reuses_manual_full_validation_path() -> None:
+    workflow = SCHEDULE.read_text(encoding="utf-8")
+    assert 'cron: "17 3 * * 0"' in workflow
+    assert "actions: write" in workflow
+    assert "gh workflow run repository-mkp-ci.yml" in workflow
+    assert "--ref master" in workflow
+    assert "checkmk/check-mk" not in workflow
 
 
 def test_master_and_manual_runs_force_full_selection() -> None:
