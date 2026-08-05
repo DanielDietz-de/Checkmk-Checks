@@ -52,8 +52,12 @@ jobs:
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             base="$PR_BASE_SHA"
             head="$PR_HEAD_SHA"
-          else
+          elif [[ "$EVENT_NAME" == "push" && -n "$BEFORE_SHA" && "${BEFORE_SHA//0/}" != "" ]]; then
             base="$BEFORE_SHA"
+            head="$CURRENT_SHA"
+          else
+            git fetch origin master
+            base=$(git merge-base origin/master "$CURRENT_SHA")
             head="$CURRENT_SHA"
           fi
           printf 'base=%s\nhead=%s\n' "$base" "$head" >>"$GITHUB_OUTPUT"
