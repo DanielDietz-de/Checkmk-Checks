@@ -2,25 +2,9 @@ name: Repository MKP validation
 
 on:
   pull_request:
-    paths:
-      - "*/src/**"
-      - "*/tests/**"
-      - ".github/scripts/**"
-      - ".github/tests/**"
-      - ".github/workflows/repository-mkp-ci.yml"
-      - "create_mkp_index.py"
-      - "mkp_index.json"
   push:
     branches:
       - master
-    paths:
-      - "*/src/**"
-      - "*/tests/**"
-      - ".github/scripts/**"
-      - ".github/tests/**"
-      - ".github/workflows/repository-mkp-ci.yml"
-      - "create_mkp_index.py"
-      - "mkp_index.json"
   workflow_dispatch:
 
 permissions:
@@ -35,8 +19,72 @@ env:
   PACKAGED_VERSION: 2.5.0p9
 
 jobs:
+  select:
+    name: Select validation scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.selection.outputs.mode }}
+      packages: ${{ steps.selection.outputs.packages }}
+      package-count: ${{ steps.selection.outputs.package-count }}
+      reason: ${{ steps.selection.outputs.reason }}
+
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Detect affected packages
+        id: selection
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            base="$PR_BASE_SHA"
+            head="$PR_HEAD_SHA"
+          else
+            base="$BEFORE_SHA"
+            head="$CURRENT_SHA"
+          fi
+          python .github/scripts/detect_affected_packages.py \
+            --repository . \
+            --base "$base" \
+            --head "$head" \
+            --event-name "$EVENT_NAME" \
+            --ref "$EVENT_REF" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Publish scope summary
+        env:
+          MODE: ${{ steps.selection.outputs.mode }}
+          PACKAGES: ${{ steps.selection.outputs.packages }}
+          REASON: ${{ steps.selection.outputs.reason }}
+        run: |
+          {
+            echo "## MKP validation scope"
+            echo
+            echo "- Mode: \`$MODE\`"
+            echo "- Packages: \`$PACKAGES\`"
+            echo "- Reason: $REASON"
+          } >>"$GITHUB_STEP_SUMMARY"
+
   tests:
     name: Run all package tests
+    needs: select
+    if: needs.select.outputs.mode != 'none'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -51,7 +99,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install test tools
+      - name: Install pinned test tools
         run: >-
           python -m pip install --disable-pip-version-check
           pytest==9.1.1
@@ -64,19 +112,59 @@ jobs:
           ruff check --select E9,F63,F7,F82 .github/scripts .github/tests create_mkp_index.py
           python -m compileall -q .github/scripts .github/tests create_mkp_index.py
 
-      - name: Test repository release tooling
+      - name: Test repository release and selector tooling
         run: pytest -q .github/tests
 
-      - name: Verify repository-wide package test collection
-        run: pytest -q */tests
+      - name: Verify package test collection
+        env:
+          MODE: ${{ needs.select.outputs.mode }}
+          PACKAGES_JSON: ${{ needs.select.outputs.packages }}
+        run: |
+          set -euo pipefail
+          if [[ "$MODE" == "full" ]]; then
+            pytest -q */tests
+          else
+            mapfile -t test_dirs < <(
+              python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
 
-      - name: Execute every package test suite
+          packages = json.loads(os.environ["PACKAGES_JSON"])
+          test_dirs = [Path(package) / "tests" for package in packages]
+          missing = [str(path.parent) for path in test_dirs if not path.is_dir()]
+          if missing:
+              raise SystemExit(f"Selected packages have no test directory: {', '.join(missing)}")
+          for path in test_dirs:
+              print(path)
+          PY
+            )
+            ((${#test_dirs[@]})) || { echo "No targeted package tests selected" >&2; exit 1; }
+            pytest -q "${test_dirs[@]}"
+          fi
+
+      - name: Execute each selected package test suite independently
+        env:
+          MODE: ${{ needs.select.outputs.mode }}
+          PACKAGES_JSON: ${{ needs.select.outputs.packages }}
         run: |
           set -uo pipefail
           : > package-tests.log
           failures=()
-          shopt -s nullglob
-          test_dirs=(*/tests)
+          if [[ "$MODE" == "full" ]]; then
+            shopt -s nullglob
+            test_dirs=(*/tests)
+          else
+            mapfile -t test_dirs < <(
+              python - <<'PY'
+          import json
+          import os
+
+          for package in json.loads(os.environ["PACKAGES_JSON"]):
+              print(f"{package}/tests")
+          PY
+            )
+          fi
           for test_dir in "${test_dirs[@]}"; do
             echo "===== pytest ${test_dir} =====" | tee -a package-tests.log
             if pytest -q "$test_dir" 2>&1 | tee -a package-tests.log; then
@@ -103,6 +191,8 @@ jobs:
 
   build:
     name: Build all active MKPs
+    needs: select
+    if: needs.select.outputs.mode != 'none'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -121,20 +211,43 @@ jobs:
           python-version: "3.12"
 
       - name: Prepare repository-wide release manifests
+        if: needs.select.outputs.mode == 'full'
         run: >-
           python .github/scripts/prepare_repository_mkp_release.py
           --repository .
 
       - name: Build deterministic MKPs
+        env:
+          MODE: ${{ needs.select.outputs.mode }}
+          PACKAGES_JSON: ${{ needs.select.outputs.packages }}
         run: |
           set -euo pipefail
+          args=()
+          if [[ "$MODE" == "targeted" ]]; then
+            mapfile -t packages < <(
+              python - <<'PY'
+          import json
+          import os
+
+          for package in json.loads(os.environ["PACKAGES_JSON"]):
+              print(package)
+          PY
+            )
+            for package in "${packages[@]}"; do
+              args+=(--package "$package")
+            done
+          fi
           python .github/scripts/build_repository_mkps.py \
             --repository . \
             --output "$DIST_DIR" \
-            --packaged-version "$PACKAGED_VERSION"
+            --packaged-version "$PACKAGED_VERSION" \
+            "${args[@]}"
 
       - name: Verify checksums and package index
         id: metadata
+        env:
+          MODE: ${{ needs.select.outputs.mode }}
+          EXPECTED_TARGETED_COUNT: ${{ needs.select.outputs.package-count }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -146,7 +259,9 @@ jobs:
           dist = Path(os.environ["DIST_DIR"])
           packages = json.loads((dist / "packages.json").read_text(encoding="utf-8"))
           if not packages:
-              raise SystemExit("No active packages were discovered")
+              raise SystemExit("No packages were built")
+          if os.environ["MODE"] == "targeted" and len(packages) != int(os.environ["EXPECTED_TARGETED_COUNT"]):
+              raise SystemExit("Targeted package count does not match selector output")
           names = set()
           directories = set()
           for package in packages:
@@ -181,7 +296,9 @@ jobs:
   validate:
     name: Validate all MKPs on Checkmk ${{ matrix.label }}
     needs:
+      - select
       - build
+    if: needs.select.outputs.mode != 'none'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -199,7 +316,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Download repository MKPs
+      - name: Download selected MKPs
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: ${{ needs.build.outputs.artifact-name }}
@@ -231,7 +348,7 @@ jobs:
           echo 'Checkmk container did not become ready' >&2
           exit 1
 
-      - name: Install and validate complete package set
+      - name: Install and validate selected package set
         env:
           CHECKMK_VERSION: ${{ matrix.label }}
         run: |
@@ -248,29 +365,30 @@ jobs:
         if: always()
         run: docker rm --force checkmk-repository-ci || true
 
-  persist:
-    name: Commit complete validated MKP set
+  publication-dry-run:
+    name: Verify release publication transaction
     needs:
+      - select
       - tests
       - build
       - validate
     if: >-
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/master' &&
-      github.actor != 'github-actions[bot]'
+      needs.select.outputs.mode == 'full' &&
+      github.event_name != 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      actions: read
-      contents: write
+    timeout-minutes: 25
 
     steps:
       - name: Check out source commit
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
 
       - name: Download validated repository MKPs
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
@@ -278,85 +396,39 @@ jobs:
           name: ${{ needs.build.outputs.artifact-name }}
           path: ${{ env.DIST_DIR }}
 
-      - name: Prepare canonical release metadata
-        run: >-
-          python .github/scripts/prepare_repository_mkp_release.py
-          --repository .
-          --complete
-
-      - name: Verify and stage complete package set
+      - name: Stage complete release exactly as publication will
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import hashlib
-          import json
-          import os
-          import shutil
-          import tarfile
-          from pathlib import Path, PurePosixPath
-
-          dist = Path(os.environ["DIST_DIR"])
-          packages = json.loads((dist / "packages.json").read_text(encoding="utf-8"))
-          for package in packages:
-              source = dist / package["path"]
-              checksum = source.with_name(source.name + ".sha256")
-              expected = checksum.read_text(encoding="utf-8").split()[0]
-              actual = hashlib.sha256(source.read_bytes()).hexdigest()
-              if expected != actual:
-                  raise SystemExit(f"Checksum mismatch: {source}")
-              target_dir = Path(package["package_dir"])
-              target_dir.mkdir(parents=True, exist_ok=True)
-              for old_package in target_dir.glob("*.mkp"):
-                  old_package.unlink()
-              for old_checksum in target_dir.glob("*.mkp.sha256"):
-                  old_checksum.unlink()
-
-              with tarfile.open(source, mode="r:gz") as archive:
-                  info_member = next(
-                      member
-                      for member in archive.getmembers()
-                      if PurePosixPath(member.name).name == "info"
-                  )
-                  info_file = archive.extractfile(info_member)
-                  if info_file is None:
-                      raise SystemExit(f"Unable to read manifest from {source}")
-                  (target_dir / "src" / "info").write_bytes(info_file.read())
-
-              shutil.copy2(source, target_dir / source.name)
-              shutil.copy2(checksum, target_dir / checksum.name)
-          PY
+          python .github/scripts/prepare_repository_mkp_release.py --repository . --complete
+          python .github/scripts/stage_repository_release.py --repository . --dist "$DIST_DIR"
           python tools/ci/sync_package_metadata.py --write
           python update_readmes.py
           python tools/ci/generate_package_reference.py --write
           python create_mkp_index.py
 
-      - name: Commit package set if source is still current
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SOURCE_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          remote_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- '*/' mkp_index.json .github/repository-mkp-release.json
-          if git diff --cached --quiet; then
-            echo "Repository MKP set is unchanged; nothing to commit."
-            exit 0
-          fi
-          git commit -m "build: refresh all Checkmk 2.5 MKPs [skip ci]"
+      - name: Rebuild staged state deterministically
+        run: >-
+          python .github/scripts/build_repository_mkps.py
+          --repository .
+          --output dist/rebuilt-repository-mkps
+          --packaged-version "$PACKAGED_VERSION"
 
-          git fetch "$remote_url" master
-          if ! git diff --quiet "${SOURCE_SHA}..FETCH_HEAD" -- \
-            '*/src/**' \
-            .github/scripts \
-            .github/workflows/repository-mkp-ci.yml \
-            .github/repository-mkp-release.json \
-            create_mkp_index.py \
-            update_readmes.py; then
-            echo "Package inputs changed on master; refusing to publish a stale repository MKP set." >&2
-            exit 0
-          fi
+      - name: Verify final release state and bounded diff
+        run: >-
+          python .github/scripts/verify_repository_release.py
+          --repository .
+          --source-dist "$DIST_DIR"
+          --rebuilt-dist dist/rebuilt-repository-mkps
 
-          git rebase FETCH_HEAD
-          git push "$remote_url" HEAD:master
+      - name: Upload publication dry-run diff
+        if: always()
+        run: git diff --binary HEAD > repository-publication-dry-run.patch
+
+      - name: Upload publication evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: repository-publication-dry-run
+          path: repository-publication-dry-run.patch
+          if-no-files-found: error
+          retention-days: 14
