@@ -113,6 +113,7 @@ jobs:
           echo "changed=true" >>"$GITHUB_OUTPUT"
 
       - name: Update automation release branch
+        id: branch
         if: steps.commit.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -120,19 +121,21 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin master
-          [[ "$(git rev-parse origin/master)" == "$SOURCE_SHA" ]] || {
-            echo "master changed during publication; refusing to publish stale artifacts." >&2
+          if [[ "$(git rev-parse origin/master)" != "$SOURCE_SHA" ]]; then
+            echo "published=false" >>"$GITHUB_OUTPUT"
+            echo "master changed during publication; refusing to publish stale artifacts."
             exit 0
-          }
+          fi
           remote_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           remote_sha=$(git ls-remote "$remote_url" "refs/heads/$RELEASE_BRANCH" | cut -f1)
           git push \
             --force-with-lease="refs/heads/$RELEASE_BRANCH:${remote_sha}" \
             "$remote_url" \
             "HEAD:refs/heads/$RELEASE_BRANCH"
+          echo "published=true" >>"$GITHUB_OUTPUT"
 
       - name: Open or update release pull request
-        if: steps.commit.outputs.changed == 'true'
+        if: steps.branch.outputs.published == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -174,7 +177,7 @@ jobs:
           fi
 
       - name: Dispatch exact-head release validation
-        if: steps.commit.outputs.changed == 'true'
+        if: steps.branch.outputs.published == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
