@@ -121,6 +121,35 @@ def test_unmapped_or_ambiguous_paths_fail_safe(tmp_path: Path) -> None:
     ).mode == "full"
 
 
+def test_newline_path_fails_safe_without_output_injection(tmp_path: Path) -> None:
+    module = _load()
+    result = module.classify_changes(
+        _repository(tmp_path),
+        [module.Change("M", (".github/scripts/x\nmode=none",))],
+    )
+    assert result.mode == "full"
+    output = tmp_path / "github-output"
+    module._write_github_output(output, result)
+    lines = output.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "mode=full"
+    assert sum(line.startswith("mode=") for line in lines) == 1
+    assert "\\nmode=none" in lines[-1]
+
+
+def test_all_output_values_are_single_line(tmp_path: Path) -> None:
+    module = _load()
+    output = tmp_path / "github-output"
+    module._write_github_output(
+        output,
+        module.Selection("full", ("alpha\npackage",), "reason\r\nmode=none"),
+    )
+    lines = output.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 4
+    assert lines[0] == "mode=full"
+    assert lines[1] == 'packages=["alpha\\npackage"]'
+    assert lines[3] == "reason=reason\\r\\nmode=none"
+
+
 def test_non_pull_request_events_are_always_full(tmp_path: Path) -> None:
     module = _load()
     result = module.select_for_event(
