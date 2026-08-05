@@ -14,6 +14,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 _SAFE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+_MAX_MANIFEST_BYTES = 1024 * 1024
 
 
 def _parse_args() -> argparse.Namespace:
@@ -39,6 +40,8 @@ def _contained_file(root: Path, relative: str) -> Path:
     if pure.is_absolute() or ".." in pure.parts:
         raise ValueError(f"unsafe relative path: {relative!r}")
     candidate = root.joinpath(*pure.parts)
+    if candidate.is_symlink():
+        raise ValueError(f"artifact path must not be a symlink: {relative!r}")
     resolved_root = root.resolve()
     resolved = candidate.resolve()
     if not resolved.is_relative_to(resolved_root):
@@ -57,10 +60,17 @@ def _read_manifest(archive_path: Path) -> tuple[dict[str, Any], bytes]:
         ]
         if len(members) != 1:
             raise ValueError(f"{archive_path}: expected exactly one manifest, found {len(members)}")
-        file_object = archive.extractfile(members[0])
+        member = members[0]
+        if member.size > _MAX_MANIFEST_BYTES:
+            raise ValueError(
+                f"{archive_path}: manifest exceeds {_MAX_MANIFEST_BYTES} bytes"
+            )
+        file_object = archive.extractfile(member)
         if file_object is None:
             raise ValueError(f"{archive_path}: unable to read manifest")
-        payload = file_object.read()
+        payload = file_object.read(_MAX_MANIFEST_BYTES + 1)
+    if len(payload) > _MAX_MANIFEST_BYTES:
+        raise ValueError(f"{archive_path}: manifest exceeds {_MAX_MANIFEST_BYTES} bytes")
     manifest = ast.literal_eval(payload.decode("utf-8"))
     if not isinstance(manifest, dict):
         raise ValueError(f"{archive_path}: manifest is not a dictionary")
@@ -88,17 +98,28 @@ def stage_release(repository: Path, dist: Path) -> int:
         package_name = str(package.get("name", ""))
         package_path = str(package.get("path", ""))
         package_version = str(package.get("version", ""))
-        if not _SAFE_TOKEN.fullmatch(package_dir):
-            raise ValueError(f"unsafe package directory: {package_dir!r}")
-        if not _SAFE_TOKEN.fullmatch(package_name):
-            raise ValueError(f"unsafe package name: {package_name!r}")
+        for label, value in (
+            ("package directory", package_dir),
+            ("package name", package_name),
+            ("package version", package_version),
+        ):
+            if not _SAFE_TOKEN.fullmatch(value):
+                raise ValueError(f"unsafe {label}: {value!r}")
         if package_dir in indexed_dirs:
             raise ValueError(f"duplicate package directory: {package_dir}")
         indexed_dirs.add(package_dir)
 
+        expected_path = f"{package_dir}/{package_name}-{package_version}.mkp"
+        if package_path != expected_path:
+            raise ValueError(
+                f"unexpected package path {package_path!r}; expected {expected_path!r}"
+            )
         source = _contained_file(dist, package_path)
         checksum = _contained_file(dist, package_path + ".sha256")
-        expected = checksum.read_text(encoding="utf-8").split()[0]
+        checksum_fields = checksum.read_text(encoding="utf-8").split()
+        if len(checksum_fields) < 2 or checksum_fields[1] != source.name:
+            raise ValueError(f"invalid checksum record: {checksum}")
+        expected = checksum_fields[0]
         actual = hashlib.sha256(source.read_bytes()).hexdigest()
         if expected != actual:
             raise ValueError(f"checksum mismatch: {source}")
@@ -116,11 +137,14 @@ def stage_release(repository: Path, dist: Path) -> int:
         if src_dir.is_symlink() or not src_dir.resolve().is_relative_to(repository):
             raise ValueError(f"unsafe package source target: {src_dir}")
         src_dir.mkdir(parents=True, exist_ok=True)
+        manifest_target = src_dir / "info"
+        if manifest_target.is_symlink():
+            raise ValueError(f"manifest target must not be a symlink: {manifest_target}")
         for old_package in target_dir.glob("*.mkp"):
             old_package.unlink()
         for old_checksum in target_dir.glob("*.mkp.sha256"):
             old_checksum.unlink()
-        (src_dir / "info").write_bytes(manifest_payload)
+        manifest_target.write_bytes(manifest_payload)
         shutil.copy2(source, target_dir / source.name)
         shutil.copy2(checksum, target_dir / checksum.name)
 
