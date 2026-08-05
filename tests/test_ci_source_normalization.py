@@ -41,6 +41,14 @@ class PackageSourceNormalizationTests(unittest.TestCase):
             "files": {"cmk_addons_plugins": [f"{name}/agent_based/bakery.py"]},
         }
         (package / "src/info").write_text(repr(manifest), encoding="utf-8")
+        (package / "README.md").write_text(
+            "# Example\n\n"
+            "| Path | Purpose |\n"
+            "| --- | --- |\n"
+            f"| `src/{name}/agent_based/bakery.py` | Bakery hook. |\n"
+            f"| `src/agents/bakery/{name}` | Historical Bakery hook. |\n",
+            encoding="utf-8",
+        )
         return package
 
     def test_check_mode_reports_pending_migration_without_writing(self) -> None:
@@ -52,7 +60,7 @@ class PackageSourceNormalizationTests(unittest.TestCase):
             (package / "src/lib/python3/cmk/base/cee/plugins/bakery/example.py").exists()
         )
 
-    def test_write_mode_moves_bakery_and_updates_manifest(self) -> None:
+    def test_write_mode_moves_bakery_updates_manifest_and_readme(self) -> None:
         package = self._legacy_bakery_package()
         changes = self.module.normalize_repository(self.root, write=True)
         self.assertTrue(changes)
@@ -63,7 +71,27 @@ class PackageSourceNormalizationTests(unittest.TestCase):
         manifest = (package / "src/info").read_text(encoding="utf-8")
         self.assertIn("python3/cmk/base/cee/plugins/bakery/example.py", manifest)
         self.assertNotIn("example/agent_based/bakery.py", manifest)
+        readme = (package / "README.md").read_text(encoding="utf-8")
+        self.assertIn(
+            "`src/lib/python3/cmk/base/cee/plugins/bakery/example.py`",
+            readme,
+        )
+        self.assertNotIn("agent_based/bakery.py", readme)
+        self.assertNotIn("src/agents/bakery/", readme)
         self.assertEqual(self.module.normalize_repository(self.root, write=False), [])
+
+    def test_stale_readme_is_detected_after_source_is_normalized(self) -> None:
+        package = self._legacy_bakery_package()
+        self.module.normalize_repository(self.root, write=True)
+        (package / "README.md").write_text(
+            "`src/example/agent_based/bakery.py`\n",
+            encoding="utf-8",
+        )
+        changes = self.module.normalize_repository(self.root, write=False)
+        self.assertIn(
+            self.module.SourceChange("write", "example/README.md"),
+            changes,
+        )
 
     def test_unsupported_bakery_import_fails_closed(self) -> None:
         package = self._legacy_bakery_package()
