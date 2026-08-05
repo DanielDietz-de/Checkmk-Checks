@@ -5,40 +5,27 @@ from __future__ import annotations
 
 import argparse
 import ast
-import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
-_REGISTRATION_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
-    "check_plugin": (
-        re.compile(r"\bCheckPlugin\(\s*name\s*=\s*[\"']([^\"']+)", re.S),
-        re.compile(r"\bregister\.check_plugin\([^)]*?\bname\s*=\s*[\"']([^\"']+)", re.S),
-    ),
-    "agent_section": (
-        re.compile(r"\bAgentSection\(\s*name\s*=\s*[\"']([^\"']+)", re.S),
-        re.compile(r"\bregister\.agent_section\([^)]*?\bname\s*=\s*[\"']([^\"']+)", re.S),
-    ),
-    "snmp_section": (
-        re.compile(r"\b(?:SimpleSNMPSection|SNMPSection)\(\s*name\s*=\s*[\"']([^\"']+)", re.S),
-        re.compile(r"\bregister\.snmp_section\([^)]*?\bname\s*=\s*[\"']([^\"']+)", re.S),
-    ),
-    "inventory_plugin": (
-        re.compile(r"\bInventoryPlugin\(\s*name\s*=\s*[\"']([^\"']+)", re.S),
-        re.compile(r"\bregister\.inventory_plugin\([^)]*?\bname\s*=\s*[\"']([^\"']+)", re.S),
-    ),
-    "special_agent": (
-        re.compile(r"\bSpecialAgentConfig\(\s*name\s*=\s*[\"']([^\"']+)", re.S),
-    ),
-    "active_check": (
-        re.compile(r"\bActiveCheckCommand\(\s*name\s*=\s*[\"']([^\"']+)", re.S),
-    ),
-    "check_parameters": (
-        re.compile(r"\bCheckParameters\(\s*name\s*=\s*[\"']([^\"']+)", re.S),
-    ),
-    "agent_access": (
-        re.compile(r"\bAgentAccess\(\s*name\s*=\s*[\"']([^\"']+)", re.S),
-    ),
+_CLASS_REGISTRATIONS = {
+    "CheckPlugin": "check_plugin",
+    "AgentSection": "agent_section",
+    "SimpleSNMPSection": "snmp_section",
+    "SNMPSection": "snmp_section",
+    "InventoryPlugin": "inventory_plugin",
+    "SpecialAgentConfig": "special_agent",
+    "ActiveCheckCommand": "active_check",
+    "CheckParameters": "check_parameters",
+    "AgentAccess": "agent_access",
+}
+_LEGACY_REGISTRATIONS = {
+    "register.check_plugin": "check_plugin",
+    "register.agent_section": "agent_section",
+    "register.snmp_section": "snmp_section",
+    "register.inventory_plugin": "inventory_plugin",
+    "register.active_check": "active_check",
 }
 
 
@@ -94,22 +81,54 @@ def _record(
     owners.setdefault((kind, identity), set()).add(package)
 
 
+def _call_name(node: ast.expr) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        parent = _call_name(node.value)
+        return f"{parent}.{node.attr}" if parent else node.attr
+    return ""
+
+
+def _literal_name(call: ast.Call) -> str | None:
+    for keyword in call.keywords:
+        if keyword.arg == "name" and isinstance(keyword.value, ast.Constant):
+            value = keyword.value.value
+            return value if isinstance(value, str) and value else None
+    return None
+
+
+def _registration_kind(function_name: str) -> str | None:
+    legacy = _LEGACY_REGISTRATIONS.get(function_name)
+    if legacy is not None:
+        return legacy
+    return _CLASS_REGISTRATIONS.get(function_name.rsplit(".", maxsplit=1)[-1])
+
+
 def _registration_identities(package_dir: Path) -> Iterable[tuple[str, str]]:
     seen: set[tuple[str, str]] = set()
     for path in sorted((package_dir / "src").rglob("*.py")):
         if not path.is_file() or path.name in {"info", "info.json"}:
             continue
         try:
-            text = path.read_text(encoding="utf-8")
+            source = path.read_text(encoding="utf-8")
         except (OSError, UnicodeError):
             continue
-        for kind, patterns in _REGISTRATION_PATTERNS.items():
-            for pattern in patterns:
-                for name in pattern.findall(text):
-                    identity = (kind, name)
-                    if identity not in seen:
-                        seen.add(identity)
-                        yield identity
+        try:
+            tree = ast.parse(source, filename=str(path))
+        except SyntaxError as exc:
+            raise ValueError(f"{path}: unable to inspect registrations: {exc}") from exc
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            kind = _registration_kind(_call_name(node.func))
+            name = _literal_name(node)
+            if kind is None or name is None:
+                continue
+            identity = (kind, name)
+            if identity not in seen:
+                seen.add(identity)
+                yield identity
 
 
 def find_collisions(repository: Path) -> list[Collision]:
