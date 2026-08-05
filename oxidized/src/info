@@ -1,6 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Export the local Checkmk Oxidized host view to a validated private atomic JSON '
-                'inventory with managed scheduling.\n',
+ 'description': 'Export the local Checkmk Oxidized host view to a validated private atomic JSON inventory with managed '
+                'scheduling.\n',
  'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/oxidized',
  'files': {'bin': ['export_oxidized']},
  'name': 'oxidized',

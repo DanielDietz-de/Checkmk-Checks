@@ -1,6 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Monitor all APIs in Gravitee API Management including response times, error rates '
-                'and health availability.',
+ 'description': 'Monitor all APIs in Gravitee API Management including response times, error rates and health '
+                'availability.',
  'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks',
  'files': {'cmk_addons_plugins': ['gravitee_mapi/agent_based/apis.py',
                                   'gravitee_mapi/libexec/agent_gravitee_mapi',

@@ -1,9 +1,8 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Sends single or bulk Checkmk notifications through a Kentix SMS gateway using a '
-                'confidential single-attempt HTTPS POST.\n',
+ 'description': 'Sends single or bulk Checkmk notifications through a Kentix SMS gateway using a confidential '
+                'single-attempt HTTPS POST.\n',
  'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/kentix_sms_gateway',
- 'files': {'cmk_addons_plugins': ['kentix_sms_gateway/rulesets/kentix.py'],
-           'notifications': ['kentix']},
+ 'files': {'cmk_addons_plugins': ['kentix_sms_gateway/rulesets/kentix.py'], 'notifications': ['kentix']},
  'name': 'kentix_sms_gateway',
  'title': 'Kentix SMS Gateway notification',
  'version': '2.1.0',

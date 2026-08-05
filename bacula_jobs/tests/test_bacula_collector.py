@@ -12,7 +12,18 @@ import pytest
 
 PACKAGE_ROOT = Path(__file__).parents[1]
 MODULE_PATH = PACKAGE_ROOT / "src" / "agents" / "plugins" / "bacula_jobs"
-BAKERY_PATH = PACKAGE_ROOT / "src" / "bacula_jobs" / "agent_based" / "bakery.py"
+BAKERY_PATH = (
+    PACKAGE_ROOT
+    / "src"
+    / "lib"
+    / "python3"
+    / "cmk"
+    / "base"
+    / "cee"
+    / "plugins"
+    / "bakery"
+    / "bacula_jobs.py"
+)
 RULESET_PATH = PACKAGE_ROOT / "src" / "bacula_jobs" / "rulesets" / "bakery.py"
 loader = SourceFileLoader("bacula_jobs_collector", str(MODULE_PATH))
 spec = spec_from_loader(loader.name, loader)
@@ -54,14 +65,16 @@ def _load_bakery_module(monkeypatch):
         "cmk.base.cee.plugins.bakery.bakery_api",
     ]
     for name in module_names:
-        monkeypatch.setitem(sys.modules, name, types.ModuleType(name))
+        package = types.ModuleType(name)
+        package.__path__ = []
+        monkeypatch.setitem(sys.modules, name, package)
     monkeypatch.setitem(
         sys.modules,
         "cmk.base.cee.plugins.bakery.bakery_api.v1",
         bakery_api,
     )
 
-    module_name = "bacula_jobs_bakery_for_tests"
+    module_name = "cmk.base.cee.plugins.bakery.bacula_jobs"
     spec = importlib.util.spec_from_file_location(module_name, BAKERY_PATH)
     assert spec is not None and spec.loader is not None
     loaded = importlib.util.module_from_spec(spec)

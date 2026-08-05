@@ -1,6 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Clean superseded Checkmk notification spool pairs while parsing spool records as '
-                'bounded non-executable Python literals.\n',
+ 'description': 'Clean superseded Checkmk notification spool pairs while parsing spool records as bounded '
+                'non-executable Python literals.\n',
  'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/clean_spool',
  'files': {'bin': ['clean_spoolfiles']},
  'name': 'clean_spool',

@@ -2,8 +2,8 @@
  'description': 'Monitoring of CMDB Syncer Jobs\n'
                 'Monitoring of CMDB Syncer Cron Jobs\n'
                 '\n'
-                'This version requires CMDB Syncer 3.9 and up. You now need to set the username '
-                'for the API account in the Syncer. \n',
+                'This version requires CMDB Syncer 3.9 and up. You now need to set the username for the API account in '
+                'the Syncer. \n',
  'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/tree/master/cmdb_syncer',
  'files': {'cmk_addons_plugins': ['cmdb_syncer/agent_based/service.py',
                                   'cmdb_syncer/libexec/agent_cmdb_syncer',

@@ -24,7 +24,7 @@ A shell agent plugin reads the directory list from `$MK_CONFDIR/dir_size.cfg` an
 | --- | --- |
 | `src/agents/plugins/dir_size.sh` | Shell agent plugin, reads `dir_size.cfg` and runs `du -s` per path. |
 | `src/dir_size/agent_based/dir_size.py` | Section parser and check plugin (`dir_size`). |
-| `src/dir_size/agent_based/bakery.py` | Agent Bakery hook: deploys the plugin plus a generated `dir_size.cfg`. |
+| `src/lib/python3/cmk/base/cee/plugins/bakery/dir_size.py` | Agent Bakery hook: deploys the plugin plus a generated `dir_size.cfg`. |
 | `src/dir_size/rulesets/bakery.py` | WATO rule for Bakery deployment (folder list, sync/cached mode). |
 | `src/dir_size/rulesets/rules.py` | WATO rule for per-directory size levels. |
 
@@ -66,8 +66,9 @@ This section is generated from the canonical manifest and current source tree. E
 
 ### Configuration and components
 
-- **Agent-based checks:** `src/dir_size/agent_based/bakery.py`, `src/dir_size/agent_based/dir_size.py`.
+- **Agent-based checks:** `src/dir_size/agent_based/dir_size.py`.
 - **Rulesets:** `src/dir_size/rulesets/bakery.py`, `src/dir_size/rulesets/rules.py`.
+- **Bakery:** `src/lib/python3/cmk/base/cee/plugins/bakery/dir_size.py`.
 - **Other packaged source:** `src/agents/plugins/dir_size.sh`.
 - Registered check plug-in names: `dir_size`.
 

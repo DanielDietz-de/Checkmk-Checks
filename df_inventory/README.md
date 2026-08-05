@@ -28,7 +28,7 @@ The notification script `df_mail` wraps Checkmk's built-in mail plugin. For serv
 | `src/agents/plugins/df_inventory_aix.sh` | AIX agent plugin. |
 | `src/agents/plugins/df_inventory_solaris.sh` | Solaris agent plugin. |
 | `src/df_inventory/agent_based/inventorize_df.py` | Section parser and HW/SW inventory plugin. |
-| `src/df_inventory/agent_based/bakery.py` | Bakery hook for deployment of the agent plugin. |
+| `src/lib/python3/cmk/base/cee/plugins/bakery/df_inventory.py` | Bakery hook for deployment of the agent plugin. |
 | `src/df_inventory/rulesets/df_inventory.py` | `AgentConfig` rule controlling deployment (sync / cached / off). |
 | `src/df_inventory/rulesets/notification_parameter.py` | Registers the `df_mail` notification parameter set by subclassing the built-in mail parameter. |
 | `src/notifications/df_mail` | Notification script that rewrites the contact email from inventory. |
@@ -68,8 +68,9 @@ This section is generated from the canonical manifest and current source tree. E
 
 ### Configuration and components
 
-- **Agent-based checks:** `src/df_inventory/agent_based/bakery.py`, `src/df_inventory/agent_based/inventorize_df.py`.
+- **Agent-based checks:** `src/df_inventory/agent_based/inventorize_df.py`.
 - **Rulesets:** `src/df_inventory/rulesets/df_inventory.py`, `src/df_inventory/rulesets/notification_parameter.py`.
+- **Bakery:** `src/lib/python3/cmk/base/cee/plugins/bakery/df_inventory.py`.
 - **Notifications:** `src/notifications/df_mail`.
 - **Other packaged source:** `src/agents/plugins/df_inventory_aix.sh`, `src/agents/plugins/df_inventory_linux.sh`, `src/agents/plugins/df_inventory_solaris.sh`.
 - No special-agent or agent-based check registration was detected; use the component paths above to identify the package entry point.

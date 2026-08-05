@@ -1,6 +1,5 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'This Plugin adds the missing DISK check to the already existing Checks in '
-                'Checkmk\n',
+ 'description': 'This Plugin adds the missing DISK check to the already existing Checks in Checkmk\n',
  'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks',
  'files': {'cmk_addons_plugins': ['fsc_sc2_ilo/agent_based/fsc_sc2_ilo_disks.py']},
  'name': 'fsc_sc2_ilo',

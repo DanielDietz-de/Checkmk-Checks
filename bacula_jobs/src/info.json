@@ -8,10 +8,12 @@
     ],
     "cmk_addons_plugins": [
       "bacula_jobs/agent_based/bacula_jobs.py",
-      "bacula_jobs/agent_based/bakery.py",
+      "bacula_jobs/checkman/bacula_jobs",
       "bacula_jobs/rulesets/bacula_jobs.py",
-      "bacula_jobs/rulesets/bakery.py",
-      "bacula_jobs/checkman/bacula_jobs"
+      "bacula_jobs/rulesets/bakery.py"
+    ],
+    "lib": [
+      "python3/cmk/base/cee/plugins/bakery/bacula_jobs.py"
     ]
   },
   "name": "bacula_jobs",

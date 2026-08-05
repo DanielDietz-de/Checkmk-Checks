@@ -1,7 +1,6 @@
 {'author': 'Kuhn & Ruess GmbH',
- 'description': 'This check can work standalone or in addition to the integrated Checkmk Azure '
-                'Monitoring. It provides piggyback data in the same way as the included one, so '
-                'the hosts will see Addional Services.\n'
+ 'description': 'This check can work standalone or in addition to the integrated Checkmk Azure Monitoring. It provides '
+                'piggyback data in the same way as the included one, so the hosts will see Addional Services.\n'
                 '\n'
                 '- firewall ip config\n'
                 '- firewall policy\n'

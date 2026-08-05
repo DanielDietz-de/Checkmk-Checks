@@ -1,13 +1,12 @@
 {'author': 'Kuhn & Rueß GmbH',
  'description': 'This check is based on the included Alertmanager check in Checkmk.\n'
-                'The difference is that you can remap the alert severities in case they are not '
-                'using the default names. Also, you can enable triggering alert states based on '
-                'severities directly.\n'
+                'The difference is that you can remap the alert severities in case they are not using the default '
+                'names. Also, you can enable triggering alert states based on severities directly.\n'
                 '\n'
                 'This Works for Rules and Groups since Version 1.4 of the Check\n'
                 '\n'
-                'WARNING: When using Checkmk 2.3, you need to DELETE the shipped Alert Manager '
-                'Plugin to make this work. From 2.4 on, it works out of the box.\n',
+                'WARNING: When using Checkmk 2.3, you need to DELETE the shipped Alert Manager Plugin to make this '
+                'work. From 2.4 on, it works out of the box.\n',
  'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/tree/master/alertmanager_extended',
  'files': {'cmk_addons_plugins': ['kr_alertmanager/rulesets/alertmanager.py'],
            'cmk_plugins': ['collection/agent_based/alertmanager.py']},

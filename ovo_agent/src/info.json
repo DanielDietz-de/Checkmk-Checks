@@ -9,8 +9,10 @@
       "plugins/ovo_agent_solaris.sh"
     ],
     "cmk_addons_plugins": [
-      "ovo_agent/agent_based/bakery.py",
       "ovo_agent/rulesets/bakery.py"
+    ],
+    "lib": [
+      "python3/cmk/base/cee/plugins/bakery/ovo_agent.py"
     ]
   },
   "name": "ovo_agent",
