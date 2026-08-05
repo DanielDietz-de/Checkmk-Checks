@@ -37,6 +37,7 @@ _DOC_EXACT = {
     "SUPPORT.md",
 }
 _DOC_PREFIXES = ("docs/", ".github/ISSUE_TEMPLATE/")
+_PACKAGE_MANIFEST_PATHS = {"src/info", "src/info.json"}
 
 
 @dataclass(frozen=True)
@@ -168,6 +169,12 @@ def classify_changes(
             relative_text = relative.as_posix()
             if relative_text == "README.md":
                 continue
+            if relative_text in _PACKAGE_MANIFEST_PATHS:
+                return Selection(
+                    "full",
+                    (),
+                    f"canonical package metadata changed: {rendered}",
+                )
             if relative.parts and relative.parts[0] in {"src", "tests"}:
                 targeted.add(top)
                 continue
