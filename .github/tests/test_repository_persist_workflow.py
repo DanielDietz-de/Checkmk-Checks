@@ -7,6 +7,8 @@ VALIDATION = REPOSITORY / ".github/workflows/repository-mkp-ci.yml"
 PUBLICATION = REPOSITORY / ".github/workflows/repository-mkp-publication.yml"
 SCHEDULE = REPOSITORY / ".github/workflows/repository-mkp-schedule.yml"
 GUARD = REPOSITORY / ".github/workflows/repository-guard.yml"
+PREPARE = REPOSITORY / ".github/scripts/prepare_repository_mkp_release.py"
+NORMALIZER = REPOSITORY / "tools/ci/normalize_package_sources.py"
 
 
 def test_validation_workflow_is_read_only() -> None:
@@ -30,7 +32,7 @@ def test_documentation_only_scope_preserves_required_check_names() -> None:
     assert "matrix:" in validate_job
 
 
-def test_targeted_builds_use_release_normalization() -> None:
+def test_targeted_builds_use_release_manifest_preparation() -> None:
     workflow = VALIDATION.read_text(encoding="utf-8")
     build_job = workflow.split("\n  build:\n", maxsplit=1)[1].split("\n  validate:\n", maxsplit=1)[0]
     preparation = build_job.split(
@@ -45,6 +47,22 @@ def test_targeted_builds_use_release_normalization() -> None:
     assert build_job.index("prepare_repository_mkp_release.py") < build_job.index(
         "build_repository_mkps.py"
     )
+
+
+def test_release_preparation_cannot_modify_package_source_layout() -> None:
+    preparation = PREPARE.read_text(encoding="utf-8")
+    normalizer = NORMALIZER.read_text(encoding="utf-8")
+    assert "normalize_bakery" not in preparation
+    assert "normalize_alertmanager" not in preparation
+    assert ".unlink()" not in preparation
+    assert "_desired_bakery_state" in normalizer
+    assert "_desired_alertmanager_state" in normalizer
+
+
+def test_guard_rejects_pending_source_normalization() -> None:
+    workflow = GUARD.read_text(encoding="utf-8")
+    assert "Verify package source normalization" in workflow
+    assert "python3 tools/ci/normalize_package_sources.py" in workflow
 
 
 def test_full_pull_requests_exercise_publication_transaction() -> None:
