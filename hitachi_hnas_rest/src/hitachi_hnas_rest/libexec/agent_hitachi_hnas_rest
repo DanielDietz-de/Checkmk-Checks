@@ -8,6 +8,7 @@ https://kuhn-ruess.de
 """
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -25,6 +26,26 @@ def _resolve_secret_reference(reference: str) -> str:
     return lookup(Path(store_path), secret_id)
 
 
+def _resolve_ca_bundle(explicit_ca_file: str | None, no_cert_check: bool) -> str | bool:
+    """Resolve explicit or site-wide CA trust without enabling proxy inheritance."""
+    if explicit_ca_file and no_cert_check:
+        raise ValueError("--ca-file and --no-cert-check are mutually exclusive")
+    if no_cert_check:
+        return False
+
+    configured = (
+        explicit_ca_file
+        or os.environ.get("REQUESTS_CA_BUNDLE")
+        or os.environ.get("CURL_CA_BUNDLE")
+    )
+    if not configured:
+        return True
+
+    path = Path(configured).expanduser()
+    if not path.is_file():
+        raise ValueError(f"CA bundle does not exist or is not a file: {path}")
+    return str(path.resolve())
+
 
 class AgentHitachiHnasRest:
     """
@@ -34,9 +55,10 @@ class AgentHitachiHnasRest:
     def __init__(self, args):
         self.base_url = f"https://{args.host_address}:{args.port}/v8"
         self.timeout = args.timeout
-        self.verify = False if args.no_cert_check else (args.ca_file or True)
+        self.verify = _resolve_ca_bundle(args.ca_file, args.no_cert_check)
 
-        # One session for all requests; environment proxies are not trusted for credentials.
+        # One session for all requests. Proxy and netrc inheritance stay disabled;
+        # established site CA-bundle variables are handled explicitly above.
         self.session = requests.Session()
         self.session.trust_env = False
         if args.api_key:
@@ -48,8 +70,7 @@ class AgentHitachiHnasRest:
         self.session.headers["Content-Type"] = "application/json; charset=UTF-8"
 
     def _get(self, path):
-        # verify is passed per request: a session-level setting would be
-        # overridden by REQUESTS_CA_BUNDLE, which OMD sites always set
+        # Certificate trust is passed explicitly because trust_env remains disabled.
         response = self.session.get(
             f"{self.base_url}/{path}",
             timeout=self.timeout,
@@ -212,6 +233,8 @@ def parse_arguments():
         args.api_key = _resolve_secret_reference(args.api_key_id)
     if args.password_id:
         args.password = _resolve_secret_reference(args.password_id)
+    if args.ca_file and args.no_cert_check:
+        parser.error("--ca-file and --no-cert-check are mutually exclusive")
 
     if not args.api_key and not (args.user and args.password):
         parser.error("either --api-key or --user and --password are required")
