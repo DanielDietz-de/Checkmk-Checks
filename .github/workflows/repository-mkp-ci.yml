@@ -84,22 +84,28 @@ jobs:
   tests:
     name: Run all package tests
     needs: select
-    if: needs.select.outputs.mode != 'none'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
+      - name: Record documentation-only scope
+        if: needs.select.outputs.mode == 'none'
+        run: echo "Documentation-only change; package tests are not required."
+
       - name: Check out repository
+        if: needs.select.outputs.mode != 'none'
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
 
       - name: Set up Python
+        if: needs.select.outputs.mode != 'none'
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
       - name: Install pinned test tools
+        if: needs.select.outputs.mode != 'none'
         run: >-
           python -m pip install --disable-pip-version-check
           pytest==9.1.1
@@ -107,15 +113,18 @@ jobs:
           ruff==0.15.22
 
       - name: Validate repository packaging scripts
+        if: needs.select.outputs.mode != 'none'
         run: |
           set -euo pipefail
           ruff check --select E9,F63,F7,F82 .github/scripts .github/tests create_mkp_index.py
           python -m compileall -q .github/scripts .github/tests create_mkp_index.py
 
       - name: Test repository release and selector tooling
+        if: needs.select.outputs.mode != 'none'
         run: pytest -q .github/tests
 
       - name: Verify package test collection
+        if: needs.select.outputs.mode != 'none'
         env:
           MODE: ${{ needs.select.outputs.mode }}
           PACKAGES_JSON: ${{ needs.select.outputs.packages }}
@@ -144,6 +153,7 @@ jobs:
           fi
 
       - name: Execute each selected package test suite independently
+        if: needs.select.outputs.mode != 'none'
         env:
           MODE: ${{ needs.select.outputs.mode }}
           PACKAGES_JSON: ${{ needs.select.outputs.packages }}
@@ -181,7 +191,7 @@ jobs:
           fi
 
       - name: Upload package test log
-        if: always()
+        if: always() && needs.select.outputs.mode != 'none'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: repository-package-tests
@@ -192,7 +202,6 @@ jobs:
   build:
     name: Build all active MKPs
     needs: select
-    if: needs.select.outputs.mode != 'none'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -200,12 +209,18 @@ jobs:
       package-count: ${{ steps.metadata.outputs.package-count }}
 
     steps:
+      - name: Record documentation-only scope
+        if: needs.select.outputs.mode == 'none'
+        run: echo "Documentation-only change; MKP build is not required."
+
       - name: Check out repository
+        if: needs.select.outputs.mode != 'none'
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
 
       - name: Set up Python
+        if: needs.select.outputs.mode != 'none'
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
@@ -217,6 +232,7 @@ jobs:
           --repository .
 
       - name: Build deterministic MKPs
+        if: needs.select.outputs.mode != 'none'
         env:
           MODE: ${{ needs.select.outputs.mode }}
           PACKAGES_JSON: ${{ needs.select.outputs.packages }}
@@ -245,6 +261,7 @@ jobs:
 
       - name: Verify checksums and package index
         id: metadata
+        if: needs.select.outputs.mode != 'none'
         env:
           MODE: ${{ needs.select.outputs.mode }}
           EXPECTED_TARGETED_COUNT: ${{ needs.select.outputs.package-count }}
@@ -285,6 +302,7 @@ jobs:
           PY
 
       - name: Upload repository MKPs
+        if: needs.select.outputs.mode != 'none'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ steps.metadata.outputs.artifact-name }}
@@ -298,7 +316,6 @@ jobs:
     needs:
       - select
       - build
-    if: needs.select.outputs.mode != 'none'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -311,18 +328,25 @@ jobs:
             image: checkmk/check-mk-community:2.5.0p9@sha256:60e495047a30a27d030b1753f3b18c10c031832d3385d0b417bddcda51beeb66
 
     steps:
+      - name: Record documentation-only scope
+        if: needs.select.outputs.mode == 'none'
+        run: echo "Documentation-only change; Checkmk runtime validation is not required."
+
       - name: Check out repository
+        if: needs.select.outputs.mode != 'none'
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
 
       - name: Download selected MKPs
+        if: needs.select.outputs.mode != 'none'
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: ${{ needs.build.outputs.artifact-name }}
           path: ${{ env.DIST_DIR }}
 
       - name: Start Checkmk validation container
+        if: needs.select.outputs.mode != 'none'
         env:
           CHECKMK_IMAGE: ${{ matrix.image }}
         run: |
@@ -349,6 +373,7 @@ jobs:
           exit 1
 
       - name: Install and validate selected package set
+        if: needs.select.outputs.mode != 'none'
         env:
           CHECKMK_VERSION: ${{ matrix.label }}
         run: |
@@ -358,11 +383,11 @@ jobs:
               --checkmk-version ${CHECKMK_VERSION}"
 
       - name: Show Checkmk logs on failure
-        if: failure()
+        if: failure() && needs.select.outputs.mode != 'none'
         run: docker logs checkmk-repository-ci || true
 
       - name: Remove validation container
-        if: always()
+        if: always() && needs.select.outputs.mode != 'none'
         run: docker rm --force checkmk-repository-ci || true
 
   publication-dry-run:
