@@ -37,7 +37,7 @@ Password expires          : never
 | --- | --- |
 | `src/agents/plugins/password_age.sh` | Bash agent plugin that runs `chage -l` for a hardcoded user list (`cmkmon`, `root`). |
 | `src/password_age/agent_based/passwort_age.py` | Section parser + check plugin `password_age`. |
-| `src/password_age/agent_based/bakery.py` | Agent Bakery hook to deploy the plugin. |
+| `src/lib/python3/cmk/base/cee/plugins/bakery/password_age.py` | Agent Bakery hook to deploy the plugin. |
 | `src/password_age/rulesets/bakery.py` | WATO AgentConfig ruleset `password_age` for deployment mode. |
 
 ## Installation

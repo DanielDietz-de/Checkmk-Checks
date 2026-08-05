@@ -34,7 +34,7 @@ emitted.
 | `src/agents/plugins/ovo_agent_linux.sh` | Linux agent plugin. |
 | `src/agents/plugins/ovo_agent_solaris.sh` | Solaris agent plugin. |
 | `src/agents/plugins/ovo_agent_aix.sh` | AIX agent plugin. |
-| `src/ovo_agent/agent_based/bakery.py` | Bakery registration, deploys the matching script for Linux, Solaris and AIX. |
+| `src/lib/python3/cmk/base/cee/plugins/bakery/ovo_agent.py` | Bakery registration, deploys the matching script for Linux, Solaris and AIX. |
 | `src/ovo_agent/rulesets/bakery.py` | `AgentConfig` ruleset `ovo_agent`. |
 
 ## Installation

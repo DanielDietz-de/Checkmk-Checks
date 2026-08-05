@@ -33,7 +33,7 @@ thresholds on CPU and memory.
 | Path | Purpose |
 |---|---|
 | `src/agents/plugins/qemu` | Bash agent plugin shipped to Linux hypervisors (uses `virsh` + `top`). |
-| `src/agents/bakery/qemu` | Agent Bakery hook — deploys the plugin when the Bakery rule is enabled. |
+| `src/lib/python3/cmk/base/cee/plugins/bakery/qemu.py` | Agent Bakery hook — deploys the plugin when the Bakery rule is enabled. |
 | `src/agent_based/qemu.py` | Section parser + check plugin. |
 | `src/web/plugins/wato/qemu.py` | WATO rules: Bakery deployment toggle and per-VM CPU/memory thresholds. |
 

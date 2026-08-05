@@ -26,7 +26,7 @@ The check plugin `digital_signage` parses the section into a dict, then per coun
 | --- | --- |
 | `src/agents/plugins/digital_signage.ps1` | Windows PowerShell agent plugin (GPU counters via WMI). |
 | `src/digital_signage/agent_based/digital_signage.py` | Section parser and check plugin. |
-| `src/digital_signage/agent_based/bakery.py` | Bakery hook for plugin deployment. |
+| `src/lib/python3/cmk/base/cee/plugins/bakery/digital_signage.py` | Bakery hook for plugin deployment. |
 | `src/digital_signage/rulesets/bakery.py` | Bakery rule (sync / cached / off). |
 | `src/digital_signage/rulesets/rulesets.py` | Check parameter rule (upper levels per GPU engine). |
 | `src/digital_signage/graphing/metrics.py` | Metric definitions. |

@@ -25,7 +25,7 @@ The Linux variant reads `/etc/os-release` (falling back to `/etc/redhat-release`
 | `src/agents/plugins/discover_os_labels.linux` | Linux shell plugin. |
 | `src/agents/plugins/discover_os_labels.solaris` | Solaris shell plugin. |
 | `src/agents/plugins/discover_os_labels.aix` | AIX shell plugin. |
-| `src/discover_os_labels/agent_based/bakery.py` | Agent Bakery hook, selects the correct plugin per OS. |
+| `src/lib/python3/cmk/base/cee/plugins/bakery/discover_os_labels.py` | Agent Bakery hook, selects the correct plugin per OS. |
 | `src/discover_os_labels/rulesets/bakery.py` | WATO rule for Bakery deployment. |
 
 ## Installation

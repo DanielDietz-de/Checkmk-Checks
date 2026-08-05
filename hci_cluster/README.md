@@ -35,7 +35,7 @@ Sections and services produced:
 | `src/cmk_addons_plugins/hci_cluster/agent_based/hci_virtual_disks.py` | Virtual disk check. |
 | `src/cmk_addons_plugins/hci_cluster/agent_based/hci_storage_jobs.py` | Storage jobs check. |
 | `src/cmk_addons_plugins/hci_cluster/agent_based/hci_s2d_volume_performance.py` | Volume / cluster performance metrics. |
-| `src/cmk_addons_plugins/hci_cluster/agent_based/bakery.py` | Bakery hook registering the plugin and config. |
+| `src/lib/python3/cmk/base/cee/plugins/bakery/hci_cluster.py` | Bakery hook registering the plugin and config. |
 | `src/cmk_addons_plugins/hci_cluster/rulesets/bakery.py` | WATO ruleset for the Bakery config. |
 
 ## Installation

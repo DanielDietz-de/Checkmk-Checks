@@ -29,7 +29,7 @@ The core-status logic is:
 | Path | Purpose |
 | --- | --- |
 | `src/agents/plugins/wp_instances.php` | Read-only Linux agent plug-in that locates WordPress installations and emits JSON. |
-| `src/wordpress/agent_based/bakery.py` | Bakery hook that deploys the agent plug-in and configuration. |
+| `src/lib/python3/cmk/base/cee/plugins/bakery/wordpress.py` | Bakery hook that deploys the agent plug-in and configuration. |
 | `src/wordpress/agent_based/wp_instances.py` | Section parser and Checkmk check plug-in. |
 | `src/wordpress/rulesets/bakery.py` | Agent Bakery rule *Wordpress Monitoring (Linux)*. |
 

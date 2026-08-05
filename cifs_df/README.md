@@ -15,7 +15,7 @@ The Bash plugin [`plugins/cifs_df`](src/agents/plugins/cifs_df) runs `waitmax -s
 | Path | Purpose |
 | --- | --- |
 | `src/agents/plugins/cifs_df` | Linux agent plugin. |
-| `src/cifs_df/agent_based/bakery.py` | Agent Bakery plugin emitting the `cifs_df` file (sync or cached deployment). |
+| `src/lib/python3/cmk/base/cee/plugins/bakery/cifs_df.py` | Agent Bakery plugin emitting the `cifs_df` file (sync or cached deployment). |
 | `src/cifs_df/rulesets/bakery.py` | WATO Agent Bakery rule (`cmk.rulesets.v1`) with a cascading deployment choice. |
 
 ## Installation

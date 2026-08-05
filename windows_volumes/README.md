@@ -30,7 +30,7 @@ The service item is the volume label (FriendlyName). If a label appears more tha
 | --- | --- |
 | `src/agents/plugins/windows_volumes.ps1` | Windows agent plug-in (PowerShell). |
 | `src/windows_volumes/agent_based/windows_volumes.py` | Section parser and check plug-in. |
-| `src/windows_volumes/agent_based/bakery.py` | Agent bakery plug-in (deploys the PowerShell script). |
+| `src/lib/python3/cmk/base/cee/plugins/bakery/windows_volumes.py` | Agent bakery plug-in (deploys the PowerShell script). |
 | `src/windows_volumes/rulesets/bakery.py` | Agent bakery rule (deployment type). |
 | `src/windows_volumes/rulesets/check_parameters.py` | Check parameter rule (usage levels). |
 | `src/windows_volumes/graphing/metrics.py` | Metrics, perfometer and graph definitions. |

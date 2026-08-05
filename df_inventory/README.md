@@ -28,7 +28,7 @@ The notification script `df_mail` wraps Checkmk's built-in mail plugin. For serv
 | `src/agents/plugins/df_inventory_aix.sh` | AIX agent plugin. |
 | `src/agents/plugins/df_inventory_solaris.sh` | Solaris agent plugin. |
 | `src/df_inventory/agent_based/inventorize_df.py` | Section parser and HW/SW inventory plugin. |
-| `src/df_inventory/agent_based/bakery.py` | Bakery hook for deployment of the agent plugin. |
+| `src/lib/python3/cmk/base/cee/plugins/bakery/df_inventory.py` | Bakery hook for deployment of the agent plugin. |
 | `src/df_inventory/rulesets/df_inventory.py` | `AgentConfig` rule controlling deployment (sync / cached / off). |
 | `src/df_inventory/rulesets/notification_parameter.py` | Registers the `df_mail` notification parameter set by subclassing the built-in mail parameter. |
 | `src/notifications/df_mail` | Notification script that rewrites the contact email from inventory. |

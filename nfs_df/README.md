@@ -24,7 +24,7 @@ filesystem check.
 | Path | Purpose |
 | --- | --- |
 | `src/agents/plugins/nfs_df` | Bash agent plugin shipped to Linux hosts. |
-| `src/nfs_df/agent_based/bakery.py` | Bakery registration (`register.bakery_plugin`). |
+| `src/lib/python3/cmk/base/cee/plugins/bakery/nfs_df.py` | Bakery registration (`register.bakery_plugin`). |
 | `src/nfs_df/rulesets/backery.py` | `AgentConfig` ruleset `nfs_df`. |
 
 ## Installation

@@ -26,7 +26,7 @@ Example agent output (truncated):
 | --- | --- |
 | `src/agents/plugins/lnx_sensors` | Bash agent plugin shipped to Linux hosts (needs `sensors` / `lm-sensors`). |
 | `src/cmk_addons_plugins/lnx_sensors/agent_based/lnx_cpu.py` | Section parser and CPU temperature check. |
-| `src/cmk_addons_plugins/lnx_sensors/agent_based/agent_bakery_lnx_sensors.py` | Bakery hook that ships the plugin. |
+| `src/lib/python3/cmk/base/cee/plugins/bakery/lnx_sensors.py` | Bakery hook that ships the plugin. |
 | `src/cmk_addons_plugins/lnx_sensors/rulesets/agent_bakery_lnx_sensors.py` | AgentConfig rule *Sensors* for the Bakery. |
 | `src/cmk_addons_plugins/lnx_sensors/rulesets/lnx_cpu.py` | DiscoveryParameters rule *Sensors discovery*. |
 
