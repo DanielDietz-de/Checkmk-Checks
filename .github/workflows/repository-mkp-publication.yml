@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
-      actions: read
+      actions: write
       contents: write
       pull-requests: write
 
@@ -148,8 +148,9 @@ jobs:
           - Complete package tests, deterministic builds, and supported Checkmk runtime validation passed before this branch was created.
           - The generated state was rebuilt and byte-compared with the validated artifacts.
           - The release configuration is finalized and the diff is restricted to documented generated paths.
+          - Exact-head guard and full MKP workflows are explicitly dispatched after this PR is updated.
 
-          Do not add hand-written source changes to this branch. Merge only after the normal pull-request guards and full MKP validation pass on this exact generated state.
+          Do not add hand-written source changes to this branch. Merge only after the dispatched repository guard and full MKP validation pass on this exact generated state.
           EOF
           pr_number=$(gh pr list \
             --repo "$GITHUB_REPOSITORY" \
@@ -171,3 +172,19 @@ jobs:
               --title "build: publish validated Checkmk MKP release" \
               --body-file release-pr-body.md
           fi
+
+      - name: Dispatch exact-head release validation
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Events created by GITHUB_TOKEN do not trigger ordinary pull_request
+          # workflows. workflow_dispatch is an explicit supported exception, so
+          # dispatch both required workflows against the exact release head.
+          gh workflow run repository-guard.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$RELEASE_BRANCH"
+          gh workflow run repository-mkp-ci.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$RELEASE_BRANCH"
