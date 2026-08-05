@@ -52,10 +52,8 @@ def _resolve_ca_bundle(explicit_ca_file: str | None, no_cert_check: bool) -> str
 def _verification_for_url(
     url: str, explicit_ca_file: str | None, no_cert_check: bool
 ) -> str | bool:
-    """Apply CA policy only to HTTPS while keeping HTTP behavior unchanged."""
+    """Apply certificate trust only to HTTPS while keeping HTTP behavior unchanged."""
     if urlsplit(url).scheme.lower() != "https":
-        if explicit_ca_file or no_cert_check:
-            raise ValueError("TLS options require an HTTPS endpoint URL")
         return True
     return _resolve_ca_bundle(explicit_ca_file, no_cert_check)
 
