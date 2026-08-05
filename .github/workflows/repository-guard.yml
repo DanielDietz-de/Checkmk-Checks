@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: repository-guard-${{ github.workflow }}-${{ github.ref }}
+  group: repository-guard-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
