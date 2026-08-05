@@ -33,6 +33,15 @@ def test_full_pull_requests_exercise_publication_transaction() -> None:
     assert "needs.select.outputs.mode == 'full'" in dry_run
 
 
+def test_validation_and_guard_concurrency_are_isolated_by_event() -> None:
+    assert "${{ github.event_name }}" in VALIDATION.read_text(encoding="utf-8").split(
+        "\nconcurrency:\n", maxsplit=1
+    )[1].split("\nenv:\n", maxsplit=1)[0]
+    assert "${{ github.event_name }}" in GUARD.read_text(encoding="utf-8").split(
+        "\nconcurrency:\n", maxsplit=1
+    )[1].split("\njobs:\n", maxsplit=1)[0]
+
+
 def test_publication_uses_release_branch_and_pull_request() -> None:
     workflow = PUBLICATION.read_text(encoding="utf-8")
     assert "workflow_run:" in workflow
@@ -41,6 +50,18 @@ def test_publication_uses_release_branch_and_pull_request() -> None:
     assert "gh pr create" in workflow
     assert "HEAD:master" not in workflow
     assert "pull-requests: write" in workflow
+
+
+def test_publication_requires_exact_source_security_guard() -> None:
+    workflow = PUBLICATION.read_text(encoding="utf-8")
+    guard_step = workflow.split("- name: Require exact source security guard", maxsplit=1)[1].split(
+        "- name: Download exact validated MKP artifacts", maxsplit=1
+    )[0]
+    assert "--workflow repository-guard.yml" in guard_step
+    assert '--commit "$SOURCE_SHA"' in guard_step
+    assert "--event push" in guard_step
+    assert 'if [[ "$conclusion" == "success" ]]' in guard_step
+    assert "Exact source security guard did not complete successfully" in guard_step
 
 
 def test_publication_aborts_stale_source_without_failing_or_pushing() -> None:
