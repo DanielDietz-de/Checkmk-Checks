@@ -28,7 +28,7 @@ jobs:
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'master'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     permissions:
       actions: write
       contents: write
@@ -46,6 +46,40 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
+
+      - name: Require exact source security guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          verified=false
+          for _ in $(seq 1 90); do
+            result=$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow repository-guard.yml \
+              --branch master \
+              --commit "$SOURCE_SHA" \
+              --event push \
+              --limit 20 \
+              --json databaseId,status,conclusion \
+              --jq 'if length == 0 then ["missing", ""] else (sort_by(.databaseId) | last | [.status, (.conclusion // "")]) end | @tsv')
+            IFS=$'\t' read -r status conclusion <<<"$result"
+            if [[ "$status" == "completed" ]]; then
+              if [[ "$conclusion" == "success" ]]; then
+                verified=true
+                break
+              fi
+              echo "Exact source security guard concluded: $conclusion" >&2
+              exit 1
+            fi
+            echo "Waiting for exact source security guard: $status"
+            sleep 10
+          done
+          [[ "$verified" == "true" ]] || {
+            echo "Exact source security guard did not complete successfully in time." >&2
+            exit 1
+          }
 
       - name: Download exact validated MKP artifacts
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
@@ -148,6 +182,7 @@ jobs:
           This pull request contains only generated release state derived from master commit \`$SOURCE_SHA\`.
 
           - Source validation run: $SOURCE_RUN
+          - The exact source commit's push-triggered repository security guard passed.
           - Complete package tests, deterministic builds, and supported Checkmk runtime validation passed before this branch was created.
           - The generated state was rebuilt and byte-compared with the validated artifacts.
           - The release configuration is finalized and the diff is restricted to documented generated paths.
