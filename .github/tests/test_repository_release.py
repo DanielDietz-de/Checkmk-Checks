@@ -107,7 +107,6 @@ def test_archive_modes_strip_special_bits(tmp_path: Path) -> None:
         file_object.close()
 
 
-
 def test_release_inventory_is_derived_from_canonical_manifests(
     tmp_path: Path,
 ) -> None:
@@ -124,10 +123,13 @@ def test_release_inventory_is_derived_from_canonical_manifests(
     with pytest.raises(ValueError, match="no active package manifests"):
         prepare._discover_info_paths(tmp_path / "empty")
 
-def test_alertmanager_release_keeps_custom_rule_namespace(tmp_path: Path) -> None:
-    prepare = _load(
-        "prepare_repository_mkp_release",
-        REPOSITORY / ".github/scripts/prepare_repository_mkp_release.py",
+
+def test_alertmanager_source_normalization_keeps_custom_rule_namespace(
+    tmp_path: Path,
+) -> None:
+    normalize = _load(
+        "normalize_package_sources_alertmanager",
+        REPOSITORY / "tools/ci/normalize_package_sources.py",
     )
     package = tmp_path / "alertmanager_extended"
     plugin = package / "src/cmk_plugins/collection/agent_based/alertmanager.py"
@@ -145,18 +147,26 @@ def test_alertmanager_release_keeps_custom_rule_namespace(tmp_path: Path) -> Non
         'name="alertmanager_rule_state_summary_custom"\n',
         encoding="utf-8",
     )
-    manifest = {
-        "files": {
-            "cmk_addons_plugins": [
-                "kr_alertmanager/rulesets/alertmanager.py"
-            ]
-        }
-    }
-    prepare._normalize_alertmanager_override(package, manifest)
+    _write_manifest(
+        package,
+        {
+            **_minimal_manifest("alertmanager_extended"),
+            "files": {
+                "cmk_addons_plugins": [
+                    "kr_alertmanager/rulesets/alertmanager.py"
+                ]
+            },
+        },
+    )
+
+    changes = normalize.normalize_repository(tmp_path, write=True)
+
+    assert changes
     assert ruleset.is_file()
     assert not (package / "src/alertmanager/rulesets/alertmanager.py").exists()
     assert "_custom" in plugin.read_text(encoding="utf-8")
     assert "print(" not in plugin.read_text(encoding="utf-8")
+    assert normalize.normalize_repository(tmp_path, write=False) == []
 
 
 def test_hci_choice_identifiers_are_valid() -> None:
