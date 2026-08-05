@@ -1,7 +1,7 @@
 # oxidized_backup
 
 <!-- compatibility-badges:start -->
-![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.4.0b1-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.4.0p34-blue)
+![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.4.0b1-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.5.0p9-blue) ![usable until](https://img.shields.io/badge/usable%20until-2.5.99-green)
 <!-- compatibility-badges:end -->
 
 `oxidized_backup` is a Checkmk 2.4 extension that verifies the complete Oxidized backup chain for every device already exported by Checkmk to Oxidized.

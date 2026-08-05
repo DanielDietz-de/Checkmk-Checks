@@ -35,6 +35,27 @@ def _resolve_secret_reference(reference: str) -> str:
     return lookup(Path(store_path), secret_id)
 
 
+def _resolve_ca_bundle(explicit_ca_file: str | None, no_cert_check: bool) -> str | bool:
+    """Resolve explicit or site-wide CA trust without enabling proxy inheritance."""
+    if explicit_ca_file and no_cert_check:
+        raise ValueError("--ca-file and --no-cert-check are mutually exclusive")
+    if no_cert_check:
+        return False
+
+    configured = (
+        explicit_ca_file
+        or os.environ.get("REQUESTS_CA_BUNDLE")
+        or os.environ.get("CURL_CA_BUNDLE")
+    )
+    if not configured:
+        return True
+
+    path = Path(configured).expanduser()
+    if not path.is_file():
+        raise ValueError(f"CA bundle does not exist or is not a file: {path}")
+    return str(path.resolve())
+
+
 
 def camel_to_snake(name):
     """
@@ -716,6 +737,8 @@ if __name__ == '__main__':
         help='Unisphere REST API version (default: 100)')
     parser.add_argument('--enable_remote_sym_checks',
         help='gather information from remote Symmetrix', action='store_true')
+    parser.add_argument('--ca-file', dest='ca_file',
+        help='private CA bundle used for TLS verification')
     parser.add_argument('--no_cert_check',
         help='do not verify ssl certificates', action='store_true')
     parser.add_argument('--randomFailures',
@@ -744,7 +767,9 @@ if __name__ == '__main__':
         print("DEBUG: Arguments parsed (credentials redacted)", file=sys.stderr)
 
     pmax = PmaxConnector(args.user, args.password,
-                f"{args.hostname}:{args.port}", not args.no_cert_check, api_version, args.debug)
+                f"{args.hostname}:{args.port}",
+                _resolve_ca_bundle(args.ca_file, args.no_cert_check),
+                api_version, args.debug)
 
     pmax.get_version()
     pmax.get_symmetrix_name('test')

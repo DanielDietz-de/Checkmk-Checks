@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 import sys
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import requests
@@ -19,6 +21,28 @@ def _as_bool(value: object, *, default: bool) -> bool:
     if value is None:
         return default
     return str(value).strip().lower() not in {"0", "false", "no", "off"}
+
+
+
+def _resolve_ca_bundle(explicit_ca_file: str | None, no_cert_check: bool) -> str | bool:
+    """Resolve explicit or site-wide CA trust without enabling proxy inheritance."""
+    if explicit_ca_file and no_cert_check:
+        raise ValueError("--ca-file and --no-cert-check are mutually exclusive")
+    if no_cert_check:
+        return False
+
+    configured = (
+        explicit_ca_file
+        or os.environ.get("REQUESTS_CA_BUNDLE")
+        or os.environ.get("CURL_CA_BUNDLE")
+    )
+    if not configured:
+        return True
+
+    path = Path(configured).expanduser()
+    if not path.is_file():
+        raise ValueError(f"CA bundle does not exist or is not a file: {path}")
+    return str(path.resolve())
 
 
 def _is_loopback(hostname: str | None) -> bool:
@@ -68,7 +92,11 @@ class NotifyEagle:
                 key="PARAMETER_API_TOKEN", context=context
             ),
             "ssl_verify": _as_bool(context.get("PARAMETER_SSL_VERIFY"), default=True),
+            "ca_file": context.get("PARAMETER_CA_FILE") or None,
         }
+        self.config["verify"] = _resolve_ca_bundle(
+            self.config["ca_file"], not self.config["ssl_verify"]
+        )
         self.context = context
         self.session = requests.Session()
         self.session.trust_env = False
@@ -115,7 +143,7 @@ class NotifyEagle:
                     "Content-Type": "application/json",
                 },
                 timeout=REQUEST_TIMEOUT,
-                verify=self.config["ssl_verify"],
+                verify=self.config["verify"],
                 allow_redirects=False,
                 stream=True,
             )

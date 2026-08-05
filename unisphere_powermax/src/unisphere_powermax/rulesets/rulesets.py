@@ -174,6 +174,15 @@ def _valuespec_special_agent_unisphere_powermax():
                         prefill = InputHint(30)
                     ),
                 ),
+                "ca_file": DictElement(
+                    parameter_form=String(
+                        title=Title("Custom CA bundle"),
+                        help_text=Help(
+                            "Optional path on the Checkmk server to a PEM CA bundle. "
+                            "It overrides REQUESTS_CA_BUNDLE and CURL_CA_BUNDLE."
+                        ),
+                    ),
+                ),
                 "no_cert_check": DictElement(
                     parameter_form = BooleanChoice(
                         title = Title("Disable SSL certificate validation"),

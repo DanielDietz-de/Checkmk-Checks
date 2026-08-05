@@ -25,8 +25,15 @@ def _resolve_secret_reference(reference: str) -> str:
     return lookup(Path(store_path), secret_id)
 
 
-def _resolve_ca_bundle(explicit_ca_file: str | None) -> str | bool:
+def _resolve_ca_bundle(
+    explicit_ca_file: str | None, no_cert_check: bool = False
+) -> str | bool:
     """Resolve explicit or site-wide CA trust without enabling proxy inheritance."""
+    if explicit_ca_file and no_cert_check:
+        raise ValueError("--ca-file and --no-cert-check are mutually exclusive")
+    if no_cert_check:
+        return False
+
     configured = (
         explicit_ca_file
         or os.environ.get("REQUESTS_CA_BUNDLE")
@@ -76,6 +83,7 @@ class Quobyte():
             self.api_host,
             json=json_request,
             auth=self.auth,
+            verify=self.session.verify,
             timeout=self.timeout,
             allow_redirects=False,
         )

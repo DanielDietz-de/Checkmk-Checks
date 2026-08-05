@@ -67,9 +67,22 @@ This section is generated from the canonical manifest and current source tree. E
 
 - No Checkmk password or secret form was detected in the current package source.
 - The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+- An explicit TLS-verification opt-out is present. Verification remains the secure default; use the opt-out only as a documented temporary exception and prefer a private CA bundle.
 
 ### Troubleshooting
 
 - No literal Checkmk section header was detected. Inspect the executable or notification exit status and the Checkmk log relevant to the component type.
 - Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
 <!-- code-derived-reference:end -->
+## TLS trust and private CAs
+
+TLS certificate verification remains enabled by default. To preserve Checkmk site isolation, the integration disables Requests proxy and `.netrc` inheritance with `trust_env = False` and passes certificate trust explicitly. The trust order is:
+
+1. the rule's **Custom CA bundle** (`ca_file`);
+2. `REQUESTS_CA_BUNDLE` from the Checkmk site environment;
+3. `CURL_CA_BUNDLE` from the Checkmk site environment;
+4. the operating system trust store.
+
+The configured bundle must exist as a regular PEM file on the Checkmk server. An explicit certificate-verification opt-out, where supported, is mutually exclusive with a custom CA bundle and should be used only as a temporary compatibility measure. Environment CA variables are read deliberately even though proxy and `.netrc` inheritance remain disabled.
+
+Troubleshooting order: verify the endpoint name matches the certificate, confirm the PEM path is readable by the site user, test the CA chain with the same site environment, and use the verification opt-out only to isolate a trust-chain problem. Removing `ca_file` falls back automatically to the site variables and then to the system trust store.

@@ -2,6 +2,7 @@
 """Fetch SEMU single-sensor frame status over authenticated HTTPS."""
 
 import argparse
+import os
 from pathlib import Path
 
 import requests
@@ -17,6 +18,27 @@ def _resolve_secret_reference(reference: str) -> str:
     from cmk.utils.password_store import lookup
 
     return lookup(Path(store_path), secret_id)
+
+
+def _resolve_ca_bundle(explicit_ca_file: str | None, no_cert_check: bool) -> str | bool:
+    """Resolve explicit or site-wide CA trust without enabling proxy inheritance."""
+    if explicit_ca_file and no_cert_check:
+        raise ValueError("--ca-file and --no-cert-check are mutually exclusive")
+    if no_cert_check:
+        return False
+
+    configured = (
+        explicit_ca_file
+        or os.environ.get("REQUESTS_CA_BUNDLE")
+        or os.environ.get("CURL_CA_BUNDLE")
+    )
+    if not configured:
+        return True
+
+    path = Path(configured).expanduser()
+    if not path.is_file():
+        raise ValueError(f"CA bundle does not exist or is not a file: {path}")
+    return str(path.resolve())
 
 
 def parse_arguments():
@@ -42,7 +64,7 @@ def main() -> int:
     args = parse_arguments()
     session = requests.Session()
     session.trust_env = False
-    verify: bool | str = False if args.no_cert_check else (args.ca_file or True)
+    verify = _resolve_ca_bundle(args.ca_file, args.no_cert_check)
     response = session.get(
         f"https://{args.hostname}/api/v5/singlesensor/status",
         auth=HTTPBasicAuth(args.username, args.password),

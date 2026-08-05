@@ -46,6 +46,7 @@ class AgentServicecounter():
         omd_site = environ['OMD_SITE']
         self._site_url = f"http://localhost:80/{omd_site}/check_mk/api/1.0"
         self._session = requests.Session()
+        # Local-only HTTP call to the site API: no TLS CA policy applies.
         self._session.trust_env = False
 
 

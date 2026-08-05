@@ -51,6 +51,16 @@ def _parameters_sms_eagle():
                     help_text=Help("Enter Key for the Host Label which you want to show in the sms"),
                 ),
             ),
+            "ca_file": DictElement(
+                parameter_form=String(
+                    title=Title("Custom CA bundle"),
+                    help_text=Help(
+                        "Optional path on the Checkmk server to a PEM CA bundle. "
+                        "It overrides REQUESTS_CA_BUNDLE and CURL_CA_BUNDLE."
+                    ),
+                ),
+                required=False,
+            ),
             "ssl_verify": DictElement(
                 parameter_form=BooleanChoice(
                     title=Title("Verify SSL certificate"),
