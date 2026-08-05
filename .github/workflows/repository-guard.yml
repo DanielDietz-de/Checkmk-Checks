@@ -39,7 +39,10 @@ jobs:
           python-version: "3.12"
 
       - name: Apply consistent private CA policy
-        run: python3 .github/scripts/apply_private_ca_policy.py
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/apply_private_ca_policy.py
+          python3 .github/scripts/finalize_private_ca_policy.py
 
       - name: Regenerate code-derived outputs
         run: |
