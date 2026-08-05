@@ -66,8 +66,9 @@ This section is generated from the canonical manifest and current source tree. E
 
 ### Configuration and components
 
-- **Agent-based checks:** `src/dir_size/agent_based/bakery.py`, `src/dir_size/agent_based/dir_size.py`.
+- **Agent-based checks:** `src/dir_size/agent_based/dir_size.py`.
 - **Rulesets:** `src/dir_size/rulesets/bakery.py`, `src/dir_size/rulesets/rules.py`.
+- **Bakery:** `src/lib/python3/cmk/base/cee/plugins/bakery/dir_size.py`.
 - **Other packaged source:** `src/agents/plugins/dir_size.sh`.
 - Registered check plug-in names: `dir_size`.
 

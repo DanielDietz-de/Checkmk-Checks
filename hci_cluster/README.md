@@ -75,8 +75,9 @@ This section is generated from the canonical manifest and current source tree. E
 
 ### Configuration and components
 
-- **Agent-based checks:** `src/hci_cluster/agent_based/bakery.py`, `src/hci_cluster/agent_based/hci_cluster_nodes.py`, `src/hci_cluster/agent_based/hci_cluster_resources.py`, `src/hci_cluster/agent_based/hci_helper.py`, `src/hci_cluster/agent_based/hci_s2d-storage-pools.py`, `src/hci_cluster/agent_based/hci_s2d_volume_performance.py`, `src/hci_cluster/agent_based/hci_storage_jobs.py`, `src/hci_cluster/agent_based/hci_virtual_disks.py`.
+- **Agent-based checks:** `src/hci_cluster/agent_based/hci_cluster_nodes.py`, `src/hci_cluster/agent_based/hci_cluster_resources.py`, `src/hci_cluster/agent_based/hci_helper.py`, `src/hci_cluster/agent_based/hci_s2d-storage-pools.py`, `src/hci_cluster/agent_based/hci_s2d_volume_performance.py`, `src/hci_cluster/agent_based/hci_storage_jobs.py`, `src/hci_cluster/agent_based/hci_virtual_disks.py`.
 - **Rulesets:** `src/hci_cluster/rulesets/bakery.py`.
+- **Bakery:** `src/lib/python3/cmk/base/cee/plugins/bakery/hci_cluster.py`.
 - **Other packaged source:** `src/agents/plugins/hci_cluster.ps1`.
 - Registered check plug-in names: `hci_cluster_nodes`, `hci_cluster_performance`, `hci_cluster_resources`, `hci_s2d_storage_pools`, `hci_s2d_volume_performance`, `hci_storage_jobs`, `hci_virtual_disks`.
 

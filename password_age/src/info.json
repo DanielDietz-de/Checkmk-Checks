@@ -7,9 +7,11 @@
       "plugins/password_age.sh"
     ],
     "cmk_addons_plugins": [
-      "password_age/agent_based/bakery.py",
       "password_age/agent_based/passwort_age.py",
       "password_age/rulesets/bakery.py"
+    ],
+    "lib": [
+      "python3/cmk/base/cee/plugins/bakery/password_age.py"
     ]
   },
   "name": "password_age",

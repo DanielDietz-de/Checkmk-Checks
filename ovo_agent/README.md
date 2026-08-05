@@ -73,8 +73,8 @@ This section is generated from the canonical manifest and current source tree. E
 
 ### Configuration and components
 
-- **Agent-based checks:** `src/ovo_agent/agent_based/bakery.py`.
 - **Rulesets:** `src/ovo_agent/rulesets/bakery.py`.
+- **Bakery:** `src/lib/python3/cmk/base/cee/plugins/bakery/ovo_agent.py`.
 - **Other packaged source:** `src/agents/plugins/ovo_agent_aix.sh`, `src/agents/plugins/ovo_agent_linux.sh`, `src/agents/plugins/ovo_agent_solaris.sh`.
 - No special-agent or agent-based check registration was detected; use the component paths above to identify the package entry point.
 

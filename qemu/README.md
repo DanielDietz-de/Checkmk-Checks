@@ -100,8 +100,9 @@ This section is generated from the canonical manifest and current source tree. E
 
 ### Configuration and components
 
-- **Agent-based checks:** `src/qemu/agent_based/bakery.py`, `src/qemu/agent_based/qemu.py`.
+- **Agent-based checks:** `src/qemu/agent_based/qemu.py`.
 - **Rulesets:** `src/qemu/rulesets/bakery.py`, `src/qemu/rulesets/qemu.py`.
+- **Bakery:** `src/lib/python3/cmk/base/cee/plugins/bakery/qemu.py`.
 - **Check manuals:** `src/qemu/checkman/qemu`.
 - **Other packaged source:** `src/agents/plugins/qemu`.
 - Registered check plug-in names: `qemu`.

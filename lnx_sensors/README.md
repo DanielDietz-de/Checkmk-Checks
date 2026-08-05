@@ -72,8 +72,9 @@ This section is generated from the canonical manifest and current source tree. E
 
 ### Configuration and components
 
-- **Agent-based checks:** `src/lnx_sensors/agent_based/agent_bakery_lnx_sensors.py`, `src/lnx_sensors/agent_based/lnx_cpu.py`.
+- **Agent-based checks:** `src/lnx_sensors/agent_based/lnx_cpu.py`.
 - **Rulesets:** `src/lnx_sensors/rulesets/agent_bakery_lnx_sensors.py`, `src/lnx_sensors/rulesets/lnx_cpu.py`.
+- **Bakery:** `src/lib/python3/cmk/base/cee/plugins/bakery/lnx_sensors.py`.
 - **Other packaged source:** `src/agents/plugins/lnx_sensors`.
 - Registered check plug-in names: `lnx_cpu`.
 

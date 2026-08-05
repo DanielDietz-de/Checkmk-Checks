@@ -7,8 +7,10 @@
       "plugins/nfs_df"
     ],
     "cmk_addons_plugins": [
-      "nfs_df/agent_based/bakery.py",
       "nfs_df/rulesets/backery.py"
+    ],
+    "lib": [
+      "python3/cmk/base/cee/plugins/bakery/nfs_df.py"
     ]
   },
   "name": "nfs_df",

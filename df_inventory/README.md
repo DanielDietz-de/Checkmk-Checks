@@ -68,8 +68,9 @@ This section is generated from the canonical manifest and current source tree. E
 
 ### Configuration and components
 
-- **Agent-based checks:** `src/df_inventory/agent_based/bakery.py`, `src/df_inventory/agent_based/inventorize_df.py`.
+- **Agent-based checks:** `src/df_inventory/agent_based/inventorize_df.py`.
 - **Rulesets:** `src/df_inventory/rulesets/df_inventory.py`, `src/df_inventory/rulesets/notification_parameter.py`.
+- **Bakery:** `src/lib/python3/cmk/base/cee/plugins/bakery/df_inventory.py`.
 - **Notifications:** `src/notifications/df_mail`.
 - **Other packaged source:** `src/agents/plugins/df_inventory_aix.sh`, `src/agents/plugins/df_inventory_linux.sh`, `src/agents/plugins/df_inventory_solaris.sh`.
 - No special-agent or agent-based check registration was detected; use the component paths above to identify the package entry point.

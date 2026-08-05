@@ -1,8 +1,8 @@
 {'author': 'Kuhn & Rueß GmbH',
  'description': 'Additional Cisco checks not shipped by Checkmk core:\n'
                 '- StackWise ring redundancy (cisco_stackring)\n'
-                '- Per-switch role and state for Cisco StackWise stacks not covered by the '
-                'built-in cisco_stack detection\n'
+                '- Per-switch role and state for Cisco StackWise stacks not covered by the built-in cisco_stack '
+                'detection\n'
                 '  (catalyst_switch_state)\n'
                 '- Distributed stack port operational status\n'
                 '  (cisco_distr_stack_port)\n',

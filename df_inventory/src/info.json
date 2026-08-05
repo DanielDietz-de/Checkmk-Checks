@@ -9,10 +9,12 @@
       "plugins/df_inventory_solaris.sh"
     ],
     "cmk_addons_plugins": [
-      "df_inventory/agent_based/bakery.py",
       "df_inventory/agent_based/inventorize_df.py",
       "df_inventory/rulesets/df_inventory.py",
       "df_inventory/rulesets/notification_parameter.py"
+    ],
+    "lib": [
+      "python3/cmk/base/cee/plugins/bakery/df_inventory.py"
     ],
     "notifications": [
       "df_mail"

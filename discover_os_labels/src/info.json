@@ -9,8 +9,10 @@
       "plugins/discover_os_labels.solaris"
     ],
     "cmk_addons_plugins": [
-      "discover_os_labels/agent_based/bakery.py",
       "discover_os_labels/rulesets/bakery.py"
+    ],
+    "lib": [
+      "python3/cmk/base/cee/plugins/bakery/discover_os_labels.py"
     ]
   },
   "name": "discover_os_labels",

@@ -8,11 +8,13 @@
     ],
     "cmk_addons_plugins": [
       "windows_volumes/agent_based/windows_volumes.py",
-      "windows_volumes/agent_based/bakery.py",
-      "windows_volumes/rulesets/bakery.py",
-      "windows_volumes/rulesets/check_parameters.py",
+      "windows_volumes/checkman/windows_volumes",
       "windows_volumes/graphing/metrics.py",
-      "windows_volumes/checkman/windows_volumes"
+      "windows_volumes/rulesets/bakery.py",
+      "windows_volumes/rulesets/check_parameters.py"
+    ],
+    "lib": [
+      "python3/cmk/base/cee/plugins/bakery/windows_volumes.py"
     ]
   },
   "name": "windows_volumes",

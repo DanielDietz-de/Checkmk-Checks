@@ -78,8 +78,9 @@ This section is generated from the canonical manifest and current source tree. E
 
 ### Configuration and components
 
-- **Agent-based checks:** `src/wordpress/agent_based/bakery.py`, `src/wordpress/agent_based/wp_instances.py`.
+- **Agent-based checks:** `src/wordpress/agent_based/wp_instances.py`.
 - **Rulesets:** `src/wordpress/rulesets/bakery.py`.
+- **Bakery:** `src/lib/python3/cmk/base/cee/plugins/bakery/wordpress.py`.
 - **Other packaged source:** `src/agents/plugins/wp_instances.php`.
 - Registered check plug-in names: `wordpress_instances`.
 

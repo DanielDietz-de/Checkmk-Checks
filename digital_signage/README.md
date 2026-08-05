@@ -76,9 +76,10 @@ This section is generated from the canonical manifest and current source tree. E
 
 ### Configuration and components
 
-- **Agent-based checks:** `src/digital_signage/agent_based/bakery.py`, `src/digital_signage/agent_based/digital_signage.py`.
+- **Agent-based checks:** `src/digital_signage/agent_based/digital_signage.py`.
 - **Rulesets:** `src/digital_signage/rulesets/bakery.py`, `src/digital_signage/rulesets/rulesets.py`.
 - **Graphing:** `src/digital_signage/graphing/metrics.py`.
+- **Bakery:** `src/lib/python3/cmk/base/cee/plugins/bakery/digital_signage.py`.
 - **Other packaged source:** `src/agents/plugins/digital_signage.ps1`.
 - Registered check plug-in names: `digital_signage`.
 

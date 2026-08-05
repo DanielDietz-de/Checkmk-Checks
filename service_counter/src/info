@@ -1,6 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'This special agent will search for services and in service output for pattern to '
-                'count. This counting will be added as a metric and can be shown on dashboards.\n',
+ 'description': 'This special agent will search for services and in service output for pattern to count. This counting '
+                'will be added as a metric and can be shown on dashboards.\n',
  'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
  'files': {'cmk_addons_plugins': ['service_counter/libexec/agent_service_counter',
                                   'service_counter/rulesets/service_counter.py',

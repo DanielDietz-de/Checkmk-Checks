@@ -7,8 +7,10 @@
       "plugins/cifs_df"
     ],
     "cmk_addons_plugins": [
-      "cifs_df/agent_based/bakery.py",
       "cifs_df/rulesets/bakery.py"
+    ],
+    "lib": [
+      "python3/cmk/base/cee/plugins/bakery/cifs_df.py"
     ]
   },
   "name": "cifs_df",

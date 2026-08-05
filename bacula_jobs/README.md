@@ -135,8 +135,9 @@ This section is generated from the canonical manifest and current source tree. E
 
 ### Configuration and components
 
-- **Agent-based checks:** `src/bacula_jobs/agent_based/bacula_jobs.py`, `src/bacula_jobs/agent_based/bakery.py`.
+- **Agent-based checks:** `src/bacula_jobs/agent_based/bacula_jobs.py`.
 - **Rulesets:** `src/bacula_jobs/rulesets/bacula_jobs.py`, `src/bacula_jobs/rulesets/bakery.py`.
+- **Bakery:** `src/lib/python3/cmk/base/cee/plugins/bakery/bacula_jobs.py`.
 - **Check manuals:** `src/bacula_jobs/checkman/bacula_jobs`.
 - **Other packaged source:** `src/agents/plugins/bacula_jobs`.
 - Registered check plug-in names: `bacula_jobs`.

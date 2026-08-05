@@ -1,8 +1,8 @@
 {'author': 'Kuhn & Rueß GmbH',
  'description': 'Execute a call via Asterisk to a phone number.\n'
                 '\n'
-                'Python package asterisk-ami must be installed. Please execute as siteuser: pip3 '
-                'install asterisk-ami >= 0.1.7\n',
+                'Python package asterisk-ami must be installed. Please execute as siteuser: pip3 install asterisk-ami '
+                '>= 0.1.7\n',
  'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
  'files': {'cmk_addons_plugins': ['asterisk/rulesets/asterisk.py'], 'notifications': ['asterisk']},
  'name': 'asterisk',

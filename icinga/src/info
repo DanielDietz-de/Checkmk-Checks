@@ -1,9 +1,9 @@
 {'author': 'Kuhn und Ruess GmbH',
- 'description': 'Connects an Icinga instance and mirrors the hosts as piggyback data, including '
-                'all services, states, outputs, and perfdata.\n'
+ 'description': 'Connects an Icinga instance and mirrors the hosts as piggyback data, including all services, states, '
+                'outputs, and perfdata.\n'
                 '\n'
-                'If the output of the Icinga check contains tables, the plugin tries to convert it '
-                'to multiple Checkmk services.\n',
+                'If the output of the Icinga check contains tables, the plugin tries to convert it to multiple Checkmk '
+                'services.\n',
  'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
  'files': {'cmk_addons_plugins': ['icinga/libexec/agent_icinga',
                                   'icinga/rulesets/agent.py',

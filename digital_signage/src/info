@@ -1,15 +1,15 @@
 {'author': 'Kuhn & Ruess GmbH',
- 'description': 'Monitoring for digital signage for devices like displays in shops and airports '
-                'and their signal performance.\n'
+ 'description': 'Monitoring for digital signage for devices like displays in shops and airports and their signal '
+                'performance.\n'
                 '\n'
                 'Windows-based with agent plugin.\n',
  'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks',
  'files': {'agents': ['plugins/digital_signage.ps1'],
-           'cmk_addons_plugins': ['digital_signage/agent_based/bakery.py',
-                                  'digital_signage/agent_based/digital_signage.py',
+           'cmk_addons_plugins': ['digital_signage/agent_based/digital_signage.py',
+                                  'digital_signage/graphing/metrics.py',
                                   'digital_signage/rulesets/bakery.py',
-                                  'digital_signage/rulesets/rulesets.py',
-                                  'digital_signage/graphing/metrics.py']},
+                                  'digital_signage/rulesets/rulesets.py'],
+           'lib': ['python3/cmk/base/cee/plugins/bakery/digital_signage.py']},
  'name': 'digital_signage',
  'title': 'Digital Signage Monitoring',
  'version': '1.2.2',

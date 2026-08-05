@@ -57,8 +57,8 @@ This section is generated from the canonical manifest and current source tree. E
 
 ### Configuration and components
 
-- **Agent-based checks:** `src/discover_os_labels/agent_based/bakery.py`.
 - **Rulesets:** `src/discover_os_labels/rulesets/bakery.py`.
+- **Bakery:** `src/lib/python3/cmk/base/cee/plugins/bakery/discover_os_labels.py`.
 - **Other packaged source:** `src/agents/plugins/discover_os_labels.aix`, `src/agents/plugins/discover_os_labels.linux`, `src/agents/plugins/discover_os_labels.solaris`.
 - No special-agent or agent-based check registration was detected; use the component paths above to identify the package entry point.
 
