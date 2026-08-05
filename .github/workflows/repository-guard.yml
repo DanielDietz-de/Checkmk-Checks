@@ -15,58 +15,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  apply_http_ca_edge:
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.ref == 'agent/repository-wide-security-documentation-audit' &&
-      github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-
-    steps:
-      - name: Check out branch
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          ref: agent/repository-wide-security-documentation-audit
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.12"
-
-      - name: Apply HTTP compatibility handling
-        run: python3 .github/scripts/apply_http_ca_edge.py
-
-      - name: Regenerate package documentation
-        run: python3 tools/ci/generate_package_reference.py --write
-
-      - name: Validate compatibility behavior
-        run: |
-          set -euo pipefail
-          python3 tools/ci/check_python_syntax.py
-          python3 -m unittest tests.test_ci_private_ca_policy tests.test_ci_private_ca_http_behavior -v
-
-      - name: Commit changes
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add --all
-          if git diff --cached --quiet; then
-            exit 0
-          fi
-          git commit -m "fix: keep HTTP endpoints independent of CA bundles"
-          remote_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git fetch "$remote_url" agent/repository-wide-security-documentation-audit
-          git rebase FETCH_HEAD
-          git push "$remote_url" HEAD:agent/repository-wide-security-documentation-audit
-
   guard:
     runs-on: ubuntu-latest
     timeout-minutes: 15
