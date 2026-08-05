@@ -68,9 +68,26 @@ python3 tools/ci/pin_supply_chain.py --check
 
 Review the resulting workflow and lock-file diff. A dependency update is a source change and must be reviewed like code.
 
+## Change-aware MKP validation
+
+Pull requests are classified as `targeted`, `full`, or `none` by `.github/scripts/detect_affected_packages.py`.
+
+- Package-local changes under an active package's `src/` or `tests/` tree select only that package and any other unambiguously affected packages.
+- Shared tooling, workflows, release configuration, generated artifacts, unknown paths, renames, copies, deletions, and comparison failures force full validation.
+- Documentation-only changes can skip the expensive package build and Checkmk matrix, while repository-wide guards still run.
+- Every push to `master` and every manual run is full validation.
+
+Selection fails safe. A change is never treated as targeted merely because one path appears package-local when the complete operation cannot be mapped with confidence. The selector, trust model, and troubleshooting procedure are documented in [`docs/CI_ARCHITECTURE.md`](docs/CI_ARCHITECTURE.md).
+
 ## Generated MKP publication
 
-The repository-wide MKP workflow builds deterministic archives, verifies their component inventory and checksums, installs supported packages in clean Checkmk sites, validates packaged manuals, and reloads the Checkmk core. Publication is allowed only after those gates pass and only while the source branch remains current; stale artifacts are not rebased over newer source.
+The repository MKP validation workflow is read-only. It builds deterministic archives, verifies their component inventory and checksums, installs supported packages in clean Checkmk sites, validates packaged manuals, reloads the Checkmk core, and never commits or pushes generated output.
+
+Full pull requests and manual runs execute the complete publication transaction as a dry run. The dry run finalizes release metadata, stages the complete validated artifact set, regenerates code-derived files, rebuilds every staged package, byte-compares the rebuild with the validated artifacts, and rejects any changed path outside the generated-output allowlist.
+
+After a successful full validation of a push to `master`, the separate publication workflow uses the exact validated source SHA and workflow artifact. It verifies that `master` is still current, repeats the deterministic staging and rebuild checks, updates `automation/repository-mkp-release` with a lease-protected branch update, and opens or refreshes a normal pull request. It never pushes directly to `master`.
+
+The generated release PR must pass the same repository guards and full Checkmk validation on its exact generated state before merge. If `master` advances during publication, the stale transaction exits without publishing and the newer validation run becomes authoritative.
 
 ## Adding or updating a package
 
@@ -103,4 +120,4 @@ Repository-level green status is necessary but not sufficient for every vendor, 
 
 ## Test collection
 
-The package test workflow first executes all package tests in one pytest collection, then executes each package test directory independently so module-name collisions are caught and failures remain attributable to a package.
+Full validation first executes all package tests in one pytest collection, then executes every package test directory independently so module-name collisions are caught and failures remain attributable to a package. Targeted validation applies the same two-stage model to the selected package set. Repository release, selector, staging, workflow-structure, and publication-verification tests run for every non-documentation MKP validation.
