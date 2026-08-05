@@ -32,7 +32,7 @@ replace_once(
 )
 
 documentation_sentence = (
-    " For HTTP endpoints, CA bundle settings and CA environment variables are not "
+    "For HTTP endpoints, CA bundle settings and CA environment variables are not "
     "evaluated because no TLS trust chain exists."
 )
 for relative in (
@@ -43,14 +43,20 @@ for relative in (
 ):
     path = ROOT / relative
     text = path.read_text(encoding="utf-8")
-    if documentation_sentence.strip() not in text:
+    if documentation_sentence not in text:
         marker = (
             "Environment CA variables are read deliberately even though proxy and "
             "`.netrc` inheritance remain disabled."
         )
-        if marker not in text:
-            raise RuntimeError(f"TLS documentation marker missing from {relative}")
-        text = text.replace(marker, marker + documentation_sentence, 1)
+        if marker in text:
+            text = text.replace(marker, marker + " " + documentation_sentence, 1)
+        else:
+            text = (
+                text.rstrip()
+                + "\n\n## HTTP endpoint compatibility\n\n"
+                + documentation_sentence
+                + "\n"
+            )
         path.write_text(text, encoding="utf-8")
 
 (ROOT / "tests/test_ci_private_ca_http_behavior.py").write_text(
