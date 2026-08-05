@@ -57,6 +57,29 @@ def test_shared_inputs_force_full_validation(tmp_path: Path, path: str) -> None:
     assert result.mode == "full"
 
 
+@pytest.mark.parametrize("path", ["alpha/src/info", "alpha/src/info.json"])
+def test_package_manifest_changes_force_full_validation(tmp_path: Path, path: str) -> None:
+    module = _load()
+    result = module.classify_changes(
+        _repository(tmp_path),
+        [module.Change("M", (path,))],
+    )
+    assert result.mode == "full"
+    assert "package metadata" in result.reason
+
+
+def test_new_active_package_manifest_forces_full_validation(tmp_path: Path) -> None:
+    module = _load()
+    repository = _repository(tmp_path)
+    (repository / "gamma/src").mkdir(parents=True)
+    (repository / "gamma/src/info").write_text("{}", encoding="utf-8")
+    result = module.classify_changes(
+        repository,
+        [module.Change("A", ("gamma/src/info",))],
+    )
+    assert result.mode == "full"
+
+
 def test_documentation_only_change_skips_expensive_matrix(tmp_path: Path) -> None:
     module = _load()
     result = module.classify_changes(
@@ -73,7 +96,11 @@ def test_documentation_only_change_skips_expensive_matrix(tmp_path: Path) -> Non
 @pytest.mark.parametrize("status", ["D", "R100", "C100", "U"])
 def test_rename_delete_copy_and_unknown_status_fail_safe(tmp_path: Path, status: str) -> None:
     module = _load()
-    paths = ("alpha/src/old.py", "alpha/src/new.py") if status[:1] in {"R", "C"} else ("alpha/src/plugin.py",)
+    paths = (
+        ("alpha/src/old.py", "alpha/src/new.py")
+        if status[:1] in {"R", "C"}
+        else ("alpha/src/plugin.py",)
+    )
     result = module.classify_changes(
         _repository(tmp_path),
         [module.Change(status, paths)],
