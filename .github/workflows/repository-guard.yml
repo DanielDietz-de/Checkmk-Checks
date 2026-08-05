@@ -39,6 +39,9 @@ jobs:
       - name: Verify immutable workflow dependencies
         run: python3 tools/ci/pin_supply_chain.py --check
 
+      - name: Verify cross-package identities and destinations
+        run: python3 tools/ci/check_package_collisions.py
+
       - name: Resolve comparison range
         id: range
         env:
