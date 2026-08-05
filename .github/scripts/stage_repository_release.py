@@ -48,7 +48,7 @@ def _contained_file(root: Path, relative: str) -> Path:
     return resolved
 
 
-def _read_manifest(archive_path: Path) -> dict[str, Any]:
+def _read_manifest(archive_path: Path) -> tuple[dict[str, Any], bytes]:
     with tarfile.open(archive_path, mode="r:gz") as archive:
         members = [
             member
@@ -60,11 +60,11 @@ def _read_manifest(archive_path: Path) -> dict[str, Any]:
         file_object = archive.extractfile(members[0])
         if file_object is None:
             raise ValueError(f"{archive_path}: unable to read manifest")
-        payload = file_object.read().decode("utf-8")
-    manifest = ast.literal_eval(payload)
+        payload = file_object.read()
+    manifest = ast.literal_eval(payload.decode("utf-8"))
     if not isinstance(manifest, dict):
         raise ValueError(f"{archive_path}: manifest is not a dictionary")
-    return manifest
+    return manifest, payload
 
 
 def _load_packages(dist: Path) -> list[dict[str, Any]]:
@@ -103,7 +103,7 @@ def stage_release(repository: Path, dist: Path) -> int:
         if expected != actual:
             raise ValueError(f"checksum mismatch: {source}")
 
-        manifest = _read_manifest(source)
+        manifest, manifest_payload = _read_manifest(source)
         if str(manifest.get("name")) != package_name:
             raise ValueError(f"{source}: manifest package name does not match packages.json")
         if str(manifest.get("version")) != package_version:
@@ -112,15 +112,15 @@ def stage_release(repository: Path, dist: Path) -> int:
         target_dir = repository / package_dir
         if target_dir.is_symlink() or not target_dir.resolve().is_relative_to(repository):
             raise ValueError(f"unsafe package target: {target_dir}")
-        (target_dir / "src").mkdir(parents=True, exist_ok=True)
+        src_dir = target_dir / "src"
+        if src_dir.is_symlink() or not src_dir.resolve().is_relative_to(repository):
+            raise ValueError(f"unsafe package source target: {src_dir}")
+        src_dir.mkdir(parents=True, exist_ok=True)
         for old_package in target_dir.glob("*.mkp"):
             old_package.unlink()
         for old_checksum in target_dir.glob("*.mkp.sha256"):
             old_checksum.unlink()
-        (target_dir / "src" / "info").write_text(
-            repr(manifest) + "\n",
-            encoding="utf-8",
-        )
+        (src_dir / "info").write_bytes(manifest_payload)
         shutil.copy2(source, target_dir / source.name)
         shutil.copy2(checksum, target_dir / checksum.name)
 
