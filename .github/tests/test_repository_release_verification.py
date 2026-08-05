@@ -53,6 +53,18 @@ def test_nondeterministic_artifacts_are_rejected(tmp_path: Path) -> None:
         )
 
 
+def test_unsafe_index_path_is_rejected(tmp_path: Path) -> None:
+    module = _load()
+    source = _dist(tmp_path / "a")
+    rebuilt = _dist(tmp_path / "b")
+    for dist in (source, rebuilt):
+        index = json.loads((dist / "packages.json").read_text(encoding="utf-8"))
+        index[0]["path"] = "../alpha-1.0.0.mkp"
+        (dist / "packages.json").write_text(json.dumps(index), encoding="utf-8")
+    with pytest.raises(ValueError, match="unexpected package path"):
+        module.verify_artifacts(source, rebuilt)
+
+
 @pytest.mark.parametrize(
     ("path", "allowed"),
     [
@@ -63,12 +75,22 @@ def test_nondeterministic_artifacts_are_rejected(tmp_path: Path) -> None:
         ("alpha/alpha-1.0.0.mkp", True),
         ("alpha/alpha-1.0.0.mkp.sha256", True),
         ("alpha/src/plugin.py", False),
+        ("unknown/unknown-1.0.0.mkp", False),
+        ("../alpha/alpha-1.0.0.mkp", False),
         (".github/workflows/repository-mkp-ci.yml", False),
     ],
 )
 def test_generated_path_allowlist(path: str, allowed: bool) -> None:
     module = _load()
-    assert module._allowed_generated_path(path) is allowed
+    assert module._allowed_generated_path(path, {"alpha"}) is allowed
+
+
+def test_nul_path_decoder_preserves_newlines() -> None:
+    module = _load()
+    assert module._decode_nul_paths(b"alpha/README.md\0alpha/line\nbreak.mkp\0") == {
+        "alpha/README.md",
+        "alpha/line\nbreak.mkp",
+    }
 
 
 def test_release_config_must_be_finalized(tmp_path: Path) -> None:
