@@ -137,12 +137,24 @@ def _valuespec_special_agent_hitachi_hnas_rest():
                 ),
                 required=False,
             ),
+            "ca_file": DictElement(
+                parameter_form=String(
+                    title=Title("Custom CA bundle"),
+                    help_text=Help(
+                        "Optional absolute path on the Checkmk server to a PEM CA "
+                        "bundle for a private HNAS certificate. This overrides "
+                        "REQUESTS_CA_BUNDLE and CURL_CA_BUNDLE."
+                    ),
+                    custom_validate=(LengthInRange(min_value=1),),
+                ),
+                required=False,
+            ),
             "no_cert_check": DictElement(
                 parameter_form=BooleanChoice(
                     title=Title("Disable TLS certificate verification"),
                     help_text=Help(
-                        "Disable the verification of the TLS certificate. "
-                        "Needed for self-signed certificates."
+                        "Disable TLS certificate verification only as a temporary "
+                        "exception. Prefer the custom CA bundle for private trust."
                     ),
                 ),
                 required=False,
