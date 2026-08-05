@@ -23,7 +23,6 @@ def _as_bool(value: object, *, default: bool) -> bool:
     return str(value).strip().lower() not in {"0", "false", "no", "off"}
 
 
-
 def _resolve_ca_bundle(explicit_ca_file: str | None, no_cert_check: bool) -> str | bool:
     """Resolve explicit or site-wide CA trust without enabling proxy inheritance."""
     if explicit_ca_file and no_cert_check:
@@ -43,6 +42,15 @@ def _resolve_ca_bundle(explicit_ca_file: str | None, no_cert_check: bool) -> str
     if not path.is_file():
         raise ValueError(f"CA bundle does not exist or is not a file: {path}")
     return str(path.resolve())
+
+
+def _verification_for_api_host(
+    api_host: str, explicit_ca_file: str | None, ssl_verify: bool
+) -> str | bool:
+    """Apply certificate trust only to HTTPS; HTTP has no TLS trust chain."""
+    if urlsplit(api_host).scheme.lower() != "https":
+        return True
+    return _resolve_ca_bundle(explicit_ca_file, not ssl_verify)
 
 
 def _is_loopback(hostname: str | None) -> bool:
@@ -94,8 +102,10 @@ class NotifyEagle:
             "ssl_verify": _as_bool(context.get("PARAMETER_SSL_VERIFY"), default=True),
             "ca_file": context.get("PARAMETER_CA_FILE") or None,
         }
-        self.config["verify"] = _resolve_ca_bundle(
-            self.config["ca_file"], not self.config["ssl_verify"]
+        self.config["verify"] = _verification_for_api_host(
+            self.config["api_host"],
+            self.config["ca_file"],
+            self.config["ssl_verify"],
         )
         self.context = context
         self.session = requests.Session()
