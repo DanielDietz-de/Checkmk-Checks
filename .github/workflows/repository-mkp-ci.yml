@@ -325,7 +325,9 @@ jobs:
               shutil.copy2(source, target_dir / source.name)
               shutil.copy2(checksum, target_dir / checksum.name)
           PY
+          python tools/ci/sync_package_metadata.py --write
           python update_readmes.py
+          python tools/ci/generate_package_reference.py --write
           python create_mkp_index.py
 
       - name: Commit package set if source is still current
