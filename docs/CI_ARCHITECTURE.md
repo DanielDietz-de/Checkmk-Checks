@@ -92,10 +92,24 @@ Publication then:
 4. rebuilds and byte-compares every package;
 5. rejects unexpected source or workflow changes;
 6. commits only generated release paths;
-7. updates `automation/repository-mkp-release` with `--force-with-lease`; and
-8. opens or updates a pull request targeting `master`.
+7. updates `automation/repository-mkp-release` with `--force-with-lease`;
+8. opens or updates a pull request targeting `master`; and
+9. explicitly dispatches the repository guard and full MKP validation workflows against the exact automation-branch head.
 
 The workflow never pushes to `master`.
+
+## Exact-head checks for workflow-created PRs
+
+GitHub suppresses most workflow events created with a repository's own `GITHUB_TOKEN`. A release PR opened by the publication workflow therefore cannot rely on the ordinary `pull_request` event to start its required checks.
+
+The publication job explicitly invokes `workflow_dispatch` for:
+
+- `.github/workflows/repository-guard.yml`; and
+- `.github/workflows/repository-mkp-ci.yml`.
+
+Both dispatches target `automation/repository-mkp-release`. The MKP selector treats every manual run as full validation. The repository guard resolves a manual-run comparison range from the merge base of `origin/master` and the dispatched head SHA, so changed-code policy is evaluated against the generated release diff rather than an empty event field.
+
+`workflow_dispatch` is an intentional GitHub exception to token-created-event suppression. The resulting check runs are attached to the release branch's exact head commit and must be green before merge.
 
 ## Permission model
 
@@ -103,15 +117,17 @@ The validation workflow has only `contents: read`.
 
 The publication job has the minimum permissions needed for its isolated responsibility:
 
-- `actions: read` to download artifacts from the validated run;
+- `actions: write` to download the validated artifact and explicitly dispatch exact-head release checks;
 - `contents: write` to update the dedicated automation branch; and
 - `pull-requests: write` to create or update the release PR.
 
-The workflow uses `persist-credentials: false`. A short-lived `GITHUB_TOKEN` is supplied only to the explicit branch push and GitHub CLI pull-request operations. Third-party actions remain pinned to immutable commit SHAs, and Checkmk images remain pinned by digest.
+The workflow uses `persist-credentials: false`. A short-lived `GITHUB_TOKEN` is supplied only to the explicit automation-branch push, pull-request operation, and workflow dispatches. Third-party actions remain pinned to immutable commit SHAs, and Checkmk images remain pinned by digest.
+
+The repository or organization must permit GitHub Actions to create pull requests. If that setting is disabled, publication fails closed at PR creation; do not replace the workflow token with an unmanaged personal token merely to bypass policy.
 
 ## Release-staging safeguards
 
-`.github/scripts/stage_repository_release.py` does not extract archives into the working tree. It reads exactly one `info` member from each archive and rejects archives with missing or duplicate manifests.
+`.github/scripts/stage_repository_release.py` does not extract archives into the working tree. It reads exactly one `info` member from each archive and rejects archives with missing or duplicate manifests. The exact validated manifest bytes are written back to the canonical `src/info` path; the staging helper does not reformat or reinterpret the release manifest when publishing it.
 
 It also rejects:
 
@@ -120,7 +136,7 @@ It also rejects:
 - duplicate package directories;
 - checksum mismatches;
 - package-index and manifest name/version mismatches;
-- symlinked package targets; and
+- symlinked package or source targets; and
 - partial or unexpected package sets.
 
 Publication requires the artifact package-directory set to equal the active canonical manifest set exactly.
@@ -143,7 +159,7 @@ A release preparation step that attempts to modify executable source, tests, wor
 
 Validation uses per-ref concurrency and cancels superseded runs. Publication uses a repository-wide serial concurrency group and does not cancel an in-flight publication transaction.
 
-The publication workflow only responds to successful push-triggered validation runs on `master`. Pull-request validation runs and changes to the automation release branch cannot recursively start publication.
+The publication workflow only performs work for successful push-triggered validation runs on `master`. Pull-request and manually dispatched validation runs may produce a `workflow_run` event, but the publication job rejects them because their event is not `push` on `master`.
 
 After the generated release PR is merged, `master` is fully validated again. Publication then finds no generated diff and exits without creating another release PR.
 
@@ -163,10 +179,15 @@ Check, in order:
 
 1. the source `Repository MKP validation` run completed successfully;
 2. it was a push run on `master`;
-3. the validated source SHA was still current when publication ran; and
-4. the staged generated state actually differs from `master`.
+3. the validated source SHA was still current when publication ran;
+4. the staged generated state actually differs from `master`; and
+5. repository Actions policy permits `GITHUB_TOKEN` to create pull requests.
 
 A no-change result after the generated release PR has already been merged is expected.
+
+### Release PR exists but checks are absent
+
+The publication job must finish its `Dispatch exact-head release validation` step. Confirm that it has `actions: write` and that both workflow files expose `workflow_dispatch`. Do not merge a release PR without the dispatched repository guard and full MKP checks on its current head.
 
 ### Publication rejects the artifact set
 
