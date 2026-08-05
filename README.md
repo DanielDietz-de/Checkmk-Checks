@@ -6,7 +6,9 @@ The repository is maintained under the `DanielDietz-de` organization and contain
 
 ## Repository status
 
-The repository-wide release workflow currently discovers **97 active packages** from their canonical `*/src/info` manifests. It runs package tests, builds deterministic MKP archives, verifies checksums and package inventories, and validates supported packages in clean Checkmk 2.4 and 2.5 sites before publication.
+The repository-wide release workflow currently discovers **97 active packages** from their canonical `*/src/info` manifests. Pull requests validate only the unambiguously affected packages when that is safe; shared, ambiguous, manual, and `master` changes receive complete repository validation. Full validation runs all package tests, builds deterministic MKP archives, verifies checksums and package inventories, and validates supported packages in clean Checkmk 2.4 and 2.5 sites.
+
+Generated release state is never pushed directly to `master`. After a successful full `master` validation, a separate workflow rebuilds and verifies the exact validated artifacts, updates `automation/repository-mkp-release`, and opens or refreshes a normal release pull request. See [`docs/CI_ARCHITECTURE.md`](docs/CI_ARCHITECTURE.md) for the selector, publication, permissions, and failure-safety model.
 
 A package being present does **not** automatically mean that every device-specific behavior has been validated against live hardware. Use the compatibility fields and documentation in each package directory, and review the assurance model in [`MAINTENANCE.md`](MAINTENANCE.md).
 
@@ -23,7 +25,7 @@ Use [`mkp_index.json`](mkp_index.json) to search by package name, title, descrip
 └── <package>-<version>.mkp.sha256  Matching checksum on master
 ```
 
-Generated MKP files are release artifacts. Pull-request branches may not contain the next current archive yet: CI builds and validates the complete set first, and the post-merge persistence job replaces historical package archives with one validated current MKP and checksum per package. Source under `src/` remains authoritative throughout. Package operational reference blocks are generated from the canonical manifest and current source tree; change code or metadata first and then regenerate documentation.
+Generated MKP files are release artifacts. Pull-request branches may not contain the next current archive yet: CI first builds and validates either the affected package set or, when required, the complete repository. Full pull requests also dry-run the complete publication transaction. After merge, generated artifacts are proposed through the dedicated automation release branch and must pass the normal pull-request guards before reaching `master`. Source under `src/` remains authoritative throughout. Package operational reference blocks are generated from the canonical manifest and current source tree; change code or metadata first and then regenerate documentation.
 
 ## Installation
 
@@ -50,7 +52,7 @@ Packages are classified conceptually as:
 - **Source-tested:** focused behavior tests exist, but representative vendor fixtures or live-system evidence may still be limited.
 - **Legacy or unverified:** retained for existing users, with conservative compatibility claims and a requirement that future source changes add tests.
 
-Every active package has structural metadata, documentation, and syntax tests. Focused behavior coverage still varies by integration and is reported by each code-derived package reference. The full-tree audit is enforced at every severity with no legacy-finding baseline. See [`MAINTENANCE.md`](MAINTENANCE.md) and [`docs/REPOSITORY_AUDIT.md`](docs/REPOSITORY_AUDIT.md).
+Every active package has structural metadata, documentation, and syntax tests. Focused behavior coverage still varies by integration and is reported by each code-derived package reference. The full-tree audit is enforced at every severity with no legacy-finding baseline. See [`MAINTENANCE.md`](MAINTENANCE.md), [`docs/CI_ARCHITECTURE.md`](docs/CI_ARCHITECTURE.md), and [`docs/REPOSITORY_AUDIT.md`](docs/REPOSITORY_AUDIT.md).
 
 ## Security
 
@@ -62,6 +64,8 @@ Repository controls include:
 - digest-pinned Checkmk validation images;
 - deterministic MKP construction and checksum verification;
 - clean-site validation on supported Checkmk versions;
+- fail-safe affected-package selection that expands uncertain changes to full validation;
+- read-only validation workflows and branch-protection-safe release PR publication;
 - changed-code rejection for dynamic execution, shell invocation, secret flattening, disabled TLS verification, and global TLS-warning suppression;
 - a full-tree security and documentation audit that requires zero findings at every defined severity;
 - deterministic metadata, code-derived documentation, module-docstring, and repository syntax gates.
@@ -70,7 +74,7 @@ These controls reduce risk but do not replace deployment-specific review. Many p
 
 ## Contributing
 
-Read [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`docs/DOCUMENTATION_STANDARD.md`](docs/DOCUMENTATION_STANDARD.md) before changing code or documentation. Every behavioral change must include focused tests, accurate compatibility metadata, operational documentation, and a security review proportionate to the privileges and data handled by the integration.
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md), [`docs/CI_ARCHITECTURE.md`](docs/CI_ARCHITECTURE.md), and [`docs/DOCUMENTATION_STANDARD.md`](docs/DOCUMENTATION_STANDARD.md) before changing code or documentation. Every behavioral change must include focused tests, accurate compatibility metadata, operational documentation, and a security review proportionate to the privileges and data handled by the integration.
 
 Useful repository checks include:
 
@@ -83,10 +87,11 @@ python3 tools/ci/manage_module_docstrings.py
 python3 tools/ci/check_python_syntax.py
 python3 tools/ci/repository_guard.py --base <base-sha> --head <head-sha>
 python3 tools/ci/full_repository_audit.py --fail-on low
+python3 .github/scripts/detect_affected_packages.py --base <base-sha> --head <head-sha>
 python3 -m unittest discover -s tests -p 'test_ci_*.py' -v
 ```
 
-Package tests must also collect successfully together with `pytest -q */tests`; CI then reruns each package directory independently for attributable failures.
+Package tests must also collect successfully together with `pytest -q */tests`; full CI then reruns every package directory independently, while targeted CI performs the same collection and independent execution for the selected package set.
 
 ## Support
 
