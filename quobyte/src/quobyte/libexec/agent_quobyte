@@ -9,6 +9,7 @@ https://kuhn-ruess.de
 import argparse
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -63,7 +64,11 @@ class Quobyte():
         # Do not inherit ambient proxies or netrc credentials. Preserve only the
         # established Checkmk site CA-bundle variables through explicit handling.
         self.session.trust_env = False
-        self.session.verify = _resolve_ca_bundle(ca_file)
+        self.session.verify = (
+            _resolve_ca_bundle(ca_file)
+            if urlsplit(api_host).scheme.lower() == "https"
+            else True
+        )
         self.timeout = 15.0
         if timeout:
             self.timeout = float(timeout)

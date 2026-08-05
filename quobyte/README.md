@@ -141,3 +141,6 @@ This section is generated from the canonical manifest and current source tree. E
 - Emitted Checkmk sections detected in source: `quobyte_devices`, `quobyte_healthmanager`, `quobyte_quotas`, `quobyte_services`, `quobyte_volumes`.
 - For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
 <!-- code-derived-reference:end -->
+## HTTP endpoint compatibility
+
+For HTTP endpoints, CA bundle settings and CA environment variables are not evaluated because no TLS trust chain exists.
