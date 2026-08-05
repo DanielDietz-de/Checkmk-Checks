@@ -82,7 +82,13 @@ def discover_packages(repository: Path) -> set[str]:
 
 def _safe_path(value: str) -> bool:
     path = PurePosixPath(value)
-    return bool(value) and not path.is_absolute() and ".." not in path.parts
+    return (
+        bool(value)
+        and "\r" not in value
+        and "\n" not in value
+        and not path.is_absolute()
+        and ".." not in path.parts
+    )
 
 
 def parse_name_status(data: bytes) -> list[Change]:
@@ -215,13 +221,22 @@ def select_for_event(
     return classify_changes(repository, changes)
 
 
+def _single_line(value: str) -> str:
+    """Encode control separators before writing GitHub's line-based output file."""
+    return value.replace("\r", "\\r").replace("\n", "\\n")
+
+
 def _write_github_output(path: Path, selection: Selection) -> None:
     packages_json = json.dumps(list(selection.packages), separators=(",", ":"))
+    values = {
+        "mode": selection.mode,
+        "packages": packages_json,
+        "package-count": str(len(selection.packages)),
+        "reason": selection.reason,
+    }
     with path.open("a", encoding="utf-8") as handle:
-        handle.write(f"mode={selection.mode}\n")
-        handle.write(f"packages={packages_json}\n")
-        handle.write(f"package-count={len(selection.packages)}\n")
-        handle.write(f"reason={selection.reason}\n")
+        for key, value in values.items():
+            handle.write(f"{key}={_single_line(value)}\n")
 
 
 def main() -> None:
