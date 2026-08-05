@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Normalize legacy package source layouts outside the release-publication path."""
+"""Normalize legacy package source layouts and their documented source paths."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import argparse
 import ast
 import copy
 import pprint
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -14,6 +15,10 @@ from typing import Any, Literal
 _BAKERY_IMPORT = "from cmk.base.cee.plugins.bakery.bakery_api.v1 import"
 _BAKERY_RELATIVE_IMPORT = "from .bakery_api.v1 import"
 _BAKERY_LIBRARY_ROOT = Path("lib/python3/cmk/base/cee/plugins/bakery")
+_README_LEGACY_BAKERY_PATTERNS = (
+    re.compile(r"`src/(?:[^`\n]+/)*agent_based/(?:agent_)?bakery[^`\n]*\.py`"),
+    re.compile(r"`src/agents/bakery/[^`\n| ]+`"),
+)
 _ALERTMANAGER_PACKAGE = "alertmanager_extended"
 _ALERTMANAGER_PLUGIN = Path("src/cmk_plugins/collection/agent_based/alertmanager.py")
 _ALERTMANAGER_RULESET = Path("src/kr_alertmanager/rulesets/alertmanager.py")
@@ -107,6 +112,37 @@ def _desired_bakery_state(
     return {target: content}, {source} if source != target else set()
 
 
+def _desired_readme_state(
+    package_dir: Path,
+    manifest: dict[str, Any],
+) -> dict[Path, str]:
+    """Keep hand-written Bakery paths aligned with the normalized library module."""
+
+    files = manifest.get("files", {})
+    if not isinstance(files, dict):
+        raise ValueError(f"{package_dir}: manifest files must be a dictionary")
+    library_files = files.get("lib", [])
+    if not isinstance(library_files, list) or not all(
+        isinstance(entry, str) for entry in library_files
+    ):
+        raise ValueError(f"{package_dir}: invalid lib entries")
+
+    library_path = (
+        Path("python3/cmk/base/cee/plugins/bakery") / f"{package_dir.name}.py"
+    ).as_posix()
+    if library_path not in library_files:
+        return {}
+
+    readme_path = package_dir / "README.md"
+    if not readme_path.is_file():
+        return {}
+    desired = readme_path.read_text(encoding="utf-8")
+    documented_target = f"`src/lib/{library_path}`"
+    for pattern in _README_LEGACY_BAKERY_PATTERNS:
+        desired = pattern.sub(documented_target, desired)
+    return {readme_path: desired}
+
+
 def _desired_alertmanager_state(
     package_dir: Path,
     manifest: dict[str, Any],
@@ -170,6 +206,7 @@ def normalize_repository(repository: Path, *, write: bool) -> list[SourceChange]
         package_dir = info_path.parent.parent
         manifest = _manifest(info_path)
         writes, deletes = _desired_bakery_state(package_dir, manifest)
+        writes.update(_desired_readme_state(package_dir, manifest))
         writes.update(_desired_alertmanager_state(package_dir, manifest))
         desired_manifest = _render_manifest(manifest)
         if desired_manifest != info_path.read_text(encoding="utf-8"):
