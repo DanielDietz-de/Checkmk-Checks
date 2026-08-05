@@ -1,0 +1,29 @@
+name: Schedule repository MKP validation
+
+on:
+  schedule:
+    - cron: "17 3 * * 0"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: repository-mkp-schedule
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: Dispatch weekly full validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Dispatch validation on master
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh workflow run repository-mkp-ci.yml
+          --repo "$GITHUB_REPOSITORY"
+          --ref master
