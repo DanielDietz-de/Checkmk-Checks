@@ -226,7 +226,7 @@ jobs:
           python-version: "3.12"
 
       - name: Prepare repository-wide release manifests
-        if: needs.select.outputs.mode == 'full'
+        if: needs.select.outputs.mode != 'none'
         run: >-
           python .github/scripts/prepare_repository_mkp_release.py
           --repository .
