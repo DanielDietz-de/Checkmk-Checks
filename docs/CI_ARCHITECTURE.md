@@ -38,8 +38,9 @@ Full mode is selected for:
 - generated MKP artifacts or the repository package index;
 - renames, copies, deletions, unknown Git statuses, malformed paths, or incomplete comparison data;
 - changes outside a known active package or an approved documentation-only path;
-- every push to `master`; and
-- every manual workflow run.
+- every push to `master`;
+- every manual workflow run; and
+- every scheduled repository validation.
 
 The selector fails safe: uncertainty expands validation to the full repository rather than skipping checks.
 
@@ -78,6 +79,12 @@ For full pull requests and manual runs, the `publication-dry-run` job executes t
 
 The dry-run patch is retained as workflow evidence but is never committed from the validation workflow.
 
+## Scheduled full validation
+
+`.github/workflows/repository-mkp-schedule.yml` runs weekly at `03:17 UTC` on Sunday and can also be started manually. It contains no duplicate package or Checkmk logic. With only `actions: write` and `contents: read`, it dispatches `repository-mkp-ci.yml` on `master`.
+
+The resulting `workflow_dispatch` run is classified as `full`, so the complete package tests, 97-package build, supported Checkmk matrix, and publication dry-run execute from the same authoritative workflow used by reviewed changes. Scheduled validation never publishes release state because the publication workflow accepts only successful push-triggered validation runs on `master`.
+
 ## Publication workflow
 
 `.github/workflows/repository-mkp-publication.yml` is triggered by a successful `Repository MKP validation` workflow run for a push to `master`.
@@ -115,37 +122,40 @@ Both dispatches target `automation/repository-mkp-release`. The MKP selector tre
 
 The validation workflow has only `contents: read`.
 
+The scheduled dispatcher has `actions: write` only to create the authoritative manual validation run and `contents: read` for repository metadata.
+
 The publication job has the minimum permissions needed for its isolated responsibility:
 
 - `actions: write` to download the validated artifact and explicitly dispatch exact-head release checks;
 - `contents: write` to update the dedicated automation branch; and
 - `pull-requests: write` to create or update the release PR.
 
-The workflow uses `persist-credentials: false`. A short-lived `GITHUB_TOKEN` is supplied only to the explicit automation-branch push, pull-request operation, and workflow dispatches. Third-party actions remain pinned to immutable commit SHAs, and Checkmk images remain pinned by digest.
+The workflows use `persist-credentials: false` whenever repository content is checked out. A short-lived `GITHUB_TOKEN` is supplied only to explicit automation-branch pushes, pull-request operations, and workflow dispatches. Third-party actions remain pinned to immutable commit SHAs, and Checkmk images remain pinned by digest.
 
 The repository or organization must permit GitHub Actions to create pull requests. If that setting is disabled, publication fails closed at PR creation; do not replace the workflow token with an unmanaged personal token merely to bypass policy.
 
 ## Release-staging safeguards
 
-`.github/scripts/stage_repository_release.py` does not extract archives into the working tree. It reads exactly one `info` member from each archive and rejects archives with missing or duplicate manifests. The exact validated manifest bytes are written back to the canonical `src/info` path; the staging helper does not reformat or reinterpret the release manifest when publishing it.
+`.github/scripts/stage_repository_release.py` does not extract archives into the working tree. It reads exactly one bounded `info` member from each archive and rejects archives with missing, duplicate, or oversized manifests. The exact validated manifest bytes are written back to the canonical `src/info` path; the staging helper does not reformat or reinterpret the release manifest when publishing it.
 
 It also rejects:
 
 - path traversal or paths escaping the artifact directory;
-- unsafe package directory or package names;
+- artifact paths that do not exactly match package directory, name, and version;
+- unsafe package directory, package name, or version tokens;
 - duplicate package directories;
-- checksum mismatches;
+- malformed checksum records or checksum mismatches;
 - package-index and manifest name/version mismatches;
-- symlinked package or source targets; and
+- symlinked artifacts, package targets, source targets, or manifest targets; and
 - partial or unexpected package sets.
 
 Publication requires the artifact package-directory set to equal the active canonical manifest set exactly.
 
 ## Determinism and bounded output
 
-`.github/scripts/verify_repository_release.py` requires the staged repository to rebuild to the same package index and identical MKP SHA-256 values as the validated artifact set.
+`.github/scripts/verify_repository_release.py` requires the staged repository to rebuild to the same validated package identities and identical MKP SHA-256 values. It validates artifact containment independently, rejects unsafe or duplicate index identities, and reads changed Git paths with NUL delimiters so unusual filenames cannot bypass the allowlist.
 
-Only these generated path classes may change during publication:
+Only these generated path classes may change during publication, and package-scoped paths must belong to an active canonical package:
 
 - `.github/repository-mkp-release.json`;
 - root `README.md` and `mkp_index.json`;
@@ -153,13 +163,13 @@ Only these generated path classes may change during publication:
 - package `src/info` and retained `src/info.json` mirrors; and
 - top-level package `.mkp` and `.mkp.sha256` files.
 
-A release preparation step that attempts to modify executable source, tests, workflows, or other hand-written files fails and must be introduced through a normal reviewed source PR.
+A release preparation step that attempts to modify executable source, tests, workflows, unknown package directories, or other hand-written files fails and must be introduced through a normal reviewed source PR.
 
 ## Concurrency and recursion
 
-Validation uses per-ref concurrency and cancels superseded runs. Publication uses a repository-wide serial concurrency group and does not cancel an in-flight publication transaction.
+Validation uses per-ref concurrency and cancels superseded runs. Scheduled dispatch and publication each use a repository-wide serial concurrency group and do not cancel an in-flight transaction.
 
-The publication workflow only performs work for successful push-triggered validation runs on `master`. Pull-request and manually dispatched validation runs may produce a `workflow_run` event, but the publication job rejects them because their event is not `push` on `master`.
+The publication workflow only performs work for successful push-triggered validation runs on `master`. Pull-request, scheduled, and manually dispatched validation runs may produce a `workflow_run` event, but the publication job rejects them because their event is not `push` on `master`.
 
 After the generated release PR is merged, `master` is fully validated again. Publication then finds no generated diff and exits without creating another release PR.
 
@@ -167,11 +177,15 @@ After the generated release PR is merged, `master` is fully validated again. Pub
 
 ### Selector unexpectedly chooses `full`
 
-Read the `MKP validation scope` workflow summary. Full mode is expected for shared tooling, generated artifacts, renames/deletions, unknown top-level paths, and any comparison failure.
+Read the `MKP validation scope` workflow summary. Full mode is expected for shared tooling, generated artifacts, renames/deletions, unknown top-level paths, scheduled/manual events, and any comparison failure.
 
 ### Selector chooses `none`
 
 Confirm that the change is documentation-only. Repository-wide guards still run. A source or test path under an active package must result in targeted mode.
+
+### Scheduled validation did not start
+
+Check the `Schedule repository MKP validation` workflow and its `Dispatch weekly full validation` job. It must have `actions: write`, and `repository-mkp-ci.yml` must expose `workflow_dispatch`. The dispatcher does not itself run package tests; a separate full `Repository MKP validation` run on `master` is the expected result.
 
 ### Publication does not create a PR
 
@@ -191,12 +205,12 @@ The publication job must finish its `Dispatch exact-head release validation` ste
 
 ### Publication rejects the artifact set
 
-Do not bypass the check. Investigate missing or extra package directories, mismatched `packages.json` metadata, archive checksums, or a non-deterministic build. The full artifact set must be regenerated from the same source SHA.
+Do not bypass the check. Investigate missing or extra package directories, mismatched `packages.json` metadata, archive checksums, unsafe paths, oversized manifests, or a non-deterministic build. The full artifact set must be regenerated from the same source SHA.
 
 ### Publication reports an unexpected changed path
 
-The release preparation attempted to modify hand-written content. Move that source change into a normal PR, add focused tests and documentation, and allow publication to remain generated-output-only.
+The release preparation attempted to modify hand-written content or an unknown package directory. Move that source change into a normal PR, add focused tests and documentation, and allow publication to remain generated-output-only.
 
 ## Changing this architecture
 
-Any change to the selector, packaging scripts, workflows, release configuration, or publication tests automatically selects full validation. The change must include focused regression tests and keep this document synchronized with executable behavior.
+Any change to the selector, packaging scripts, workflows, release configuration, scheduled dispatcher, or publication tests automatically selects full validation. The change must include focused regression tests and keep this document synchronized with executable behavior.
