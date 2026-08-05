@@ -5,6 +5,7 @@ from pathlib import Path
 REPOSITORY = Path(__file__).resolve().parents[2]
 VALIDATION = REPOSITORY / ".github/workflows/repository-mkp-ci.yml"
 PUBLICATION = REPOSITORY / ".github/workflows/repository-mkp-publication.yml"
+GUARD = REPOSITORY / ".github/workflows/repository-guard.yml"
 
 
 def test_validation_workflow_is_read_only() -> None:
@@ -49,6 +50,25 @@ def test_publication_aborts_stale_source_without_failing_or_pushing() -> None:
     assert 'echo "current=false"' in current
     assert "exit 78" not in current
     assert "if: steps.source.outputs.current == 'true'" in workflow
+
+
+def test_workflow_created_release_pr_gets_explicit_exact_head_checks() -> None:
+    workflow = PUBLICATION.read_text(encoding="utf-8")
+    assert "actions: write" in workflow
+    dispatch = workflow.split("- name: Dispatch exact-head release validation", maxsplit=1)[1]
+    assert "gh workflow run repository-guard.yml" in dispatch
+    assert "gh workflow run repository-mkp-ci.yml" in dispatch
+    assert '--ref "$RELEASE_BRANCH"' in dispatch
+
+
+def test_guard_supports_release_branch_workflow_dispatch() -> None:
+    workflow = GUARD.read_text(encoding="utf-8")
+    range_step = workflow.split("- name: Resolve comparison range", maxsplit=1)[1].split(
+        "- name: Enforce changed-code policy", maxsplit=1
+    )[0]
+    assert 'elif [[ "$EVENT_NAME" == "push"' in range_step
+    assert 'git fetch origin master' in range_step
+    assert 'git merge-base origin/master "$CURRENT_SHA"' in range_step
 
 
 def test_master_and_manual_runs_force_full_selection() -> None:
