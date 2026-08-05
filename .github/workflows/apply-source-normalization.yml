@@ -1,0 +1,63 @@
+name: Apply reviewed package source normalization
+
+on:
+  push:
+    branches:
+      - agent/impacted-mkp-ci-publication
+    paths:
+      - tools/ci/normalize_package_sources.py
+      - .github/workflows/apply-source-normalization.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-package-source-normalization
+  cancel-in-progress: false
+
+jobs:
+  normalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out exact source commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Apply reviewed source normalization
+        run: |
+          set -euo pipefail
+          python tools/ci/normalize_package_sources.py --write
+          python tools/ci/sync_package_metadata.py --write
+          python update_readmes.py
+          python tools/ci/generate_package_reference.py --write
+          python create_mkp_index.py
+          python tools/ci/normalize_package_sources.py
+
+      - name: Commit normalized source if branch is unchanged
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- '*/src/**' '*/README.md' mkp_index.json
+          if git diff --cached --quiet; then
+            echo "Source normalization is already clean."
+            exit 0
+          fi
+          git commit -m "refactor: normalize legacy package source layouts [skip ci]"
+          remote_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch "$remote_url" "$BRANCH"
+          if [[ "$(git rev-parse FETCH_HEAD)" != "$SOURCE_SHA" ]]; then
+            echo "Branch advanced; refusing to publish stale normalization." >&2
+            exit 1
+          fi
+          git push "$remote_url" "HEAD:refs/heads/$BRANCH"
