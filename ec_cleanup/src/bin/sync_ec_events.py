@@ -15,7 +15,6 @@ from typing import Any
 from urllib.parse import quote, urlsplit
 
 import requests
-import urllib3
 
 
 @dataclass(frozen=True)
@@ -73,8 +72,6 @@ class Checkmk:
                 "Content-Type": "application/json",
             }
         )
-        if not self.verify:
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     def _url(self, endpoint: str) -> str:
         return f"{self.address}/check_mk/api/1.0/{endpoint.lstrip('/')}"
@@ -96,6 +93,7 @@ class Checkmk:
                 json=payload,
                 verify=self.verify,
                 timeout=self.timeout,
+                allow_redirects=False,
             )
         except requests.RequestException as exc:
             raise CheckmkApiError(f"Checkmk API request failed: {exc}") from exc

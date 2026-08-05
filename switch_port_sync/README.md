@@ -178,3 +178,42 @@ For a source installation:
 rm -rf "$OMD_ROOT/local/lib/python3/cmk_addons/plugins/switch_port_sync"
 cmk -R
 ```
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `switch_port_sync` version `1.0.2`; minimum Checkmk version `2.4.0p5`; maximum asserted version: 2.5.99.
+- Canonical manifest: `switch_port_sync/src/info`; it declares 5 packaged files.
+- No committed MKP artifact is present; build and validate the package from `src/` before installation.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/switch_port_sync/agent_based/switch_port_sync.py`.
+- **Server-side calls:** `src/switch_port_sync/server_side_calls/special_agent.py`.
+- **Rulesets:** `src/switch_port_sync/rulesets/special_agent.py`.
+- **Executables:** `src/switch_port_sync/libexec/agent_switch_port_sync`.
+- **Check manuals:** `src/switch_port_sync/checkman/switch_port_sync`.
+- Registered special-agent names: `switch_port_sync`.
+- Registered check plug-in names: `switch_port_sync`.
+
+### Validation
+
+- Package-specific tests: `tests/test_agent_switch_port_sync.py`, `tests/test_server_side_calls.py`, `tests/test_switch_port_sync_check_plugin.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `switch_port_sync`.
+- For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
+<!-- code-derived-reference:end -->

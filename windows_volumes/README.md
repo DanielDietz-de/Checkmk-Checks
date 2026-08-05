@@ -40,3 +40,41 @@ The service item is the volume label (FriendlyName). If a label appears more tha
 
 - **Deployment:** Setup → Agents → Windows, Linux, … → *Windows Volumes (folder mount points)*
 - **Levels:** Setup → Service monitoring rules → *Windows Volumes (folder mount points)* (default WARN/CRIT at 80%/90%).
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `windows_volumes` version `1.0.0`; minimum Checkmk version `2.3.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `windows_volumes/src/info`; it declares 7 packaged files.
+- Repository MKP artifacts present: `windows_volumes-1.0.0.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/windows_volumes/agent_based/bakery.py`, `src/windows_volumes/agent_based/windows_volumes.py`.
+- **Rulesets:** `src/windows_volumes/rulesets/bakery.py`, `src/windows_volumes/rulesets/check_parameters.py`.
+- **Graphing:** `src/windows_volumes/graphing/metrics.py`.
+- **Check manuals:** `src/windows_volumes/checkman/windows_volumes`.
+- **Other packaged source:** `src/agents/plugins/windows_volumes.ps1`.
+- Registered check plug-in names: `windows_volumes`.
+
+### Validation
+
+- Package-specific tests: `tests/test_windows_volumes_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- Static analysis did not identify a supported direct remote-network client. This is not proof of network isolation; review extensionless and non-Python executables before deployment.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `windows_volumes`.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

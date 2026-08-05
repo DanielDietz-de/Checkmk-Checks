@@ -25,8 +25,7 @@ def test_release_preparation_preserves_explicit_cap() -> None:
     assert (
         prepare._release_usable_until(
             {"version.usable_until": "2.2.99"},
-            "2.5.99",
         )
         == "2.2.99"
     )
-    assert prepare._release_usable_until({}, "2.5.99") == "2.5.99"
+    assert prepare._release_usable_until({}) is None

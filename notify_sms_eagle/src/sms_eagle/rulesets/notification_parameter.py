@@ -51,11 +51,31 @@ def _parameters_sms_eagle():
                     help_text=Help("Enter Key for the Host Label which you want to show in the sms"),
                 ),
             ),
+            "ca_file": DictElement(
+                parameter_form=String(
+                    title=Title("Custom CA bundle"),
+                    help_text=Help(
+                        "Optional path on the Checkmk server to a PEM CA bundle. "
+                        "It overrides REQUESTS_CA_BUNDLE and CURL_CA_BUNDLE."
+                    ),
+                ),
+                required=False,
+            ),
             "ssl_verify": DictElement(
                 parameter_form=BooleanChoice(
                     title=Title("Verify SSL certificate"),
                     help_text=Help("Disable this only if the SMS Eagle appliance uses a self-signed or otherwise untrusted certificate."),
                     prefill=DefaultValue(True),
+                ),
+                required=False,
+            ),
+            "allow_insecure_http": DictElement(
+                parameter_form=BooleanChoice(
+                    title=Title("Allow insecure HTTP"),
+                    help_text=Help(
+                        "Permit clear-text HTTP to a remote appliance. Keep this disabled and use HTTPS whenever credentials leave the local host."
+                    ),
+                    prefill=DefaultValue(False),
                 ),
                 required=False,
             ),

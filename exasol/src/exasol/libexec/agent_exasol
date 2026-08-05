@@ -9,11 +9,24 @@ https://kuhn-ruess.de
 from argparse import ArgumentParser
 from json import dump, load
 from os.path import expanduser, isfile, getctime
+from pathlib import Path
 from ssl import CERT_REQUIRED, CERT_NONE, SSLContext, PROTOCOL_TLS_CLIENT
 from sys import argv
 from time import time
 from urllib.parse import quote_plus
 from xmlrpc.client import ServerProxy
+
+
+def _resolve_secret_reference(reference: str) -> str:
+    """Resolve a Checkmk password-store reference without exposing it in argv."""
+    try:
+        secret_id, store_path = reference.split(":", 1)
+    except ValueError as exc:
+        raise ValueError("invalid Checkmk password-store reference") from exc
+    from cmk.utils.password_store import lookup
+
+    return lookup(Path(store_path), secret_id)
+
 
 
 parser = ArgumentParser(
@@ -22,15 +35,18 @@ parser = ArgumentParser(
 
 parser.add_argument("-i", "--ipaddress", type=str)
 parser.add_argument("-u", "--user", type=str)
-parser.add_argument("-p", "--password", type=str)
+password_group = parser.add_mutually_exclusive_group(required=True)
+password_group.add_argument("-p", "--password", type=str, help="Password for direct command-line testing")
+password_group.add_argument("--password-id", type=str, help="Checkmk password-store reference")
 parser.add_argument("-I", "--ignore", type=str)
 
 args = parser.parse_args()
+password = args.password if args.password is not None else _resolve_secret_reference(args.password_id)
 
 CONFIG = {
     "hostname" : args.ipaddress,
     "user_name" : quote_plus(args.user),
-    "user_password" : quote_plus(args.password),
+    "user_password" : quote_plus(password),
 }
 
 VERIFY = True

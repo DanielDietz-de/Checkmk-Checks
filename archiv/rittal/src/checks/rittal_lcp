@@ -1,5 +1,7 @@
 #!/usr/bin/python
 # -*- encoding: utf-8; py-indent-offset: 4 -*-
+"""Checkmk extension support code for rittal: rittal lcp."""
+
 # +-----------------------------------------------------------------+
 # |                                                                 |
 # |        (  ___ \     | \    /\|\     /||\     /|( (    /|        |
@@ -87,18 +89,20 @@ check_rittal_lcp_template = {
      }
 
 def inventory_rittal_lcp(checkname, info):
-   inventory = []
-   for line in info:
-     sensor_type  = saveint(line[1])
-     if check_rittal_lcp_template.get(sensor_type):
-       item = ""
-       if check_rittal_lcp_template[sensor_type][0] != None:
-	 item = check_rittal_lcp_template[sensor_type][0]
-       if check_rittal_lcp_template[sensor_type][1] != None:
-	 sensor_index = saveint(line[0].split(".")[1])
-	 item += " " + check_rittal_lcp_template[sensor_type][1][sensor_index] 
-       inventory.append((item+" - "+line[0],None))
-   return inventory
+    inventory = []
+    for line in info:
+        sensor_type = saveint(line[1])
+        template = check_rittal_lcp_template.get(sensor_type)
+        if template is None:
+            continue
+        item = ""
+        if template[0] is not None:
+            item = template[0]
+        if template[1] is not None:
+            sensor_index = saveint(line[0].split(".")[1])
+            item += " " + template[1][sensor_index]
+        inventory.append((item + " - " + line[0], None))
+    return inventory
 
 
 def check_rittal_lcp(item, no_params, info):

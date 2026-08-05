@@ -8,6 +8,7 @@ https://kuhn-ruess.de
 """
 
 import argparse
+from pathlib import Path
 import sys
 import os
 from os import getenv
@@ -21,9 +22,39 @@ import re
 import inspect
 
 import requests
-from urllib3.exceptions import InsecureRequestWarning
-import urllib3
-urllib3.disable_warnings(InsecureRequestWarning)
+
+
+def _resolve_secret_reference(reference: str) -> str:
+    """Resolve a Checkmk password-store reference passed by server-side calls."""
+    try:
+        secret_id, store_path = reference.split(":", 1)
+    except ValueError as exc:
+        raise ValueError("invalid Checkmk password-store reference") from exc
+    from cmk.utils.password_store import lookup
+
+    return lookup(Path(store_path), secret_id)
+
+
+def _resolve_ca_bundle(explicit_ca_file: str | None, no_cert_check: bool) -> str | bool:
+    """Resolve explicit or site-wide CA trust without enabling proxy inheritance."""
+    if explicit_ca_file and no_cert_check:
+        raise ValueError("--ca-file and --no-cert-check are mutually exclusive")
+    if no_cert_check:
+        return False
+
+    configured = (
+        explicit_ca_file
+        or os.environ.get("REQUESTS_CA_BUNDLE")
+        or os.environ.get("CURL_CA_BUNDLE")
+    )
+    if not configured:
+        return True
+
+    path = Path(configured).expanduser()
+    if not path.is_file():
+        raise ValueError(f"CA bundle does not exist or is not a file: {path}")
+    return str(path.resolve())
+
 
 
 def camel_to_snake(name):
@@ -67,6 +98,8 @@ class PmaxConnector:
           'Content-Type': 'application/json'
         }
         self.auth = requests.auth.HTTPBasicAuth(username, password)
+        self.session = requests.Session()
+        self.session.trust_env = False
         self.base_url = f'https://{host}/univmax/restapi'
         self.host = host
         self.timeout = 90
@@ -93,9 +126,9 @@ class PmaxConnector:
             print(f"DEBUG: Timeout: {self.timeout}s", file=sys.stderr)
             start_time = time.time()
 
-        resp = requests.get(full_url,
+        resp = self.session.get(full_url,
                             headers=self.header, verify=self.ssl_verify,
-                            auth=self.auth, timeout=self.timeout)
+                            auth=self.auth, timeout=self.timeout, allow_redirects=False)
 
         if self.debug:
             end_time = time.time()
@@ -106,13 +139,11 @@ class PmaxConnector:
             if hasattr(resp, 'text') and len(resp.text) > 0:
                 content_length = len(resp.text)
                 print(f"DEBUG: Response Content Length: {content_length} chars", file=sys.stderr)
-                if content_length < 500:  # Only show content for small responses
-                    print(f"DEBUG: Response Content: {resp.text[:500]}", file=sys.stderr)
             print("DEBUG: ---", file=sys.stderr)
 
         if resp.status_code >= 200 and resp.status_code < 300:
             return resp
-        error_msg = f"ERROR in GET Method, StatusCode: {resp.status_code} - {resp.text}"
+        error_msg = f"ERROR in GET Method, StatusCode: {resp.status_code}"
         raise UnisphereConnectionError(error_msg)
 
 
@@ -136,9 +167,9 @@ class PmaxConnector:
             print(f"DEBUG: Payload: {json.dumps(data, indent=2)}", file=sys.stderr)
             start_time = time.time()
 
-        resp = requests.post(full_url, headers=self.header,
+        resp = self.session.post(full_url, headers=self.header,
                              verify=self.ssl_verify, json=data, auth=self.auth,
-                             timeout=self.timeout)
+                             timeout=self.timeout, allow_redirects=False)
 
         if self.debug:
             end_time = time.time()
@@ -149,14 +180,12 @@ class PmaxConnector:
             if hasattr(resp, 'text') and len(resp.text) > 0:
                 content_length = len(resp.text)
                 print(f"DEBUG: Response Content Length: {content_length} chars", file=sys.stderr)
-                if content_length < 500:  # Only show content for small responses
-                    print(f"DEBUG: Response Content: {resp.text[:500]}", file=sys.stderr)
             print("DEBUG: ---", file=sys.stderr)
 
         if resp.status_code >= 200 and resp.status_code < 300:
             return resp
         else:
-            error_msg = f"ERROR in POST Method, StatusCode: {resp.status_code} - {resp.text}"
+            error_msg = f"ERROR in POST Method, StatusCode: {resp.status_code}"
             raise UnisphereConnectionError(error_msg)
 
 
@@ -696,7 +725,9 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Unisphere Powermax check_mk special agent.')
     parser.add_argument('--user', dest='user', required=True, help='Unisphere API username')
-    parser.add_argument('--password', dest='password', required=True, help='Unisphere API password')
+    password_group = parser.add_mutually_exclusive_group(required=True)
+    password_group.add_argument('--password', dest='password', help='Password for direct command-line testing')
+    password_group.add_argument('--password-id', dest='password_id', help='Checkmk password-store reference')
     parser.add_argument('--port', default='8443', dest='port',
         help='Unisphere API port (default: 8443)')
     parser.add_argument('--cache_time', default=30, type=int, dest='cache',
@@ -706,6 +737,8 @@ if __name__ == '__main__':
         help='Unisphere REST API version (default: 100)')
     parser.add_argument('--enable_remote_sym_checks',
         help='gather information from remote Symmetrix', action='store_true')
+    parser.add_argument('--ca-file', dest='ca_file',
+        help='private CA bundle used for TLS verification')
     parser.add_argument('--no_cert_check',
         help='do not verify ssl certificates', action='store_true')
     parser.add_argument('--randomFailures',
@@ -718,6 +751,11 @@ if __name__ == '__main__':
         parser.add_argument(disable_arg, help=help_text, action='store_true')
 
     args = parser.parse_args()
+    args.password = (
+        args.password
+        if args.password is not None
+        else _resolve_secret_reference(args.password_id)
+    )
 
     api_version = args.api_version
 
@@ -726,10 +764,12 @@ if __name__ == '__main__':
 
     if args.debug:
         print("DEBUG: Debug mode enabled", file=sys.stderr)
-        print(f"DEBUG: Arguments: {vars(args)}", file=sys.stderr)
+        print("DEBUG: Arguments parsed (credentials redacted)", file=sys.stderr)
 
     pmax = PmaxConnector(args.user, args.password,
-                f"{args.hostname}:{args.port}", not args.no_cert_check, api_version, args.debug)
+                f"{args.hostname}:{args.port}",
+                _resolve_ca_bundle(args.ca_file, args.no_cert_check),
+                api_version, args.debug)
 
     pmax.get_version()
     pmax.get_symmetrix_name('test')

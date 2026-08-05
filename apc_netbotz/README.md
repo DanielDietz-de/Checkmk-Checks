@@ -30,3 +30,37 @@ Each sensor yields one service with the sensor id as item and the label shown in
 
 1. Install the MKP on the Checkmk site.
 2. Add the APC Netbotz device as an SNMP host and run service discovery.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `apc_netbotz` version `1.0.1`; minimum Checkmk version `2.4.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `apc_netbotz/src/info`; it declares 3 packaged files.
+- Repository MKP artifacts present: `apc_netbotz-1.0.0.mkp`, `apc_netbotz-1.0.1.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/apc_netbotz/agent_based/beacon.py`, `src/apc_netbotz/agent_based/leak.py`, `src/apc_netbotz/agent_based/vibration.py`.
+- Registered check plug-in names: `netbotz_beacon`, `netbotz_leak`, `netbotz_vibration`.
+
+### Validation
+
+- Package-specific tests: `tests/test_apc_netbotz_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- Static analysis did not identify a supported direct remote-network client. This is not proof of network isolation; review extensionless and non-Python executables before deployment.
+
+### Troubleshooting
+
+- No literal Checkmk section header was detected. Inspect the executable or notification exit status and the Checkmk log relevant to the component type.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

@@ -58,3 +58,40 @@ Remote-site monitoring is intentionally not supported by this credential model. 
 - The check only inspects the current local site.
 - The look-back window remains 15 minutes.
 - The local `automation` user and secret file must exist.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `notification_monitor` version `1.0.0-dev3`; minimum Checkmk version `2.3.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `notification_monitor/src/info`; it declares 3 packaged files.
+- Repository MKP artifacts present: `notification_monitor-1.0.0-dev1.mkp`, `notification_monitor-1.0.0-dev2.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Server-side calls:** `src/notification_monitor/server_side_calls/special_agent.py`.
+- **Rulesets:** `src/notification_monitor/rulesets/sepcial_agent.py`.
+- **Executables:** `src/notification_monitor/libexec/agent_notification_monitor`.
+- Registered special-agent names: `notification_monitor`.
+
+### Validation
+
+- Package-specific tests: `tests/test_notification_monitor_local_site_url.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+- The source reads the local Checkmk automation secret. It must only transmit that credential to a validated loopback site URL.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `local`.
+- For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
+<!-- code-derived-reference:end -->

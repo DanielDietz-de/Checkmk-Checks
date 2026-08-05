@@ -62,6 +62,17 @@ def _parameter_form_special_agent():
                 ),
                 required=False,
             ),
+            "ca_file": DictElement(
+                parameter_form=String(
+                    title=Title("Custom CA bundle"),
+                    help_text=Help(
+                        "Optional path on the Checkmk server to a PEM CA bundle. "
+                        "It overrides REQUESTS_CA_BUNDLE and CURL_CA_BUNDLE."
+                    ),
+                    custom_validate=(LengthInRange(min_value=1),),
+                ),
+                required=False,
+            ),
             "verify_ssl": DictElement(
                 parameter_form=BooleanChoice(
                     title=Title("Verify TLS certificate"),

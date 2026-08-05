@@ -41,3 +41,39 @@ Rule: **Agent rules -> Operating System -> Discover OS Labels**
 | Parameter | Type | Meaning |
 | --- | --- | --- |
 | `deployment` | `CascadingSingleChoice` | `sync`, `cached` (with interval), or `do_not_deploy`. Default: `cached`. |
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `discover_os_labels` version `3.0.2`; minimum Checkmk version `2.3.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `discover_os_labels/src/info`; it declares 5 packaged files.
+- Repository MKP artifacts present: `discover_os_labels-3.0.1.mkp`, `discover_os_labels-3.0.2.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/discover_os_labels/agent_based/bakery.py`.
+- **Rulesets:** `src/discover_os_labels/rulesets/bakery.py`.
+- **Other packaged source:** `src/agents/plugins/discover_os_labels.aix`, `src/agents/plugins/discover_os_labels.linux`, `src/agents/plugins/discover_os_labels.solaris`.
+- No special-agent or agent-based check registration was detected; use the component paths above to identify the package entry point.
+
+### Validation
+
+- Package-specific tests: `tests/test_discover_os_labels_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- Static analysis did not identify a supported direct remote-network client. This is not proof of network isolation; review extensionless and non-Python executables before deployment.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `labels`.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

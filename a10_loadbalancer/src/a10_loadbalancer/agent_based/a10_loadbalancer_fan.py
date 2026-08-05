@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Agent-based parsing, discovery, and check logic for a10_loadbalancer: a10 loadbalancer fan."""
+
 # https://mibs.observium.org/mib/A10-AX-MIB/
 
 from cmk.agent_based.v2 import (

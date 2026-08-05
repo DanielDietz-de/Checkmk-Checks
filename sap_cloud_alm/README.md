@@ -56,3 +56,41 @@ Rule: **Setup -> Agents -> Other integrations -> SAP Cloud Alm**
 - **Service:** `Metric <metricName>` — one per metric returned by the filter.
 - **State:** CRIT if `criticalStatus != 0`, WARN if `warningStratus != 0`, otherwise OK.
 - **Metric:** `valueAvg` (raw numeric value as returned by SAP).
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `sap_cloud_alm` version `1.0.1`; minimum Checkmk version `2.4.0p8`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `sap_cloud_alm/src/info`; it declares 4 packaged files.
+- Repository MKP artifacts present: `sap_alm_cloud-1.0.0-dev1.mkp`, `sap_cloud_alm-1.0.0-dev2.mkp`, `sap_cloud_alm-1.0.0-dev3.mkp`, `sap_cloud_alm-1.0.0-dev4.mkp`, `sap_cloud_alm-1.0.0.mkp`, `sap_cloud_alm-1.0.1.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/sap_cloud_alm/agent_based/metrics.py`.
+- **Server-side calls:** `src/sap_cloud_alm/server_side_calls/agent_sap_alm.py`.
+- **Rulesets:** `src/sap_cloud_alm/rulesets/ruleset.py`.
+- **Executables:** `src/sap_cloud_alm/libexec/agent_sap_cloud_alm`.
+- Registered special-agent names: `sap_cloud_alm`.
+- Registered check plug-in names: `sap_cloud_alm_metrics`.
+
+### Validation
+
+- Package-specific tests: `tests/test_sap_cloud_alm_secret_command_arguments.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- Server-side calls preserve Checkmk password-store references and the executable resolves them at runtime; direct plaintext options, where present, are limited to isolated command-line diagnostics.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `sap_cloud_alm_metrics`.
+- For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
+<!-- code-derived-reference:end -->

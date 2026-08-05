@@ -1,6 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Check is parsing HTML with regex and tries to find needed '
-                'timestamp for monitoring\n',
+ 'description': 'Check is parsing HTML with regex and tries to find needed timestamp for '
+                'monitoring\n',
  'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
  'files': {'cmk_addons_plugins': ['videotext/libexec/check_videotext',
                                   'videotext/rulesets/active_check.py',
@@ -9,4 +9,5 @@
  'title': 'Videotext timestamp monitoring',
  'version': '1.0.3',
  'version.min_required': '2.3.0b1',
- 'version.packaged': '2.3.0p9'}
+ 'version.packaged': '2.3.0p9',
+ 'version.usable_until': None}

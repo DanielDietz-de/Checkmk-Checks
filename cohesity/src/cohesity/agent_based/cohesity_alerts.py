@@ -1,3 +1,5 @@
+"""Agent-based parsing, discovery, and check logic for cohesity: cohesity alerts."""
+
 # 2021 created by Sven Rueß, sritd.de
 
 from cmk.agent_based.v2 import (

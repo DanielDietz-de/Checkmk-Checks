@@ -1,3 +1,5 @@
+"""Setup ruleset definitions for the cohesity integration: cohesity agent."""
+
 # 2021 created by Sven Rueß, sritd.de
 
 from cmk.rulesets.v1 import Title

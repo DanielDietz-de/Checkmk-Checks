@@ -73,3 +73,41 @@ Replication**
   `bytes`, no levels are applied.
 - Runs `psql` via `su - postgres`, which may not work on setups with a
   different postgres shell or lockdown.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `postgres_replication` version `2.0.1`; minimum Checkmk version `2.4.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `postgres_replication/src/info`; it declares 5 packaged files.
+- Repository MKP artifacts present: `postgres_replication-1.0.1.mkp`, `postgres_replication-1.0.2.mkp`, `postgres_replication-1.0.mkp`, `postgres_replication-1.1.0.mkp`, `postgres_replication-1.2.0.mkp`, `postgres_replication-1.2.1.mkp` (additional historical artifacts omitted).
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/postgres_replication/agent_based/postgres_replication.py`.
+- **Rulesets:** `src/postgres_replication/rulesets/postgres_replication.py`.
+- **Bakery:** `src/agents/bakery/postgres_replication`.
+- **Check manuals:** `src/postgres_replication/checkman/postgres_replication`.
+- **Other packaged source:** `src/agents/plugins/postgres_replication.sh`.
+- Registered check plug-in names: `postgres_replication`.
+
+### Validation
+
+- Package-specific tests: `tests/test_postgres_replication_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- Static analysis did not identify a supported direct remote-network client. This is not proof of network isolation; review extensionless and non-Python executables before deployment.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `postgres_replication`.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

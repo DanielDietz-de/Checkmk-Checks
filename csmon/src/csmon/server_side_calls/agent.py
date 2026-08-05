@@ -9,20 +9,16 @@ from pydantic import BaseModel
 from cmk.server_side_calls.v1 import SpecialAgentCommand, SpecialAgentConfig, Secret
 
 class ConfigParser(BaseModel):
-    """
-    Config Parser
-    """
+    """Config parser."""
     username: str
     password: Secret
 
 def csmon_arguments(params, host_config):
-    """
-    Build Special Agent Command Line
-    """
+    """Build the special-agent command line."""
     args: list[str | Secret] = [
         "--hostname", host_config.name,
         "--username", params.username,
-        "--password", params.password.unsafe(),
+        "--password-id", params.password,
     ]
     yield SpecialAgentCommand(command_arguments=args)
 

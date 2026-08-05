@@ -1,0 +1,60 @@
+name: Package defect
+description: Report a reproducible Checkmk package problem
+title: "[package] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include secrets, customer data, private infrastructure details, or vulnerability information. Use the private security process in SECURITY.md for security reports.
+  - type: input
+    id: package
+    attributes:
+      label: Package and version
+      placeholder: example 1.2.3
+    validations:
+      required: true
+  - type: input
+    id: checkmk
+    attributes:
+      label: Checkmk edition and exact version
+      placeholder: Community 2.5.0p9
+    validations:
+      required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation method
+      options:
+        - MKP through Setup
+        - mkp command as site user
+        - Agent Bakery / Agent Updater
+        - Manual source installation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+      description: Explain the expected result and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide a minimal reproducible sequence.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Include relevant output with credentials, tokens, internal addresses, customer data, and proprietary content removed.
+      render: shell
+  - type: textarea
+    id: changes
+    attributes:
+      label: Recent changes
+      description: Note Checkmk, package, firmware, API, operating-system, or configuration changes.

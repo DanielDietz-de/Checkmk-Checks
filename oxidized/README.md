@@ -92,3 +92,38 @@ Rows without a valid OS tag fail the export instead of creating a partial invent
 | --- | --- |
 | `src/bin/export_oxidized` | Export, schedule installation, and schedule removal command. |
 | `tests/test_export_oxidized.py` | URL, parser, output, stale-state, permission, and path regression tests. |
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `oxidized` version `1.1.0`; minimum Checkmk version `2.3.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `oxidized/src/info`; it declares 1 packaged files.
+- Repository MKP artifacts present: `oxidized-1.0.0.mkp`, `oxidized-1.0.1.mkp`, `oxidized-1.0.2.mkp`, `oxidized-1.0.3.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Other packaged source:** `src/bin/export_oxidized`.
+- No special-agent or agent-based check registration was detected; use the component paths above to identify the package entry point.
+
+### Validation
+
+- Package-specific tests: `tests/test_export_oxidized.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+- The source reads the local Checkmk automation secret. It must only transmit that credential to a validated loopback site URL.
+
+### Troubleshooting
+
+- No literal Checkmk section header was detected. Inspect the executable or notification exit status and the Checkmk log relevant to the component type.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

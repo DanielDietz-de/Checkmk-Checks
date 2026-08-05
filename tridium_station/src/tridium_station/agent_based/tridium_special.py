@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Agent-based parsing, discovery, and check logic for tridium_station: tridium special."""
+
 # Written by Bastian Kuhn (mail@bastian-kuhn.de)
 # Tridium Niagara Station - cross-probe "special" checks
 

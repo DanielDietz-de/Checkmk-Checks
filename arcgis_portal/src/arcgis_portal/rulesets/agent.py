@@ -55,10 +55,12 @@ def _valuespec_special_agent_arcgis_portal():
             "debug": DictElement(
                 parameter_form=BooleanChoice(
                     title=Title("Debug mode"),
-                    label=Label("Print request URLs, HTTP status and raw responses to stderr"),
+                    label=Label("Print sanitized request metadata to stderr"),
                     help_text=Help(
                         "Useful for troubleshooting IdP/ADFS certificate retrieval. "
-                        "Diagnostic output appears in the special agent's stderr."
+                        "Only the request method, URL without query parameters, "
+                        "HTTP status, and response size are logged; response "
+                        "bodies and credentials are excluded."
                     ),
                 ),
                 required=False,

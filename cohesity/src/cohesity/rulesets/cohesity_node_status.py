@@ -1,3 +1,5 @@
+"""Setup ruleset definitions for the cohesity integration: cohesity node status."""
+
 # 2021 created by Sven Rueß, sritd.de
 
 

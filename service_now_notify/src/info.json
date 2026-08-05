@@ -14,5 +14,6 @@
   "title": "ServiceNow notification",
   "version": "2.2.0",
   "version.min_required": "2.4.0",
-  "version.packaged": "2.5.0"
+  "version.packaged": "2.5.0",
+  "version.usable_until": null
 }

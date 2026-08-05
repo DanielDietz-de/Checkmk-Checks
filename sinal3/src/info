@@ -1,5 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Sina Sinal3 Device Monitoring. Based on plugins from CONET Solutions GmbH/ Christian Michaelski',
+ 'description': 'Sina Sinal3 Device Monitoring. Based on plugins from CONET Solutions GmbH/ '
+                'Christian Michaelski',
  'download_url': '',
  'files': {'cmk_addons_plugins': ['sinal3/agent_based/sinal3.py',
                                   'sinal3/checkman/sinal3_aclvers',
@@ -21,4 +22,5 @@
  'title': 'SINA device monitoring K+R Updated',
  'version': '3.1.1',
  'version.min_required': '2.4.0b1',
- 'version.packaged': '2.5.0'}
+ 'version.packaged': '2.5.0',
+ 'version.usable_until': None}

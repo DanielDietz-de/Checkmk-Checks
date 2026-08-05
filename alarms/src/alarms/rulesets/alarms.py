@@ -58,6 +58,17 @@ def _form_spec_alarms() -> Dictionary:
                 ),
                 required = True,
             ),
+            "ca_file": DictElement(
+                parameter_form=String(
+                    title=Title("Custom CA bundle"),
+                    help_text=Help(
+                        "Optional path on the Checkmk server to a PEM CA bundle for HTTPS. "
+                        "It overrides REQUESTS_CA_BUNDLE and CURL_CA_BUNDLE."
+                    ),
+                    field_size=60,
+                ),
+                required=False,
+            ),
             "alarm": DictElement(
                 parameter_form = SingleChoice(
                     title = Title("Alarm"),

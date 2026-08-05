@@ -1,3 +1,5 @@
+"""Setup ruleset definitions for the password_age integration: bakery."""
+
 from cmk.rulesets.v1 import Help, Title
 from cmk.rulesets.v1.form_specs import (
     CascadingSingleChoice,

@@ -1,3 +1,5 @@
+"""Setup ruleset definitions for the kentix_sms_gateway integration: kentix."""
+
 from cmk.rulesets.v1 import Help, Title
 from cmk.rulesets.v1.form_specs import (
     DefaultValue,

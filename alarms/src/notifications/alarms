@@ -7,14 +7,39 @@ Consulting and Development
 https://kuhn-ruess.de
 """
 
+import os
 from os import environ
+from pathlib import Path
 from requests import Session
+
+
+def _resolve_ca_bundle(explicit_ca_file: str | None, no_cert_check: bool) -> str | bool:
+    """Resolve explicit or site-wide CA trust without enabling proxy inheritance."""
+    if explicit_ca_file and no_cert_check:
+        raise ValueError("--ca-file and --no-cert-check are mutually exclusive")
+    if no_cert_check:
+        return False
+
+    configured = (
+        explicit_ca_file
+        or os.environ.get("REQUESTS_CA_BUNDLE")
+        or os.environ.get("CURL_CA_BUNDLE")
+    )
+    if not configured:
+        return True
+
+    path = Path(configured).expanduser()
+    if not path.is_file():
+        raise ValueError(f"CA bundle does not exist or is not a file: {path}")
+    return str(path.resolve())
+
 
 if "SERVICE" == environ.get("NOTIFY_WHAT", "NA") and "OK" != environ.get("NOTIFY_SERVICESTATE", "NA"):
     API_PROTO = environ.get("NOTIFY_PARAMETER_PROTO", "http")
     API_HOSTNAME = environ.get("NOTIFY_PARAMETER_HOSTNAME", "localhost")
     API_URL = environ.get("NOTIFY_PARAMETER_URL", "api.php")
     API_ALARM = environ.get("NOTIFY_PARAMETER_ALARM", "alarm1")
+    API_CA_FILE = environ.get("NOTIFY_PARAMETER_CA_FILE") or None
 
     HOSTNAME = environ.get("NOTIFY_HOSTNAME", "NA")
     SERVICENAME = environ.get("NOTIFY_SERVICEDESC", "NA")
@@ -39,9 +64,14 @@ if "SERVICE" == environ.get("NOTIFY_WHAT", "NA") and "OK" != environ.get("NOTIFY
         API_ALARM = "horse.mp3";
 
     session = Session()
+    session.trust_env = False
     session.headers["Accept"] = "application/json"
+    verify = _resolve_ca_bundle(API_CA_FILE, False) if API_PROTO == "https" else True
     resp = session.get(
         f"{API_PROTO}://{API_HOSTNAME}/{API_URL}?alarm={API_ALARM}",
+        timeout=10,
+        verify=verify,
+        allow_redirects=False,
     )
 
     if resp.status_code == 200:

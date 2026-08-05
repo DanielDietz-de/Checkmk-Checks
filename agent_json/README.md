@@ -93,3 +93,39 @@ Every failed endpoint produces one sanitized UNKNOWN service named `JSON agent <
 | `src/agent_json/server_side_calls/agent_json.py` | Secret-aware special-agent command generation. |
 | `src/agent_json/rulesets/agent_json.py` | Endpoint configuration form and legacy migration. |
 | `tests/test_agent_json_security.py` | Endpoint, schema, failure and output-injection regression tests. |
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `agent_json` version `2.3.0`; minimum Checkmk version `2.3.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `agent_json/src/info`; it declares 3 packaged files.
+- Repository MKP artifacts present: `agent_json-2.0.0.mkp`, `agent_json-2.0.1.mkp`, `agent_json-2.1.0.mkp`, `agent_json-2.1.1.mkp`, `agent_json-2.1.2.mkp`, `agent_json-2.2.0.mkp` (additional historical artifacts omitted).
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Server-side calls:** `src/agent_json/server_side_calls/agent_json.py`.
+- **Rulesets:** `src/agent_json/rulesets/agent_json.py`.
+- **Executables:** `src/agent_json/libexec/agent_json`.
+- Registered special-agent names: `json`.
+
+### Validation
+
+- Package-specific tests: `tests/test_agent_json_security.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- Server-side calls preserve Checkmk password-store references and the executable resolves them at runtime; direct plaintext options, where present, are limited to isolated command-line diagnostics.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `local`.
+- For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
+<!-- code-derived-reference:end -->

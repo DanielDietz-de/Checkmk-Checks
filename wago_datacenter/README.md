@@ -33,3 +33,38 @@ SNMP check for WAGO PFC200 controllers used as datacenter signal gateways. Reads
 - **State logic:** OK if the first word of the SNMP payload is `OK`, otherwise CRIT.
 - **Summary:** full raw payload from the PLC.
 - **Details:** ASP name / device name from indices 1-2.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `wago_datacenter` version `1.2.1`; minimum Checkmk version `2.4.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `wago_datacenter/src/info`; it declares 2 packaged files.
+- Repository MKP artifacts present: `wago_datacenter-1.0.0.mkp`, `wago_datacenter-1.1.0.mkp`, `wago_datacenter-1.2.0.mkp`, `wago_datacenter-1.2.1.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/wago_datacenter/agent_based/wago_datacenter.py`.
+- **Check manuals:** `src/wago_datacenter/checkman/wago_datacenter`.
+- Registered check plug-in names: `wago_datacenter`.
+
+### Validation
+
+- Package-specific tests: `tests/test_wago_datacenter_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- Static analysis did not identify a supported direct remote-network client. This is not proof of network isolation; review extensionless and non-Python executables before deployment.
+
+### Troubleshooting
+
+- No literal Checkmk section header was detected. Inspect the executable or notification exit status and the Checkmk log relevant to the component type.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

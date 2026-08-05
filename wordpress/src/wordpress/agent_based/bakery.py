@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Agent-based parsing, discovery, and check logic for wordpress: bakery."""
+
 
 from pathlib import Path
 from typing import Any

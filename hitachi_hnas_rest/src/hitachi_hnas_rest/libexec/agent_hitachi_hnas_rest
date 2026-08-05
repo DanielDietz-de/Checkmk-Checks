@@ -8,10 +8,43 @@ https://kuhn-ruess.de
 """
 import argparse
 import json
+import os
 import sys
+from pathlib import Path
 
 import requests
-import urllib3
+
+
+def _resolve_secret_reference(reference: str) -> str:
+    """Resolve a Checkmk password-store reference passed by server-side calls."""
+    try:
+        secret_id, store_path = reference.split(":", 1)
+    except ValueError as exc:
+        raise ValueError("invalid Checkmk password-store reference") from exc
+    from cmk.utils.password_store import lookup
+
+    return lookup(Path(store_path), secret_id)
+
+
+def _resolve_ca_bundle(explicit_ca_file: str | None, no_cert_check: bool) -> str | bool:
+    """Resolve explicit or site-wide CA trust without enabling proxy inheritance."""
+    if explicit_ca_file and no_cert_check:
+        raise ValueError("--ca-file and --no-cert-check are mutually exclusive")
+    if no_cert_check:
+        return False
+
+    configured = (
+        explicit_ca_file
+        or os.environ.get("REQUESTS_CA_BUNDLE")
+        or os.environ.get("CURL_CA_BUNDLE")
+    )
+    if not configured:
+        return True
+
+    path = Path(configured).expanduser()
+    if not path.is_file():
+        raise ValueError(f"CA bundle does not exist or is not a file: {path}")
+    return str(path.resolve())
 
 
 class AgentHitachiHnasRest:
@@ -22,13 +55,12 @@ class AgentHitachiHnasRest:
     def __init__(self, args):
         self.base_url = f"https://{args.host_address}:{args.port}/v8"
         self.timeout = args.timeout
-        self.verify = not args.no_cert_check
+        self.verify = _resolve_ca_bundle(args.ca_file, args.no_cert_check)
 
-        if args.no_cert_check:
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-        # One session for all requests, so the TLS connection is reused
+        # One session for all requests. Proxy and netrc inheritance stay disabled;
+        # established site CA-bundle variables are handled explicitly above.
         self.session = requests.Session()
+        self.session.trust_env = False
         if args.api_key:
             self.session.headers["X-Api-Key"] = args.api_key
         else:
@@ -38,12 +70,12 @@ class AgentHitachiHnasRest:
         self.session.headers["Content-Type"] = "application/json; charset=UTF-8"
 
     def _get(self, path):
-        # verify is passed per request: a session-level setting would be
-        # overridden by REQUESTS_CA_BUNDLE, which OMD sites always set
+        # Certificate trust is passed explicitly because trust_env remains disabled.
         response = self.session.get(
             f"{self.base_url}/{path}",
             timeout=self.timeout,
             verify=self.verify,
+            allow_redirects=False,
         )
         response.raise_for_status()
         return response.json()
@@ -179,17 +211,30 @@ def parse_arguments():
                         help="IP address or hostname of the HNAS admin interface")
     parser.add_argument("--port", type=int, default=8444,
                         help="TCP port of the REST API (default: 8444)")
-    parser.add_argument("--api-key", default=None,
-                        help="API key (X-Api-Key header, recommended)")
+    api_key_group = parser.add_mutually_exclusive_group()
+    api_key_group.add_argument("--api-key", default=None,
+                               help="API key for direct command-line testing")
+    api_key_group.add_argument("--api-key-id", default=None,
+                               help="Checkmk password-store reference for the API key")
     parser.add_argument("--user", default=None,
                         help="API username (X-Subsystem-User header)")
-    parser.add_argument("--password", default=None,
-                        help="API password (X-Subsystem-Password header)")
+    password_group = parser.add_mutually_exclusive_group()
+    password_group.add_argument("--password", default=None,
+                                help="API password for direct command-line testing")
+    password_group.add_argument("--password-id", default=None,
+                                help="Checkmk password-store reference for the API password")
     parser.add_argument("--timeout", type=int, default=30,
                         help="HTTP timeout in seconds (default: 30)")
+    parser.add_argument("--ca-file", help="Private CA bundle used to verify the HNAS endpoint")
     parser.add_argument("--no-cert-check", action="store_true",
-                        help="Disable TLS certificate verification")
+                        help="Explicitly disable TLS certificate verification")
     args = parser.parse_args()
+    if args.api_key_id:
+        args.api_key = _resolve_secret_reference(args.api_key_id)
+    if args.password_id:
+        args.password = _resolve_secret_reference(args.password_id)
+    if args.ca_file and args.no_cert_check:
+        parser.error("--ca-file and --no-cert-check are mutually exclusive")
 
     if not args.api_key and not (args.user and args.password):
         parser.error("either --api-key or --user and --password are required")

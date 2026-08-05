@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Setup ruleset definitions for the cisco_catalyst_9k_vss_switch_redundancy_state integration: cisco catalyst 9k vss switch redundancy state."""
+
 
 from cmk.rulesets.v1 import Title
 from cmk.rulesets.v1.form_specs import (

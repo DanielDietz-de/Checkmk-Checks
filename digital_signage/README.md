@@ -60,3 +60,40 @@ Check default parameters ship with fixed upper levels of `(90, 95)` for every en
 
 - **Service:** `Digital Signage` — one per host.
 - **Metrics:** `gpu_load_3d`, `gpu_load_copy`, `gpu_load_videoprocessing`, `gpu_load_videodecode`.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `digital_signage` version `1.2.2`; minimum Checkmk version `2.3.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `digital_signage/src/info`; it declares 6 packaged files.
+- Repository MKP artifacts present: `digital_signage-1.0.0.mkp`, `digital_signage-1.1.0.mkp`, `digital_signage-1.1.1.mkp`, `digital_signage-1.2.0.mkp`, `digital_signage-1.2.1.mkp`, `digital_signage-1.2.2.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/digital_signage/agent_based/bakery.py`, `src/digital_signage/agent_based/digital_signage.py`.
+- **Rulesets:** `src/digital_signage/rulesets/bakery.py`, `src/digital_signage/rulesets/rulesets.py`.
+- **Graphing:** `src/digital_signage/graphing/metrics.py`.
+- **Other packaged source:** `src/agents/plugins/digital_signage.ps1`.
+- Registered check plug-in names: `digital_signage`.
+
+### Validation
+
+- Package-specific tests: `tests/test_digital_signage_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- Static analysis did not identify a supported direct remote-network client. This is not proof of network isolation; review extensionless and non-Python executables before deployment.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `digital_signage`.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

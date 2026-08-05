@@ -56,3 +56,39 @@ Example agent output (truncated):
 
 - Only `Core *` entries are parsed; other `lm-sensors` channels (fans, package temperatures, chipset) are ignored.
 - The section `supersedes = ["lnx_thermal"]`, so installing this plugin disables Checkmk's built-in `lnx_thermal` check as soon as an agent emits `<<<lnx_sensors>>>`.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `lnx_sensors` version `1.0.5`; minimum Checkmk version `2.3.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `lnx_sensors/src/info`; it declares 5 packaged files.
+- Repository MKP artifacts present: `lnx_sensors-1.0.0.mkp`, `lnx_sensors-1.0.1.mkp`, `lnx_sensors-1.0.2.mkp`, `lnx_sensors-1.0.3.mkp`, `lnx_sensors-1.0.4.mkp`, `lnx_sensors-1.0.5.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/lnx_sensors/agent_based/agent_bakery_lnx_sensors.py`, `src/lnx_sensors/agent_based/lnx_cpu.py`.
+- **Rulesets:** `src/lnx_sensors/rulesets/agent_bakery_lnx_sensors.py`, `src/lnx_sensors/rulesets/lnx_cpu.py`.
+- **Other packaged source:** `src/agents/plugins/lnx_sensors`.
+- Registered check plug-in names: `lnx_cpu`.
+
+### Validation
+
+- Package-specific tests: `tests/test_lnx_sensors_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- Static analysis did not identify a supported direct remote-network client. This is not proof of network isolation; review extensionless and non-Python executables before deployment.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `lnx_sensors`.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

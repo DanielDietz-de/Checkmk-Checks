@@ -71,9 +71,11 @@ def _version_key(value: str) -> tuple[int, int, int, int, int]:
     return major, minor, patch, rank, suffix_number
 
 
-def _supports_target(min_required: str, usable_until: str, target: str) -> bool:
+def _supports_target(min_required: str, usable_until: str | None, target: str) -> bool:
     target_key = _version_key(target)
-    return _version_key(min_required) <= target_key <= _version_key(usable_until)
+    if target_key < _version_key(min_required):
+        return False
+    return usable_until is None or target_key <= _version_key(usable_until)
 
 
 def _timeout_output(exc: subprocess.TimeoutExpired) -> str:
@@ -202,7 +204,7 @@ def main() -> None:
     dist = args.dist.resolve()
     metadata = json.loads((dist / "packages.json").read_text(encoding="utf-8"))
 
-    installed: list[dict[str, str]] = []
+    installed: list[dict[str, object]] = []
     manuals: set[str] = set()
     failures: list[CommandFailure] = []
 
@@ -228,7 +230,7 @@ def main() -> None:
             manifest.get("name") != package["name"]
             or str(manifest.get("version")) != package["version"]
             or str(manifest.get("version.min_required")) != min_required
-            or str(manifest.get("version.usable_until")) != usable_until
+            or manifest.get("version.usable_until") != usable_until
         ):
             raise ValueError(f"{package_path}: metadata index mismatch")
 

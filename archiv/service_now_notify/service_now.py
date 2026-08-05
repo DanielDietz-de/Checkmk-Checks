@@ -1,6 +1,8 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+"""Archived ServiceNow notification prototype retained for reference only."""
+
 # Service NOW
-# Bluk: no
+# Bulk: no
 
 import sys
 import requests
@@ -64,10 +66,18 @@ def main():
 
 
     try:
-        response = requests.post(API_URL, json=payload, auth=auth)
-    except Exception as e: #pylint: disable=broad-except, invalid-name
-        print(e)
-        print(response.json())
+        response = requests.post(
+            API_URL,
+            json=payload,
+            auth=auth,
+            timeout=15,
+            allow_redirects=False,
+        )
+    except requests.RequestException as exc:
+        print(f"ServiceNow request failed: {exc}")
+        sys.exit(2)
+    if response.status_code >= 400:
+        print(f"ServiceNow returned HTTP {response.status_code}")
         sys.exit(2)
     sys.exit(0)
 

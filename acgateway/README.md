@@ -164,3 +164,39 @@ snmpget -v2c -c '<community>' '<sbc>' \
 ```
 
 Adapt the command for SNMPv3 where applicable. `No Such Object` indicates firmware/MIB support or SNMP-view restrictions; a literal `null` on the Active Sessions objects normally indicates that SDR generation is disabled or that no post-enable session has yet been observed.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `acgateway` version `2.0.6`; minimum Checkmk version `2.4.0p5`; maximum asserted version: 2.5.99.
+- Canonical manifest: `acgateway/src/info`; it declares 19 packaged files.
+- Repository MKP artifacts present: `acgateway-2.0.0.mkp`, `acgateway-2.0.1.mkp`, `acgateway-2.0.2.mkp`, `acgateway-2.0.3.mkp`, `acgateway-2.0.4.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/acgateway/agent_based/alarms.py`, `src/acgateway/agent_based/call_capacity.py`, `src/acgateway/agent_based/calls.py`, `src/acgateway/agent_based/ha.py`, `src/acgateway/agent_based/ipgroup.py`, `src/acgateway/agent_based/license.py`, `src/acgateway/agent_based/sipinterface.py`, `src/acgateway/agent_based/sipperf.py` and 2 more.
+- **Graphing:** `src/acgateway/graphing/acgateway.py`, `src/acgateway/graphing/acgateway_extended.py`.
+- **Check manuals:** `src/acgateway/checkman/acgateway_call_capacity`, `src/acgateway/checkman/acgateway_ha`, `src/acgateway/checkman/acgateway_ipgroup`, `src/acgateway/checkman/acgateway_license`, `src/acgateway/checkman/acgateway_mediarealm`, `src/acgateway/checkman/acgateway_sipinterface`, `src/acgateway/checkman/acgateway_tls`.
+- Registered check plug-in names: `acgateway_alarms`, `acgateway_call_capacity`, `acgateway_calls`, `acgateway_ha`, `acgateway_ipgroup`, `acgateway_license`, `acgateway_sipinterface`, `acgateway_sipperf`, `acgateway_tls`, `acgateway_users`.
+
+### Validation
+
+- Package-specific tests: `tests/test_extended_plugins.py`, `tests/test_graphing_registration.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+
+### Troubleshooting
+
+- No literal Checkmk section header was detected. Inspect the executable or notification exit status and the Checkmk log relevant to the component type.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

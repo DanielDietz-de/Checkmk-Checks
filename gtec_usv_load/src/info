@@ -1,10 +1,11 @@
-{'author': u'Kuhn & Rueß GmbH',
- 'description': u'Monitor Output Load on gtec USV Devices',
+{'author': 'Kuhn & Rueß GmbH',
+ 'description': 'Monitor Output Load on gtec USV Devices',
  'download_url': 'https://kuhn-ruess.de/en/checkmk_checks.html',
  'files': {'cmk_addons_plugins': ['gtec_usv_load/agent_based/gtec_usv_load.py',
                                   'gtec_usv_load/checkman/gtec_usv_load']},
  'name': 'gtec_usv_load',
- 'title': u'Gtec USV Load',
+ 'title': 'Gtec USV Load',
  'version': '1.1.1',
  'version.min_required': '2.4.0b1',
- 'version.packaged': '2.5.0'}
+ 'version.packaged': '2.5.0',
+ 'version.usable_until': None}

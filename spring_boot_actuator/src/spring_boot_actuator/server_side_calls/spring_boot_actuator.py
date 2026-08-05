@@ -18,17 +18,23 @@ class SpringBootActuatorParams(BaseModel):
     username: Optional[str] = None
     password: Optional[Secret] = None
     verify_ssl: bool = True
+    ca_file: Optional[str] = None
 
 
 def generate_spring_boot_actuator_command(
     params: SpringBootActuatorParams, host_config: HostConfig
 ):
-    arguments: list[str | Secret] = [
-        params.url,
-        params.username or "",
-        params.password if params.password is not None else "",
-        "1" if params.verify_ssl else "0",
-    ]
+    arguments: list[str | Secret] = ["--url", params.url]
+    if params.username:
+        arguments.extend(["--username", params.username])
+    if params.password is not None:
+        arguments.extend(["--password-id", params.password])
+    if params.ca_file and not params.verify_ssl:
+        raise ValueError("ca_file and verify_ssl=False are mutually exclusive")
+    if params.ca_file:
+        arguments.extend(["--ca-file", params.ca_file])
+    elif not params.verify_ssl:
+        arguments.append("--no-cert-check")
     yield SpecialAgentCommand(command_arguments=arguments)
 
 

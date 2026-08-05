@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Setup ruleset definitions for the hp_proliant_fix integration: hp proliant da cntlr."""
+
 # Copyright (C) 2026 Kuhn & Rueß GmbH - License: GNU General Public License v2
 #
 # Check parameters for the (overridden) hp_proliant_da_cntlr check. Lets the

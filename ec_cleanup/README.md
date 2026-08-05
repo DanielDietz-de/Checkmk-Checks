@@ -78,3 +78,39 @@ When credentials are not supplied, the script uses the local `automation` user a
 - Host names are URL-encoded before use in REST paths.
 - HTTP requests use a configurable timeout.
 - Local automation credentials cannot leave the current site or loopback interface.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `ec_cleanup` version `1.0.6`; minimum Checkmk version `2.4.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `ec_cleanup/src/info`; it declares 1 packaged files.
+- Repository MKP artifacts present: `ec_cleanup-1.0.0.mkp`, `ec_cleanup-1.0.1.mkp`, `ec_cleanup-1.0.2.mkp`, `ec_cleanup-1.0.3.mkp`, `ec_cleanup-1.0.4.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Other packaged source:** `src/bin/sync_ec_events.py`.
+- No special-agent or agent-based check registration was detected; use the component paths above to identify the package entry point.
+
+### Validation
+
+- Package-specific tests: `tests/test_sync_ec_events.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+- An explicit TLS-verification opt-out is present. Verification remains the secure default; use the opt-out only as a documented temporary exception and prefer a private CA bundle.
+- The source reads the local Checkmk automation secret. It must only transmit that credential to a validated loopback site URL.
+
+### Troubleshooting
+
+- No literal Checkmk section header was detected. Inspect the executable or notification exit status and the Checkmk log relevant to the component type.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

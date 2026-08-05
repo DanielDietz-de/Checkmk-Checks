@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Agent-based parsing, discovery, and check logic for tridium_station: tridium station."""
+
 # Written by Bastian Kuhn (mail@bastian-kuhn.de)
 # Tridium Niagara Station SNMP checks (enterprise OID .1.3.6.1.4.1.4131.1)
 

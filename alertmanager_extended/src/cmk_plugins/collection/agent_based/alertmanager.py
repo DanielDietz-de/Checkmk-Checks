@@ -61,9 +61,7 @@ class GroupServices(TypedDict, total=False):
 
 
 class DiscoveryParams(TypedDict, total=False):
-    # TODO: Remove total=False and mark summary_service as
-    # not required when upgrading to Python 3.10:
-    # https://www.python.org/dev/peps/pep-0655/
+    # Both keys remain optional to accept rules saved by older package versions.
     group_services: tuple[str, GroupServices]
     summary_service: bool
 

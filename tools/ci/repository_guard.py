@@ -161,9 +161,10 @@ def _source_language(path: Path) -> str | None:
         return None
 
     try:
-        first_line = path.open("rb").readline(512).decode(
-            "utf-8", errors="replace"
-        ).lower()
+        with path.open("rb") as handle:
+            first_line = handle.readline(512).decode(
+                "utf-8", errors="replace"
+            ).lower()
     except OSError:
         return None
     if not first_line.startswith("#!"):

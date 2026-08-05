@@ -46,6 +46,18 @@ def _parameter_form_special_agents_quobyte():
                 ),
                 required = True,
             ),
+            "ca_file": DictElement(
+                parameter_form = String(
+                    title = Title("Custom CA bundle"),
+                    help_text = Help(
+                        "Optional absolute path on the Checkmk server to a PEM CA "
+                        "bundle for a private Quobyte certificate. This overrides "
+                        "REQUESTS_CA_BUNDLE and CURL_CA_BUNDLE."
+                    ),
+                    custom_validate=(LengthInRange(min_value=1),),
+                ),
+                required = False,
+            ),
             "timeout": DictElement(
                 parameter_form = TimeSpan(
                     title = Title("Timeout"),

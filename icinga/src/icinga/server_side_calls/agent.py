@@ -1,17 +1,10 @@
-"""
-Agent Icinga
+"""Server-side command wiring for the Icinga special agent."""
 
-Kuhn & Rueß GmbH
-Consulting and Development
-https://kuhn-ruess.de
-"""
 from pydantic import BaseModel
-from cmk.server_side_calls.v1 import SpecialAgentCommand, SpecialAgentConfig, Secret
+from cmk.server_side_calls.v1 import Secret, SpecialAgentCommand, SpecialAgentConfig
+
 
 class ConfigParser(BaseModel):
-    """
-    Config Parser
-    """
     host_name: str
     username: str
     password: Secret
@@ -19,24 +12,21 @@ class ConfigParser(BaseModel):
     group_services: bool = True
     piggyback_prefix: str = ""
 
+
 def icinga_arguments(params, host_config):
-    """
-    Build Special Agent Command Line
-    """
     args: list[str | Secret] = [
         "--hostname", params.host_name,
         "--username", params.username,
-        "--password", params.password.unsafe(),
+        "--password-id", params.password,
     ]
     if not params.ssl_verify:
-        args.append(
-            "--no-verify"
-        )
+        args.append("--no-verify")
     if not params.group_services:
         args.append("--no-group")
     if params.piggyback_prefix:
-        args += ["--piggyback-prefix", params.piggyback_prefix]
+        args.extend(["--piggyback-prefix", params.piggyback_prefix])
     yield SpecialAgentCommand(command_arguments=args)
+
 
 special_agent_icinga = SpecialAgentConfig(
     name="icinga",

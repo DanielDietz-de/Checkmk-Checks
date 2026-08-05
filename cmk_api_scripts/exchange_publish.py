@@ -30,6 +30,7 @@ import urllib.parse
 import urllib.request
 
 BASE = "https://exchange.checkmk.com"
+DEFAULT_TIMEOUT = 30.0
 
 
 def vkey(v):
@@ -43,7 +44,11 @@ def vkey(v):
 
 
 class Exchange:
-    def __init__(self):
+    def __init__(self, timeout=DEFAULT_TIMEOUT):
+        timeout = float(timeout)
+        if timeout <= 0:
+            raise ValueError("timeout must be greater than zero")
+        self.timeout = timeout
         self.cj = http.cookiejar.CookieJar()
         self.op = urllib.request.build_opener(
             urllib.request.HTTPCookieProcessor(self.cj),
@@ -66,7 +71,7 @@ class Exchange:
         opener = urllib.request.build_opener(
             urllib.request.HTTPCookieProcessor(self.cj)) if follow else self.op
         try:
-            r = opener.open(req)
+            r = opener.open(req, timeout=self.timeout)
             return r.getcode(), r.read(), dict(r.headers)
         except urllib.error.HTTPError as e:
             return e.code, e.read(), dict(e.headers)
@@ -177,6 +182,7 @@ def main():
     ap.add_argument("--only", default="", help="comma list of plugin names")
     ap.add_argument("--exclude", default="", help="comma list of plugin names")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="bounded HTTP timeout in seconds")
     ap.add_argument("--description", default="Update to version {ver}. Checkmk 2.5 compatibility (packaging fix).")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
@@ -184,7 +190,7 @@ def main():
     user = os.environ.get("EXCHANGE_USER") or input("Exchange e-mail: ").strip()
     pw = os.environ.get("EXCHANGE_PASSWORD") or getpass.getpass("Exchange password: ")
 
-    ex = Exchange()
+    ex = Exchange(timeout=args.timeout)
     who = ex.login(user, pw)
     print(f"logged in as: {who}", file=sys.stderr)
 

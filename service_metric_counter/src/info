@@ -1,5 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Aggregate performance-data metrics from services on the local Checkmk site while confining the local automation secret to loopback access.\n',
+ 'description': 'Aggregate performance-data metrics from services on the local Checkmk site while '
+                'confining the local automation secret to loopback access.\n',
  'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/service_metric_counter',
  'files': {'cmk_addons_plugins': ['service_metric_counter/agent_based/service.py',
                                   'service_metric_counter/libexec/agent_service_metric_counter',
@@ -9,4 +10,5 @@
  'title': 'Count the Value of Service Perfdata Metrics',
  'version': '2.0.2',
  'version.min_required': '2.3.0p1',
- 'version.packaged': '2.3.0p25'}
+ 'version.packaged': '2.3.0p25',
+ 'version.usable_until': None}

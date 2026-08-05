@@ -24,16 +24,17 @@ class AgentAs400Params(BaseModel):
 
 
 def generate_as400_agent_command(params: AgentAs400Params, host_config: HostConfig):
-    args = []
-    args.append(params.driver)
-    args.append(params.system)
-    args.append(params.uid)
-    args.append(params.password.unsafe())
-
     yield SpecialAgentCommand(
-        command_arguments = (
-            [arg for arg in args]
-        )
+        command_arguments=[
+            "--driver",
+            params.driver,
+            "--system",
+            params.system,
+            "--uid",
+            params.uid,
+            "--password-id",
+            params.password,
+        ]
     )
 
 

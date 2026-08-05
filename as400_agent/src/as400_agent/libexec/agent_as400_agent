@@ -4,8 +4,22 @@ Kuhn & Rueß GmbH
 Consulting and Development
 https://kuhn-ruess.de
 """
-from sys import argv
+import argparse
+from pathlib import Path
+
 import pyodbc
+
+
+def _resolve_secret_reference(reference: str) -> str:
+    """Resolve a Checkmk password-store reference passed by server-side calls."""
+    try:
+        secret_id, store_path = reference.split(":", 1)
+    except ValueError as exc:
+        raise ValueError("invalid Checkmk password-store reference") from exc
+    from cmk.utils.password_store import lookup
+
+    return lookup(Path(store_path), secret_id)
+
 
 
 class AgentAs400():
@@ -13,20 +27,14 @@ class AgentAs400():
     Agent AS400
     """
 
-    def __init__(self):
-        """
-        Init
-        """
-        driver = argv[1]
-        system = argv[2]
-        uid = argv[3]
-        pwd = argv[4]
-
+    def __init__(self, driver: str, system: str, uid: str, password: str):
+        """Open the configured IBM i ODBC connection."""
         self.connection = pyodbc.connect(
-           driver=driver,
-           system=system,
-           uid=uid,
-           pwd=pwd)
+            driver=driver,
+            system=system,
+            uid=uid,
+            pwd=password,
+        )
 
     def get_jobs(self):
         """
@@ -69,7 +77,25 @@ class AgentAs400():
                 print(f"{key} {value}")
 
 
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="IBM i / AS400 special agent")
+    parser.add_argument("--driver", required=True)
+    parser.add_argument("--system", required=True)
+    parser.add_argument("--uid", required=True)
+    password_group = parser.add_mutually_exclusive_group(required=True)
+    password_group.add_argument("--password", help="Password for direct command-line testing")
+    password_group.add_argument("--password-id", help="Checkmk password-store reference")
+    args = parser.parse_args()
+    args.password = (
+        args.password
+        if args.password is not None
+        else _resolve_secret_reference(args.password_id)
+    )
+    return args
+
+
 if __name__ == "__main__":
-    agent = AgentAs400()
+    arguments = parse_arguments()
+    agent = AgentAs400(arguments.driver, arguments.system, arguments.uid, arguments.password)
     agent.get_jobs()
     agent.get_asp()

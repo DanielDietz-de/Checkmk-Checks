@@ -1,6 +1,5 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Use output of sensors (lm-sensors) for monitoring CPU '
-                'temperatures.\n'
+ 'description': 'Use output of sensors (lm-sensors) for monitoring CPU temperatures.\n'
                 'Plugin is used to generate output and send to server.\n'
                 'Discovery rule is used to select CPUs by name.\n',
  'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
@@ -13,4 +12,5 @@
  'title': 'Monitoring Linux sensors',
  'version': '1.0.5',
  'version.min_required': '2.3.0b1',
- 'version.packaged': '2.5.0'}
+ 'version.packaged': '2.5.0',
+ 'version.usable_until': None}

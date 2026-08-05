@@ -30,13 +30,14 @@ class AgentPowermaxUParams(BaseModel):
     enable_remote_sym_checks: Optional[bool] = None
     cache_time: Optional[int] = None
     no_cert_check: Optional[bool] = None
+    ca_file: Optional[str] = None
 
 
 def generate_powermanx_command(params: AgentPowermaxUParams, host_config: HostConfig):
     args: list[str | Secret] = [
         "--user",
         params.username,
-        "--password",
+        "--password-id",
         params.password,
     ]
     if params.port:
@@ -44,6 +45,13 @@ def generate_powermanx_command(params: AgentPowermaxUParams, host_config: HostCo
     if params.cache_time:
         args.extend(("--cache_time", str(params.cache_time)))
     args.extend(("--api_version", str(params.api_version)))
+    if params.ca_file and params.no_cert_check:
+        raise ValueError("ca_file and no_cert_check are mutually exclusive")
+    if params.ca_file:
+        args.extend(("--ca-file", params.ca_file))
+    elif params.no_cert_check:
+        args.append("--no_cert_check")
+
     for option in (
         "disable_get_srp_info",
         "disable_get_director_info",

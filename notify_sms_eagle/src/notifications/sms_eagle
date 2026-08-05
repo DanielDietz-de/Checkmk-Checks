@@ -1,119 +1,177 @@
 #!/usr/bin/env python3
-# SMS Eagle Appliance
-"""
-Sms Eagle
-"""
-# pylint: disable=too-many-locals, import-error, broad-exception-raised, bare-except
+"""Send bounded SMS Eagle notifications from the Checkmk notification context."""
+
+from __future__ import annotations
+
+import ipaddress
+import os
 import sys
+from pathlib import Path
+from urllib.parse import urlsplit
+
 import requests
-import logging
 from cmk.notification_plugins import utils
 from cmk.notification_plugins.utils import get_password_from_env_or_context
-from urllib3.exceptions import InsecureRequestWarning
-from urllib3 import disable_warnings
-disable_warnings(InsecureRequestWarning)
-logging.basicConfig(level=logging.DEBUG)
-logging.getLogger('urllib3').setLevel(logging.DEBUG)
 
-class NotifyEagle():
-    """
-    Eagle Notification Class
-    """
-
-    def __init__(self):
-        """
-        Perpare Config and Params
-        """
-        context = utils.collect_context()
-        self.config = {
-            'api_host': context['PARAMETER_API_HOST'],
-            'api_token': get_password_from_env_or_context(key="PARAMETER_API_TOKEN", context=context),
-            'ssl_verify': context.get('PARAMETER_SSL_VERIFY', 'yes').lower() not in ('0', 'false', 'no', 'off'),
-        }
-        self.context = context
-
-        if not self.context['CONTACTPAGER']:
-            sys.stdout.write("Cannot send SMS: empty destination pager address\n")
-            sys.exit(2)
+MAX_RESPONSE_BYTES = 4_096
+REQUEST_TIMEOUT = (5.0, 15.0)
 
 
-    def get_label(self, type, needle):
-        """
-        Search for given Service or Host Label
-        """
-        prefix = ""
-        if type == "host":
-            prefix = "HOSTLABEL_"
-        elif type == "service":
-            prefix = "SERVICELABEL_"
+def _as_bool(value: object, *, default: bool) -> bool:
+    if value is None:
+        return default
+    return str(value).strip().lower() not in {"0", "false", "no", "off"}
 
-        found = False
-        for key, value in self.context.items():
-            if key.startswith(f"{prefix}{needle}"):
-                found = value
-                break
-        if found:
-            return found
+
+def _resolve_ca_bundle(explicit_ca_file: str | None, no_cert_check: bool) -> str | bool:
+    """Resolve explicit or site-wide CA trust without enabling proxy inheritance."""
+    if explicit_ca_file and no_cert_check:
+        raise ValueError("--ca-file and --no-cert-check are mutually exclusive")
+    if no_cert_check:
         return False
 
-    def get_message(self):
-        """
-        Build SMS Text
-        """
+    configured = (
+        explicit_ca_file
+        or os.environ.get("REQUESTS_CA_BUNDLE")
+        or os.environ.get("CURL_CA_BUNDLE")
+    )
+    if not configured:
+        return True
 
-        messages = []
-        messages.append(self.context['HOSTNAME'])
-        service_label = False
-        host_label = False
+    path = Path(configured).expanduser()
+    if not path.is_file():
+        raise ValueError(f"CA bundle does not exist or is not a file: {path}")
+    return str(path.resolve())
 
-        if needed_host_label := self.context.get('PARAMETER_HOST_LABEL'):
-            host_label = self.get_label('host', needed_host_label)
-        if needed_service_label := self.context.get('PARAMETER_SVC_LABEL'):
-            service_label = self.get_label('service', needed_service_label)
 
-        if service_label:
-            messages.append(f"SL {needed_service_label}:{service_label}")
-        if host_label:
-            messages.append(f"HL {needed_host_label}:{host_label}")
+def _verification_for_api_host(
+    api_host: str, explicit_ca_file: str | None, ssl_verify: bool
+) -> str | bool:
+    """Apply certificate trust only to HTTPS; HTTP has no TLS trust chain."""
+    if urlsplit(api_host).scheme.lower() != "https":
+        return True
+    return _resolve_ca_bundle(explicit_ca_file, not ssl_verify)
 
-        if self.context['WHAT'] == 'HOST':
-            messages.append(self.context['HOSTSTATE'])
-            messages.append(self.context['HOSTOUTPUT'])
-        else:
-            messages.append(self.context['SERVICESTATE'])
-            messages.append(self.context['SERVICEDESC'])
-            messages.append(self.context['SERVICEOUTPUT'])
 
-        message = " ".join(messages)[:160]
-        return message 
+def _is_loopback(hostname: str | None) -> bool:
+    if hostname is None:
+        return False
+    if hostname.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
 
-    def notify(self):
-        """
-        Main part
-        """
-        url = f"{self.config['api_host']}/api/v2/messages/sms_single"
-        payload = {
-            'to': self.context['CONTACTPAGER'],
-            'text': self.get_message(),
 
-        }
-        headers ={
-            'access-token': self.config['api_token'],
-            'Content-Type': 'application/json',
-        }
-        response = requests.post(
-            url,
-            json=payload,
-            headers=headers,
-            timeout=10,
-            verify=self.config['ssl_verify'],
+def validate_api_host(value: str, *, allow_insecure_http: bool) -> str:
+    """Normalize the appliance URL and reject credential-leaking URL forms."""
+    normalized = value.rstrip("/")
+    parsed = urlsplit(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("API host must be an absolute HTTP or HTTPS URL")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError("API host must not contain credentials, a query, or a fragment")
+    if parsed.scheme == "http" and not (_is_loopback(parsed.hostname) or allow_insecure_http):
+        raise ValueError("remote SMS API access requires HTTPS unless insecure HTTP is enabled")
+    return normalized
+
+
+def _bounded_response_text(response: requests.Response) -> str:
+    data = response.raw.read(MAX_RESPONSE_BYTES + 1, decode_content=True)
+    suffix = "..." if len(data) > MAX_RESPONSE_BYTES else ""
+    return data[:MAX_RESPONSE_BYTES].decode("utf-8", errors="replace").strip() + suffix
+
+
+class NotifyEagle:
+    """Build and submit one SMS notification."""
+
+    def __init__(self) -> None:
+        context = utils.collect_context()
+        allow_insecure_http = _as_bool(
+            context.get("PARAMETER_ALLOW_INSECURE_HTTP"), default=False
         )
-        if response.status_code != 200:
-            print(response.text, response.url)
-            return 1
-        print(response.text)
+        self.config = {
+            "api_host": validate_api_host(
+                context["PARAMETER_API_HOST"],
+                allow_insecure_http=allow_insecure_http,
+            ),
+            "api_token": get_password_from_env_or_context(
+                key="PARAMETER_API_TOKEN", context=context
+            ),
+            "ssl_verify": _as_bool(context.get("PARAMETER_SSL_VERIFY"), default=True),
+            "ca_file": context.get("PARAMETER_CA_FILE") or None,
+        }
+        self.config["verify"] = _verification_for_api_host(
+            self.config["api_host"],
+            self.config["ca_file"],
+            self.config["ssl_verify"],
+        )
+        self.context = context
+        self.session = requests.Session()
+        self.session.trust_env = False
+        if not self.context.get("CONTACTPAGER"):
+            raise ValueError("empty destination pager address")
+
+    def get_label(self, label_type: str, needle: str) -> str | bool:
+        """Return the configured host or service label value."""
+        prefix = "HOSTLABEL_" if label_type == "host" else "SERVICELABEL_"
+        return next(
+            (value for key, value in self.context.items() if key.startswith(f"{prefix}{needle}")),
+            False,
+        )
+
+    def get_message(self) -> str:
+        """Build the bounded SMS body from the notification context."""
+        messages = [self.context["HOSTNAME"]]
+        if needed_service_label := self.context.get("PARAMETER_SVC_LABEL"):
+            if service_label := self.get_label("service", needed_service_label):
+                messages.append(f"SL {needed_service_label}:{service_label}")
+        if needed_host_label := self.context.get("PARAMETER_HOST_LABEL"):
+            if host_label := self.get_label("host", needed_host_label):
+                messages.append(f"HL {needed_host_label}:{host_label}")
+        if self.context["WHAT"] == "HOST":
+            messages.extend((self.context["HOSTSTATE"], self.context["HOSTOUTPUT"]))
+        else:
+            messages.extend(
+                (
+                    self.context["SERVICESTATE"],
+                    self.context["SERVICEDESC"],
+                    self.context["SERVICEOUTPUT"],
+                )
+            )
+        return " ".join(messages)[:160]
+
+    def notify(self) -> int:
+        """Submit the SMS without following redirects or inheriting proxy settings."""
+        try:
+            response = self.session.post(
+                f"{self.config['api_host']}/api/v2/messages/sms_single",
+                json={"to": self.context["CONTACTPAGER"], "text": self.get_message()},
+                headers={
+                    "access-token": self.config["api_token"],
+                    "Content-Type": "application/json",
+                },
+                timeout=REQUEST_TIMEOUT,
+                verify=self.config["verify"],
+                allow_redirects=False,
+                stream=True,
+            )
+        except requests.RequestException as exc:
+            print(f"SMS Eagle request failed: {exc}")
+            return 2
+        with response:
+            detail = _bounded_response_text(response)
+            if response.status_code != 200:
+                print(f"SMS Eagle returned HTTP {response.status_code}: {detail or 'no response body'}")
+                return 2
+            print(detail or "SMS accepted")
         return 0
 
+
 if __name__ == "__main__":
-    notify = NotifyEagle()
-    sys.exit(notify.notify())
+    try:
+        raise SystemExit(NotifyEagle().notify())
+    except (KeyError, ValueError) as exc:
+        print(f"Cannot send SMS: {exc}")
+        raise SystemExit(2) from exc

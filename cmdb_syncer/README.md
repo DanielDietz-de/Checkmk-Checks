@@ -56,3 +56,42 @@ Rule: **Parameters for discovered services -> CMDB Syncer Cron**
 
 - **Services:** `Service <id>` (one per configured source), `Cron <name>` (one per cron when enabled).
 - **State logic:** CRIT when the API reports `has_error`, when a cron has an error field, or when the last-start age exceeds the configured levels; WARN when a cron has never started.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `cmdb_syncer` version `2.1.2`; minimum Checkmk version `2.4.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `cmdb_syncer/src/info`; it declares 7 packaged files.
+- Repository MKP artifacts present: `cmdb_syncer-1.0.0.mkp`, `cmdb_syncer-1.1.0.mkp`, `cmdb_syncer-2.0.0.mkp`, `cmdb_syncer-2.0.1.mkp`, `cmdb_syncer-2.0.2.mkp`, `cmdb_syncer-2.0.3.mkp` (additional historical artifacts omitted).
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/cmdb_syncer/agent_based/service.py`.
+- **Server-side calls:** `src/cmdb_syncer/server_side_calls/cmdb_syncer.py`.
+- **Rulesets:** `src/cmdb_syncer/rulesets/agent.py`, `src/cmdb_syncer/rulesets/cron.py`.
+- **Executables:** `src/cmdb_syncer/libexec/agent_cmdb_syncer`.
+- **Check manuals:** `src/cmdb_syncer/checkman/cmdb_syncer_cron`, `src/cmdb_syncer/checkman/cmdb_syncer_service`.
+- Registered special-agent names: `cmdb_syncer`.
+- Registered check plug-in names: `cmdb_syncer_cron`, `cmdb_syncer_service`.
+
+### Validation
+
+- Package-specific tests: `tests/test_cmdb_syncer_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- Server-side calls preserve Checkmk password-store references and the executable resolves them at runtime; direct plaintext options, where present, are limited to isolated command-line diagnostics.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `cmdb_syncer_cron`, `cmdb_syncer_service`.
+- For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
+<!-- code-derived-reference:end -->

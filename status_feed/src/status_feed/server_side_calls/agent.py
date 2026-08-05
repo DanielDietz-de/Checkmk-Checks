@@ -1,3 +1,5 @@
+"""Server-side command construction for the status_feed integration: agent."""
+
 from pydantic import BaseModel, Field
 
 from cmk.server_side_calls.v1 import HostConfig, SpecialAgentCommand, SpecialAgentConfig

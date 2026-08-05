@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Agent-based parsing, discovery, and check logic for gtec_usv_load: gtec usv load."""
+
 
 from collections.abc import Mapping
 from typing import Any

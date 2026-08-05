@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- encoding: utf-8; py-indent-offset: 4 -*-
+"""Server-side command construction for the cohesity integration: cohesity agent."""
+
 #pylint: disable=undefined-variable, missing-docstring
 # +-----------------------------------------------------------------+
 # |                                                                 |

@@ -22,4 +22,5 @@
  'title': 'Cisco UCS: detect standalone CIMC / C-series servers',
  'version': '1.0.0',
  'version.min_required': '2.4.0',
- 'version.packaged': '2.4.0p19'}
+ 'version.packaged': '2.4.0p19',
+ 'version.usable_until': None}

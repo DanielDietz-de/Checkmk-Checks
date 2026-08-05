@@ -1,3 +1,5 @@
+"""Setup ruleset definitions for the status_feed integration: agent."""
+
 from cmk.rulesets.v1 import Help, Title
 from cmk.rulesets.v1.form_specs import DefaultValue, DictElement, Dictionary, Float, List, String
 from cmk.rulesets.v1.form_specs.validators import (

@@ -8,7 +8,21 @@ https://kuhn-ruess.de
 
 import json
 import argparse
+from pathlib import Path
+
 import requests
+
+
+def _resolve_secret_reference(reference: str) -> str:
+    """Resolve a Checkmk password-store reference without exposing it in argv."""
+    try:
+        secret_id, store_path = reference.split(":", 1)
+    except ValueError as exc:
+        raise ValueError("invalid Checkmk password-store reference") from exc
+    from cmk.utils.password_store import lookup
+
+    return lookup(Path(store_path), secret_id)
+
 
 
 class CMDBSYncer():
@@ -106,14 +120,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CMDBSyncer Special Agent")
     parser.add_argument("--api_url")
     parser.add_argument("--username")
-    parser.add_argument("--password")
+    password_group = parser.add_mutually_exclusive_group(required=True)
+    password_group.add_argument("--password", help="Password for direct command-line testing")
+    password_group.add_argument("--password-id", help="Checkmk password-store reference")
     parser.add_argument("--timeout")
     parser.add_argument("--services")
     parser.add_argument("--fetch_cron")
 
     args = parser.parse_args()
 
-    syncer = CMDBSYncer(args.api_url, args.username, args.password, args.timeout)
+    password = args.password if args.password is not None else _resolve_secret_reference(args.password_id)
+    syncer = CMDBSYncer(args.api_url, args.username, password, args.timeout)
 
     if args.services:
         print("<<<cmdb_syncer_service:sep(0)>>>")

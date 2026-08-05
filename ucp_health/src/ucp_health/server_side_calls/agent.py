@@ -35,7 +35,7 @@ class ConfigParser(BaseModel):
     piggyback: bool = False
     collection: CollectionConfig | None = None
     timeout: int = 10
-    no_verify_ssl: bool = True
+    no_verify_ssl: bool = False
     client_cert: str | None = None
     client_key: str | None = None
 

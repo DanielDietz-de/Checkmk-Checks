@@ -50,3 +50,39 @@ per service with the **Rittal Blue e+ unit health** ruleset.
 - **Rittal Blue e+ unit health** — override the state per status text.
 - **Rittal Blue e+ temperature** — upper temperature levels (otherwise the
   appliance thresholds are used).
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `rittal_blue_e` version `1.1.1`; minimum Checkmk version `2.3.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `rittal_blue_e/src/info`; it declares 5 packaged files.
+- Repository MKP artifacts present: `rittal_blue_e-1.0.0.mkp`, `rittal_blue_e-1.1.0.mkp`, `rittal_blue_e-1.1.1.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/rittal_blue_e/agent_based/rittal_blue_e.py`.
+- **Rulesets:** `src/rittal_blue_e/rulesets/rittal_blue_e.py`.
+- **Check manuals:** `src/rittal_blue_e/checkman/rittal_blue_e`, `src/rittal_blue_e/checkman/rittal_blue_e_fan`, `src/rittal_blue_e/checkman/rittal_blue_e_temp`.
+- Registered check plug-in names: `rittal_blue_e`, `rittal_blue_e_fan`, `rittal_blue_e_temp`.
+
+### Validation
+
+- Package-specific tests: `tests/test_rittal_blue_e_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- Static analysis did not identify a supported direct remote-network client. This is not proof of network isolation; review extensionless and non-Python executables before deployment.
+
+### Troubleshooting
+
+- No literal Checkmk section header was detected. Inspect the executable or notification exit status and the Checkmk log relevant to the component type.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

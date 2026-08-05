@@ -31,6 +31,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install pinned CI test dependencies
+        run: >-
+          python3 -m pip install --disable-pip-version-check
+          requests==2.34.2
+
       - name: Verify immutable workflow dependencies
         run: python3 tools/ci/pin_supply_chain.py --check
 
@@ -53,7 +58,7 @@ jobs:
           fi
           printf 'base=%s\nhead=%s\n' "$base" "$head" >>"$GITHUB_OUTPUT"
 
-      - name: Enforce changed-code baseline
+      - name: Enforce changed-code policy
         env:
           BASE_SHA: ${{ steps.range.outputs.base }}
           HEAD_SHA: ${{ steps.range.outputs.head }}
@@ -61,6 +66,41 @@ jobs:
           python3 tools/ci/repository_guard.py
           --base "$BASE_SHA"
           --head "$HEAD_SHA"
+
+      - name: Verify code-derived repository facts
+        run: python3 tools/ci/sync_repository_facts.py
+
+      - name: Verify canonical metadata mirrors
+        run: python3 tools/ci/sync_package_metadata.py
+
+      - name: Verify code-derived package documentation
+        run: python3 tools/ci/generate_package_reference.py
+
+      - name: Verify package module documentation
+        run: python3 tools/ci/manage_module_docstrings.py
+
+      - name: Verify repository Python syntax
+        run: python3 tools/ci/check_python_syntax.py
+
+      - name: Audit complete repository
+        run: >-
+          python3 tools/ci/full_repository_audit.py
+          --fail-on low
+          --output repository-audit.json
+
+      - name: Create audited source snapshot
+        run: git archive --format=zip --output repository-source.zip HEAD
+
+      - name: Upload repository audit
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: repository-audit
+          path: |
+            repository-audit.json
+            repository-source.zip
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Test CI guard tools
         run: python3 -m unittest discover -s tests -p 'test_ci_*.py' -v

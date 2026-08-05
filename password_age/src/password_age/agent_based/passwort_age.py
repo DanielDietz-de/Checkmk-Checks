@@ -1,3 +1,5 @@
+"""Agent-based parsing, discovery, and check logic for password_age: passwort age."""
+
 from datetime import datetime
 
 from cmk.agent_based.v2 import (

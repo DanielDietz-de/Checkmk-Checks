@@ -11,11 +11,9 @@ import sys
 from pathlib import Path
 
 import requests
-import urllib3
 
 from cmk.utils import password_store
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 def parse_args():
@@ -42,6 +40,7 @@ PW_ID, PW_FILE = ARGS.password_id.split(":", 1)
 PASSWORD = password_store.lookup(Path(PW_FILE), PW_ID)
 VERIFY = ARGS.verify_cert == "True"
 API_URL = f"https://{ARGS.host}/irisservices/api/v1"
+REQUEST_TIMEOUT = 30.0
 
 
 def get_header():
@@ -59,8 +58,15 @@ def get_header():
     }
     url = API_URL + "/public/accessTokens"
     try:
-        response = requests.post(url, data=creds, headers=header, verify=VERIFY)
-    except OSError:
+        response = requests.post(
+            url,
+            data=creds,
+            headers=header,
+            verify=VERIFY,
+            timeout=REQUEST_TIMEOUT,
+            allow_redirects=False,
+        )
+    except requests.RequestException:
         print(f"Connection error to {url}")
         sys.exit(1)
 
@@ -83,8 +89,10 @@ def get_url(url):
             API_URL + url,
             headers=HEADER,
             verify=VERIFY,
+            timeout=REQUEST_TIMEOUT,
+            allow_redirects=False,
         )
-    except OSError:
+    except requests.RequestException:
         print(f"Cannot get Clusterstatus from {API_URL}{url}")
         sys.exit(1)
     return response.json()

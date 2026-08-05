@@ -149,21 +149,20 @@ def _valuespec_special_agent_ucp_health():
                 required=False,
             ),
             "no_verify_ssl": DictElement(
-                parameter_form=BooleanChoice(
-                    title=Title("Ignore TLS certificate"),
-                    label=Label("Do not verify the TLS certificate of the _ping endpoint"),
-                    help_text=Help(
-                        "The _ping endpoints often present a certificate that does "
-                        "not yet cover the requested SNI, so verification is disabled "
-                        "by default (only the HTTP status code is evaluated). When "
-                        "disabled, the server certificate is verified against the "
-                        "Checkmk server's system trust store (add the internal CA "
-                        "there, or set REQUESTS_CA_BUNDLE) - no CA path needed here."
-                    ),
-                    prefill=DefaultValue(True),
-                ),
-                required=False,
-            ),
+    parameter_form=BooleanChoice(
+        title=Title("Ignore TLS certificate"),
+        label=Label("Do not verify the TLS certificate of the _ping endpoint"),
+        help_text=Help(
+            "Keep certificate verification enabled in production. Disable "
+            "it only for an isolated endpoint while its certificate or "
+            "private-CA trust is corrected. With verification enabled, "
+            "the Checkmk server system trust store or REQUESTS_CA_BUNDLE "
+            "is used."
+        ),
+        prefill=DefaultValue(False),
+    ),
+    required=False,
+),
             "client_cert": DictElement(
                 parameter_form=String(
                     title=Title("Client certificate (PEM)"),

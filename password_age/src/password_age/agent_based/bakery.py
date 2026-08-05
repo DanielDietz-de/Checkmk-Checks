@@ -1,4 +1,6 @@
 #!/usr/bin/python
+"""Agent-based parsing, discovery, and check logic for password_age: bakery."""
+
 from typing import Any
 from pathlib import Path
 from cmk.base.cee.plugins.bakery.bakery_api.v1 import register, Plugin, OS, FileGenerator

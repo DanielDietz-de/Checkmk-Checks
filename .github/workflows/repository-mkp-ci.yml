@@ -33,7 +33,6 @@ concurrency:
 env:
   DIST_DIR: dist/repository-mkps
   PACKAGED_VERSION: 2.5.0p9
-  USABLE_UNTIL: 2.5.99
 
 jobs:
   tests:
@@ -67,6 +66,9 @@ jobs:
 
       - name: Test repository release tooling
         run: pytest -q .github/tests
+
+      - name: Verify repository-wide package test collection
+        run: pytest -q */tests
 
       - name: Execute every package test suite
         run: |
@@ -129,8 +131,7 @@ jobs:
           python .github/scripts/build_repository_mkps.py \
             --repository . \
             --output "$DIST_DIR" \
-            --packaged-version "$PACKAGED_VERSION" \
-            --usable-until "$USABLE_UNTIL"
+            --packaged-version "$PACKAGED_VERSION"
 
       - name: Verify checksums and package index
         id: metadata
@@ -324,7 +325,9 @@ jobs:
               shutil.copy2(source, target_dir / source.name)
               shutil.copy2(checksum, target_dir / checksum.name)
           PY
+          python tools/ci/sync_package_metadata.py --write
           python update_readmes.py
+          python tools/ci/generate_package_reference.py --write
           python create_mkp_index.py
 
       - name: Commit package set if source is still current

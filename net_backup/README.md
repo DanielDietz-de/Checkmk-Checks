@@ -49,3 +49,40 @@ drive.
 - Uses the legacy `check_info` API and the legacy `register_rule` WATO
   API. Functional on Checkmk 2.x as long as the legacy APIs are
   available.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `net_backup` version `2.0.1`; minimum Checkmk version `2.4.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `net_backup/src/info`; it declares 4 packaged files.
+- Repository MKP artifacts present: `net_backup-1.0.0.mkp`, `net_backup-1.0.1.mkp`, `net_backup-1.0.2.mkp`, `net_backup-1.0.mkp`, `net_backup-2.0.0.mkp`, `net_backup-2.0.1.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/net_backup/agent_based/net_backup.py`.
+- **Bakery:** `src/agents/bakery/net_backup`.
+- **Check manuals:** `src/net_backup/checkman/net_backup`.
+- **Other packaged source:** `src/agents/plugins/net_backup.sh`.
+- Registered check plug-in names: `net_backup`.
+
+### Validation
+
+- Package-specific tests: `tests/test_net_backup_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- Static analysis did not identify a supported direct remote-network client. This is not proof of network isolation; review extensionless and non-Python executables before deployment.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `net_backup`.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

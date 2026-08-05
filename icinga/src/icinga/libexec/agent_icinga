@@ -5,20 +5,33 @@ Checkmk Special Agent for Icinga
 import argparse
 import re
 import sys
+from pathlib import Path
 import xml.etree.ElementTree as ET
 from typing import List, Dict, Any
 
 import requests
 from requests.auth import HTTPBasicAuth
 
-from urllib3.exceptions import InsecureRequestWarning
-from urllib3 import disable_warnings
+
+def _resolve_secret_reference(reference: str) -> str:
+    """Resolve a Checkmk password-store reference without exposing it in argv."""
+    try:
+        secret_id, store_path = reference.split(":", 1)
+    except ValueError as exc:
+        raise ValueError("invalid Checkmk password-store reference") from exc
+    from cmk.utils.password_store import lookup
+
+    return lookup(Path(store_path), secret_id)
+
+
 
 
 parser = argparse.ArgumentParser(description="Icinga Special Agent")
 parser.add_argument("--hostname")
 parser.add_argument("--username")
-parser.add_argument("--password")
+password_group = parser.add_mutually_exclusive_group(required=True)
+password_group.add_argument("--password", help="Password for direct command-line testing")
+password_group.add_argument("--password-id", help="Checkmk password-store reference")
 parser.add_argument("--no-verify", action="store_true", default=False, help="Disable SSL certificate verification")
 parser.add_argument("--timeout", type=int, default=30, help="Request timeout in seconds")
 parser.add_argument("--no-group", action="store_true", default=False,
@@ -30,14 +43,11 @@ args = parser.parse_args()
 
 hostname = args.hostname
 username = args.username
-password = args.password
+password = args.password if args.password is not None else _resolve_secret_reference(args.password_id)
 ssl_verify = not args.no_verify
 timeout = args.timeout
 group_services = not args.no_group
 piggyback_prefix = args.piggyback_prefix
-
-if not ssl_verify:
-    disable_warnings(InsecureRequestWarning)
 
 
 auth = HTTPBasicAuth(username, password)

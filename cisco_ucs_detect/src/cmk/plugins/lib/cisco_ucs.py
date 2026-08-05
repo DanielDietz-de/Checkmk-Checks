@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Checkmk extension support code for cisco_ucs_detect: cisco ucs."""
+
 # Copyright (C) 2026 Kuhn & Rueß GmbH - License: GNU General Public License v2
 #
 # Override of the built-in ``cmk.plugins.lib.cisco_ucs`` detection.

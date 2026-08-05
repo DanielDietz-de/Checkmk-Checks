@@ -37,11 +37,9 @@ def check_port_group_state(item, params, section):
     ports_data = section[item]
 
 
-    # @TODO Cleanup these lines
-    n_online_ports = len(list(
-        filter(lambda x: x.get('symmetrixPort', {}).get('director_status') == 'Online',
-        ports_data)))
-    n_ports = len(list(filter(lambda x: x.get('symmetrixPort'), ports_data)))
+    ports = [entry["symmetrixPort"] for entry in ports_data if entry.get("symmetrixPort")]
+    n_online_ports = sum(port.get("director_status") == "Online" for port in ports)
+    n_ports = len(ports)
 
     if n_ports == 0:
         yield Result(state=State.UNKNOWN, summary="got no data from agent")

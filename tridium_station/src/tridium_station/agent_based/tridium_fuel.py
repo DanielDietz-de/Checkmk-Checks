@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Agent-based parsing, discovery, and check logic for tridium_station: tridium fuel."""
+
 # Written by Bastian Kuhn (mail@bastian-kuhn.de)
 # Tridium Niagara Station - fuel tank check
 

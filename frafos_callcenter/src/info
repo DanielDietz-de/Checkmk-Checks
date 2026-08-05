@@ -1,5 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Legacy Frafos SBC call-center SNMP monitoring for Checkmk 2.0 through 2.2. Requires an API migration before use on newer Checkmk versions.\n',
+ 'description': 'Legacy Frafos SBC call-center SNMP monitoring for Checkmk 2.0 through 2.2. '
+                'Requires an API migration before use on newer Checkmk versions.\n',
  'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/frafos_callcenter',
  'files': {'agent_based': ['frafos_callagents.py', 'frafos_calls.py']},
  'name': 'frafos_callcenter',

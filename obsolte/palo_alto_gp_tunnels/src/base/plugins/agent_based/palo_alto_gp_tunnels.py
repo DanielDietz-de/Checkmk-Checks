@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""Agent-based parsing, discovery, and check logic for palo_alto_gp_tunnels: palo alto gp tunnels."""
+
 
 from typing import NamedTuple, Optional
 from .agent_based_api.v1.type_defs import (

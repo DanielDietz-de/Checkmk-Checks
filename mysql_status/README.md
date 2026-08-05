@@ -63,3 +63,40 @@ status check* (ruleset `mysql_status`, per item).
   `Slave_retried_transactions`, `Slave_running`, `Slow_launch_threads`,
   `Slow_queries`, `Sort_merge_passes`, `Table_locks_waited`,
   `Threads_cached`.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `mysql_status` version `6.3.2`; minimum Checkmk version `2.4.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `mysql_status/src/info`; it declares 6 packaged files.
+- Repository MKP artifacts present: `mysql_status-2.0.0.mkp`, `mysql_status-3.0.0.mkp`, `mysql_status-4.0.0.mkp`, `mysql_status-4.0.1.mkp`, `mysql_status-4.0.2.mkp`, `mysql_status-4.0.3.mkp` (additional historical artifacts omitted).
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/mysql_status/agent_based/mysql_status.py`.
+- **Rulesets:** `src/mysql_status/rulesets/mysql_status.py`.
+- **Graphing:** `src/mysql_status/graphing/mysql_status.py`.
+- **Check manuals:** `src/mysql_status/checkman/mysql_innodb_buffer_pool_utilization`, `src/mysql_status/checkman/mysql_status`, `src/mysql_status/checkman/mysql_status_query_types`.
+- Registered check plug-in names: `mysql_innodb_buffer_pool_utilization`, `mysql_status`, `mysql_status_query_types`.
+
+### Validation
+
+- Package-specific tests: `tests/test_mysql_status_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+
+### Troubleshooting
+
+- No literal Checkmk section header was detected. Inspect the executable or notification exit status and the Checkmk log relevant to the component type.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

@@ -1,7 +1,6 @@
 {'author': 'Kuhn & Rueß GmbH',
- 'description': 'Check Qemu / KVM virtual machines via libvirt (virsh). '
-                'Reports CPU and memory usage per running VM, with '
-                'configurable upper thresholds.',
+ 'description': 'Check Qemu / KVM virtual machines via libvirt (virsh). Reports CPU and memory '
+                'usage per running VM, with configurable upper thresholds.',
  'download_url': 'https://github.com/kuhn-ruess/Checkmk-Checks/',
  'files': {'agents': ['plugins/qemu'],
            'cmk_addons_plugins': ['qemu/agent_based/qemu.py',
@@ -13,4 +12,5 @@
  'title': 'Qemu / KVM',
  'version': '4.0.1',
  'version.min_required': '2.3.0',
- 'version.packaged': '2.4.0p18'}
+ 'version.packaged': '2.4.0p18',
+ 'version.usable_until': None}

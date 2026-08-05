@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- encoding: utf-8; py-indent-offset: 4 -*-
+"""Agent-based parsing, discovery, and check logic for mysql_performance: mysql performance."""
+
 # Copyright Bastian Kuhn 2018  mail@bastian-kuhn.de
 #
 # This program is free software: you can redistribute it and/or modify

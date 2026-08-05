@@ -38,3 +38,39 @@ Rule: **Setup -> Agents -> Agent rules -> Filesystemmonitoring of CIFS_FS via Pl
 
 - Hard timeout of 2 seconds on the `df` call — on very busy or slow CIFS shares the section may be empty.
 - CIFS mounts share their items with the normal `df` check; the plugin relabels the type to `CIFS` to avoid duplicate items, but mount points are still parsed by the standard `df` check plugin.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `cifs_df` version `1.0.2`; minimum Checkmk version `2.3.0`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `cifs_df/src/info`; it declares 3 packaged files.
+- Repository MKP artifacts present: `cifs_df-1.0.0.mkp`, `cifs_df-1.0.1.mkp`, `cifs_df-1.0.2.mkp`.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/cifs_df/agent_based/bakery.py`.
+- **Rulesets:** `src/cifs_df/rulesets/bakery.py`.
+- **Other packaged source:** `src/agents/plugins/cifs_df`.
+- No special-agent or agent-based check registration was detected; use the component paths above to identify the package entry point.
+
+### Validation
+
+- Package-specific tests: `tests/test_cifs_df_integrity.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- No Checkmk password or secret form was detected in the current package source.
+- Static analysis did not identify a supported direct remote-network client. This is not proof of network isolation; review extensionless and non-Python executables before deployment.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `df`.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+<!-- code-derived-reference:end -->

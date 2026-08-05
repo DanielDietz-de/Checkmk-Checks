@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""Setup ruleset definitions for the cisco_vpc integration: cisco vpc role."""
+
 
 from cmk.rulesets.v1 import Title
 from cmk.rulesets.v1.form_specs import (

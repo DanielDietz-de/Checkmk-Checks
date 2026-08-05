@@ -13,8 +13,8 @@ binding.
 ## How it works
 
 The special agent [`agent_quobyte`](src/quobyte/libexec/agent_quobyte) is
-invoked with API URL, username, password and timeout. It POSTs JSON-RPC
-calls and emits the following sections:
+invoked with API URL, username, password, timeout and an optional explicit
+CA bundle. It POSTs JSON-RPC calls and emits the following sections:
 
 - `<<<quobyte_services>>>` (piggybacked per service host): list of
   service types and their `is_available` flag from `getServices`.
@@ -46,7 +46,7 @@ Graph, metric and perfometer definitions live under `src/quobyte/graphing/`.
 | Path | Purpose |
 | --- | --- |
 | `src/quobyte/libexec/agent_quobyte` | Special agent (JSON-RPC client to the Quobyte WebAPI). |
-| `src/quobyte/server_side_calls/quobyte.py` | Server-side-call wiring: passes `api_url username password timeout` as positional arguments. |
+| `src/quobyte/server_side_calls/quobyte.py` | Server-side-call wiring: preserves the password-store reference and passes URL, user, timeout and optional CA bundle as named arguments. |
 | `src/quobyte/rulesets/agent.py` | WATO special-agent ruleset `quobyte`. |
 | `src/quobyte/rulesets/volumes.py` | WATO ruleset for volume check parameters. |
 | `src/quobyte/agent_based/devices.py` | Devices check. |
@@ -64,7 +64,8 @@ Graph, metric and perfometer definitions live under `src/quobyte/graphing/`.
 2. Create a Checkmk host for the Quobyte cluster.
 3. Configure the special agent via *Setup -> Agents -> Other integrations
    -> Quobyte via WebAPI*. Provide the API URL, a user with read access
-   and the matching password; optionally override the timeout.
+   and the matching password; optionally override the timeout and provide
+   an absolute PEM CA-bundle path for a private certificate authority.
 4. Run service discovery on the cluster host. Additional services will
    appear on piggyback hosts named after the Quobyte service/device
    hosts.
@@ -77,7 +78,8 @@ Rule: **Setup -> Agents -> Other integrations -> Quobyte via WebAPI**
 | --- | --- | --- |
 | `api_url` | `String` (required) | Full URL of the Quobyte JSON-RPC endpoint. |
 | `username` | `String` (required) | API user. |
-| `password` | `Password` (required) | API password. |
+| `password` | `Password` (required) | API password stored through Checkmk's password store. |
+| `ca_file` | `String` (optional) | Absolute PEM CA-bundle path on the Checkmk server. Overrides `REQUESTS_CA_BUNDLE`, then `CURL_CA_BUNDLE`. |
 | `timeout` | `TimeSpan` (optional, default 2.5 s) | Request timeout. |
 
 A separate ruleset is available for volume check parameters under the
@@ -93,11 +95,52 @@ normal *Parameters for discovered services* tree.
 
 ## Known limitations
 
-- Credentials are passed as positional CLI arguments to the agent
-  (`api_url username password timeout`); they therefore appear in the
-  agent process arguments on the Checkmk server.
-- The `timeout` default in the server-side call model is `"15.0"` as a
-  string and only the ruleset default of 2.5 s takes effect; do not rely
-  on the Python type annotation.
+- Ambient proxy and netrc settings are intentionally ignored. Certificate
+  trust is retained explicitly with this precedence: rule `ca_file`,
+  `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`, then the system trust store.
 - Quota parsing assumes a single `current_usage` entry per quota - the
   source explicitly notes this may be wrong for multi-metric quotas.
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `quobyte` version `2.1.1`; minimum Checkmk version `2.4.0b1`; maximum asserted version: not asserted; validate on the target release.
+- Canonical manifest: `quobyte/src/info`; it declares 14 packaged files.
+- Repository MKP artifacts present: `quobyte-1.0.0.mkp`, `quobyte-1.1.0.mkp`, `quobyte-1.1.1.mkp`, `quobyte-1.1.2.mkp`, `quobyte-1.1.3.mkp`, `quobyte-1.1.4.mkp` (additional historical artifacts omitted).
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/quobyte/agent_based/devices.py`, `src/quobyte/agent_based/healthmanager.py`, `src/quobyte/agent_based/quota.py`, `src/quobyte/agent_based/services.py`, `src/quobyte/agent_based/volumes.py`.
+- **Server-side calls:** `src/quobyte/server_side_calls/quobyte.py`.
+- **Rulesets:** `src/quobyte/rulesets/agent.py`, `src/quobyte/rulesets/devices.py`, `src/quobyte/rulesets/volumes.py`.
+- **Executables:** `src/quobyte/libexec/agent_quobyte`.
+- **Graphing:** `src/quobyte/graphing/graphs.py`, `src/quobyte/graphing/metrics.py`, `src/quobyte/graphing/perfometer.py`.
+- **Check manuals:** `src/quobyte/checkman/quobyte_devices`.
+- Registered special-agent names: `quobyte`.
+- Registered check plug-in names: `quobyte_devices`, `quobyte_healthmanager`, `quobyte_quotas`, `quobyte_services`, `quobyte_volumes`.
+
+### Validation
+
+- Package-specific tests: `tests/test_quobyte_secret_command_arguments.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- Server-side calls preserve Checkmk password-store references and the executable resolves them at runtime; direct plaintext options, where present, are limited to isolated command-line diagnostics.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+- An explicit TLS-verification opt-out is present. Verification remains the secure default; use the opt-out only as a documented temporary exception and prefer a private CA bundle.
+
+### Troubleshooting
+
+- Emitted Checkmk sections detected in source: `quobyte_devices`, `quobyte_healthmanager`, `quobyte_quotas`, `quobyte_services`, `quobyte_volumes`.
+- For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
+<!-- code-derived-reference:end -->
+## HTTP endpoint compatibility
+
+For HTTP endpoints, CA bundle settings and CA environment variables are not evaluated because no TLS trust chain exists.
