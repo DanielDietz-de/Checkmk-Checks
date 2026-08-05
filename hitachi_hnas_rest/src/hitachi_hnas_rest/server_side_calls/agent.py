@@ -40,7 +40,13 @@ def _agent_arguments(params, host_config: HostConfig):
             )
         )
 
-    if params.get("no_cert_check"):
+    ca_file = params.get("ca_file")
+    no_cert_check = bool(params.get("no_cert_check"))
+    if ca_file and no_cert_check:
+        raise ValueError("ca_file and no_cert_check are mutually exclusive")
+    if ca_file:
+        args.extend(("--ca-file", ca_file))
+    elif no_cert_check:
         args.append("--no-cert-check")
 
     yield SpecialAgentCommand(command_arguments=args)
