@@ -30,6 +30,23 @@ def test_documentation_only_scope_preserves_required_check_names() -> None:
     assert "matrix:" in validate_job
 
 
+def test_targeted_builds_use_release_normalization() -> None:
+    workflow = VALIDATION.read_text(encoding="utf-8")
+    build_job = workflow.split("\n  build:\n", maxsplit=1)[1].split("\n  validate:\n", maxsplit=1)[0]
+    preparation = build_job.split(
+        "      - name: Prepare repository-wide release manifests\n",
+        maxsplit=1,
+    )[1].split(
+        "      - name: Build deterministic MKPs\n",
+        maxsplit=1,
+    )[0]
+    assert "if: needs.select.outputs.mode != 'none'" in preparation
+    assert "prepare_repository_mkp_release.py" in preparation
+    assert build_job.index("prepare_repository_mkp_release.py") < build_job.index(
+        "build_repository_mkps.py"
+    )
+
+
 def test_full_pull_requests_exercise_publication_transaction() -> None:
     workflow = VALIDATION.read_text(encoding="utf-8")
     dry_run = workflow.split("\n  publication-dry-run:\n", maxsplit=1)[1]
