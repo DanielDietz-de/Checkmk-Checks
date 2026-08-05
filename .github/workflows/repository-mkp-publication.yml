@@ -1,0 +1,173 @@
+name: Repository MKP publication
+
+on:
+  workflow_run:
+    workflows:
+      - Repository MKP validation
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-mkp-publication
+  cancel-in-progress: false
+
+env:
+  DIST_DIR: dist/repository-mkps
+  REBUILT_DIST_DIR: dist/rebuilt-repository-mkps
+  PACKAGED_VERSION: 2.5.0p9
+  RELEASE_BRANCH: automation/repository-mkp-release
+
+jobs:
+  publish:
+    name: Open validated MKP release PR
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Check out validated master commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Download exact validated MKP artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: repository-mkps-${{ github.event.workflow_run.run_number }}
+          path: ${{ env.DIST_DIR }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Verify source commit is still current
+        id: source
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          git fetch origin master
+          current_master=$(git rev-parse origin/master)
+          if [[ "$current_master" != "$SOURCE_SHA" ]]; then
+            echo "current=false" >>"$GITHUB_OUTPUT"
+            echo "master advanced to $current_master; a newer validation run will publish instead."
+          else
+            echo "current=true" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Stage complete release
+        if: steps.source.outputs.current == 'true'
+        run: |
+          set -euo pipefail
+          python .github/scripts/prepare_repository_mkp_release.py --repository . --complete
+          python .github/scripts/stage_repository_release.py --repository . --dist "$DIST_DIR"
+          python tools/ci/sync_package_metadata.py --write
+          python update_readmes.py
+          python tools/ci/generate_package_reference.py --write
+          python create_mkp_index.py
+
+      - name: Rebuild and verify publication state
+        if: steps.source.outputs.current == 'true'
+        run: |
+          set -euo pipefail
+          python .github/scripts/build_repository_mkps.py \
+            --repository . \
+            --output "$REBUILT_DIST_DIR" \
+            --packaged-version "$PACKAGED_VERSION"
+          python .github/scripts/verify_repository_release.py \
+            --repository . \
+            --source-dist "$DIST_DIR" \
+            --rebuilt-dist "$REBUILT_DIST_DIR"
+
+      - name: Commit generated release state
+        id: commit
+        if: steps.source.outputs.current == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- '*/' README.md mkp_index.json .github/repository-mkp-release.json
+          if git diff --cached --quiet; then
+            echo "changed=false" >>"$GITHUB_OUTPUT"
+            echo "Validated release state is already published."
+            exit 0
+          fi
+          git switch -c "$RELEASE_BRANCH"
+          git commit -m "build: refresh validated Checkmk MKP release"
+          echo "changed=true" >>"$GITHUB_OUTPUT"
+
+      - name: Update automation release branch
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          git fetch origin master
+          [[ "$(git rev-parse origin/master)" == "$SOURCE_SHA" ]] || {
+            echo "master changed during publication; refusing to publish stale artifacts." >&2
+            exit 0
+          }
+          remote_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          remote_sha=$(git ls-remote "$remote_url" "refs/heads/$RELEASE_BRANCH" | cut -f1)
+          git push \
+            --force-with-lease="refs/heads/$RELEASE_BRANCH:${remote_sha}" \
+            "$remote_url" \
+            "HEAD:refs/heads/$RELEASE_BRANCH"
+
+      - name: Open or update release pull request
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_RUN: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          cat > release-pr-body.md <<EOF
+          ## Automated validated MKP publication
+
+          This pull request contains only generated release state derived from master commit \`$SOURCE_SHA\`.
+
+          - Source validation run: $SOURCE_RUN
+          - Complete package tests, deterministic builds, and supported Checkmk runtime validation passed before this branch was created.
+          - The generated state was rebuilt and byte-compared with the validated artifacts.
+          - The release configuration is finalized and the diff is restricted to documented generated paths.
+
+          Do not add hand-written source changes to this branch. Merge only after the normal pull-request guards and full MKP validation pass on this exact generated state.
+          EOF
+          pr_number=$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --head "$RELEASE_BRANCH" \
+            --base master \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')
+          if [[ -n "$pr_number" ]]; then
+            gh pr edit "$pr_number" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "build: publish validated Checkmk MKP release" \
+              --body-file release-pr-body.md
+          else
+            gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --head "$RELEASE_BRANCH" \
+              --base master \
+              --title "build: publish validated Checkmk MKP release" \
+              --body-file release-pr-body.md
+          fi
