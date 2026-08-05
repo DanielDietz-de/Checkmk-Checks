@@ -22,19 +22,27 @@ def _load():
     return module
 
 
-def _write_package(repository: Path, dist: Path, package_dir: str, name: str) -> None:
+def _write_package(
+    repository: Path,
+    dist: Path,
+    package_dir: str,
+    name: str,
+    *,
+    manifest_name: str | None = None,
+    manifest_payload: bytes | None = None,
+) -> None:
     (repository / package_dir / "src").mkdir(parents=True)
     (repository / package_dir / "src/info").write_text("{}", encoding="utf-8")
     output_dir = dist / package_dir
     output_dir.mkdir(parents=True)
     manifest = {
-        "name": name,
+        "name": manifest_name or name,
         "version": "1.0.1",
         "version.min_required": "2.4.0",
         "files": {},
     }
     archive_path = output_dir / f"{name}-1.0.1.mkp"
-    payload = (repr(manifest) + "\n").encode()
+    payload = manifest_payload if manifest_payload is not None else (repr(manifest) + "\n").encode()
     with tarfile.open(archive_path, mode="w:gz") as archive:
         member = tarfile.TarInfo("info")
         member.size = len(payload)
@@ -48,6 +56,17 @@ def _write_package(repository: Path, dist: Path, package_dir: str, name: str) ->
 
 def _write_index(dist: Path, entries: list[dict[str, str]]) -> None:
     (dist / "packages.json").write_text(json.dumps(entries), encoding="utf-8")
+
+
+def _alpha_index(path: str = "alpha/alpha-1.0.1.mkp") -> list[dict[str, str]]:
+    return [
+        {
+            "package_dir": "alpha",
+            "name": "alpha",
+            "version": "1.0.1",
+            "path": path,
+        }
+    ]
 
 
 def test_complete_validated_set_is_staged(tmp_path: Path) -> None:
@@ -75,37 +94,70 @@ def test_partial_artifact_set_is_rejected(tmp_path: Path) -> None:
     _write_package(repository, dist, "alpha", "alpha")
     (repository / "beta/src").mkdir(parents=True)
     (repository / "beta/src/info").write_text("{}", encoding="utf-8")
-    _write_index(
-        dist,
-        [{"package_dir": "alpha", "name": "alpha", "version": "1.0.1", "path": "alpha/alpha-1.0.1.mkp"}],
-    )
+    _write_index(dist, _alpha_index())
     with pytest.raises(ValueError, match="not complete"):
         module.stage_release(repository, dist)
 
 
-def test_path_traversal_is_rejected(tmp_path: Path) -> None:
+def test_index_path_must_match_package_identity(tmp_path: Path) -> None:
     module = _load()
     repository = tmp_path / "repo"
     dist = tmp_path / "dist"
     (repository / "alpha/src").mkdir(parents=True)
     (repository / "alpha/src/info").write_text("{}", encoding="utf-8")
     dist.mkdir()
-    _write_index(
-        dist,
-        [{"package_dir": "alpha", "name": "alpha", "version": "1.0.1", "path": "../escape.mkp"}],
-    )
-    with pytest.raises(ValueError, match="unsafe relative path"):
+    _write_index(dist, _alpha_index("../escape.mkp"))
+    with pytest.raises(ValueError, match="unexpected package path"):
         module.stage_release(repository, dist)
+
+
+def test_contained_file_rejects_path_traversal(tmp_path: Path) -> None:
+    module = _load()
+    root = tmp_path / "dist"
+    root.mkdir()
+    (tmp_path / "escape.mkp").write_bytes(b"escape")
+    with pytest.raises(ValueError, match="unsafe relative path"):
+        module._contained_file(root, "../escape.mkp")
 
 
 def test_manifest_metadata_mismatch_is_rejected(tmp_path: Path) -> None:
     module = _load()
     repository = tmp_path / "repo"
     dist = tmp_path / "dist"
-    _write_package(repository, dist, "alpha", "alpha")
-    _write_index(
-        dist,
-        [{"package_dir": "alpha", "name": "other", "version": "1.0.1", "path": "alpha/alpha-1.0.1.mkp"}],
-    )
+    _write_package(repository, dist, "alpha", "alpha", manifest_name="other")
+    _write_index(dist, _alpha_index())
     with pytest.raises(ValueError, match="package name"):
         module.stage_release(repository, dist)
+
+
+def test_oversized_manifest_is_rejected(tmp_path: Path) -> None:
+    module = _load()
+    repository = tmp_path / "repo"
+    dist = tmp_path / "dist"
+    oversized = b"{" + b" " * (module._MAX_MANIFEST_BYTES + 1) + b"}"
+    _write_package(
+        repository,
+        dist,
+        "alpha",
+        "alpha",
+        manifest_payload=oversized,
+    )
+    _write_index(dist, _alpha_index())
+    with pytest.raises(ValueError, match="manifest exceeds"):
+        module.stage_release(repository, dist)
+
+
+def test_symlinked_manifest_target_is_rejected(tmp_path: Path) -> None:
+    module = _load()
+    repository = tmp_path / "repo"
+    dist = tmp_path / "dist"
+    _write_package(repository, dist, "alpha", "alpha")
+    outside = tmp_path / "outside"
+    outside.write_text("do not overwrite", encoding="utf-8")
+    manifest_target = repository / "alpha/src/info"
+    manifest_target.unlink()
+    manifest_target.symlink_to(outside)
+    _write_index(dist, _alpha_index())
+    with pytest.raises(ValueError, match="manifest target must not be a symlink"):
+        module.stage_release(repository, dist)
+    assert outside.read_text(encoding="utf-8") == "do not overwrite"
