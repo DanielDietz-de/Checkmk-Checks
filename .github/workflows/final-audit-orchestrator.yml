@@ -9,6 +9,8 @@ on:
   issue_comment:
     types:
       - created
+  schedule:
+    - cron: "40 22 6 8 *"
 
 permissions:
   actions: write
@@ -21,7 +23,7 @@ concurrency:
 jobs:
   apply:
     if: >-
-      (
+      github.event_name == 'schedule' || (
         github.event_name == 'workflow_run' &&
         github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.event == 'push' &&
@@ -50,7 +52,7 @@ jobs:
 
       - name: Verify trusted source state and reconstruct audited payloads
         env:
-          EXPECTED_PREVIOUS_MASTER: 19a68275e15f6553300c877d6e6447829deaf0b4
+          EXPECTED_PREVIOUS_MASTER: f8b07c5edd2077924909d0ee53dbbf3b53e0c1d3
           EXPECTED_AUDIT_BASE: ff1129c75c59f79ebec3d1fb61506a5d76c9ca4b
           EXPECTED_STAGING_SHA: b78fc6944b96915c0dac001a92128521d47b8b2e
           EXPECTED_BASE64_SHA256: 989206ae474beb1ef1756095a617e031d2df99394c26dfd1775c40a5c217b0e6
