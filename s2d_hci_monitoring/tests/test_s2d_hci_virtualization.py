@@ -3,7 +3,7 @@
 from conftest import Metric, Result, State, load_plugin
 
 
-virtualization = load_plugin("src/cmk_addons_plugins/s2d_hci/agent_based/s2d_hci_virtualization.py")
+virtualization = load_plugin("src/s2d_hci/agent_based/s2d_hci_virtualization.py")
 
 
 def test_host_missing_module_is_critical():

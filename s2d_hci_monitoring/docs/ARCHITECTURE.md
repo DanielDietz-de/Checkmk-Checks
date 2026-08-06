@@ -45,7 +45,7 @@ The wrapper does not provision accounts, alter Hyper-V, or grant permissions.
 
 ### Checkmk plug-ins
 
-Server-side code is below `src/cmk_addons_plugins/s2d_hci/`:
+Server-side code is below `src/s2d_hci/` and is packaged into the `cmk_addons_plugins` MKP component:
 
 - `agent_based/`: parsers, discovery, state logic, and metrics;
 - `rulesets/`: free-space, CPU, memory-pressure, and checkpoint-age thresholds;

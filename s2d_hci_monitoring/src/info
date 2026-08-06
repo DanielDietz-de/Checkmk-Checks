@@ -1,5 +1,6 @@
 {'author': 'Daniel Dietz',
- 'description': 'Monitors Windows Failover Clustering, Storage Spaces Direct, HCI storage, and Hyper-V workloads with split read-only Windows collectors.',
+ 'description': 'Monitors Windows Failover Clustering, Storage Spaces Direct, HCI storage, and Hyper-V workloads with '
+                'split read-only Windows collectors.',
  'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/s2d_hci_monitoring',
  'files': {'agents': ['plugins/s2d_hci_fast.ps1',
                       'plugins/s2d_hci_storage.ps1',

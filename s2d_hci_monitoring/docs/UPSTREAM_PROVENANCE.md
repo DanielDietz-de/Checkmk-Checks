@@ -36,7 +36,7 @@ Importing duplicate root workflows or generic examples inside the package would 
 ## Adaptations made during migration
 
 - Mapped `local/share/check_mk/agents/` to `src/agents/`.
-- Mapped `local/lib/python3/cmk_addons/plugins/` to `src/cmk_addons_plugins/`.
+- Mapped `local/lib/python3/cmk_addons/plugins/` to `src/`, preserving the packaged `s2d_hci/...` paths in the `cmk_addons_plugins` component.
 - Replaced the standalone manifest template with canonical `src/info` metadata used by Checkmk-Checks.
 - Set the evidence-based compatibility range to Checkmk 2.5.0 through 2.5.99.
 - Corrected the check manual’s license field to PolyForm Internal Use 1.0.0.

@@ -25,6 +25,17 @@ class HealthObject:
 Section = Mapping[str, HealthObject]
 
 
+def _get_field(data: Mapping[str, object], *names: str) -> object | None:
+    """Return a field using case- and underscore-insensitive matching."""
+
+    normalized = {str(key).replace("_", "").lower(): value for key, value in data.items()}
+    for name in names:
+        key = name.replace("_", "").lower()
+        if key in normalized:
+            return normalized[key]
+    return None
+
+
 def _parse_health_objects(string_table: Sequence[Sequence[str]], name_fields: Sequence[str]) -> Section:
     """Parse valid JSON rows and retain stable names for service discovery."""
 
@@ -38,18 +49,19 @@ def _parse_health_objects(string_table: Sequence[Sequence[str]], name_fields: Se
             continue
         name = ""
         for field in name_fields:
-            if data.get(field):
-                name = str(data[field])
+            value = _get_field(data, field)
+            if value:
+                name = str(value)
                 break
         if not name:
-            name = str(data.get("section") or f"entry_{index}")
+            name = str(_get_field(data, "section") or f"entry_{index}")
         state = str(
-            data.get("health_status")
-            or data.get("operational_status")
-            or data.get("state")
-            or data.get("severity")
-            or data.get("success")
-            or data.get("available")
+            _get_field(data, "health_status")
+            or _get_field(data, "operational_status")
+            or _get_field(data, "state")
+            or _get_field(data, "severity")
+            or _get_field(data, "success")
+            or _get_field(data, "available")
             or "unknown"
         )
         parsed[name] = HealthObject(name=name, state=state, details=data)
@@ -86,8 +98,8 @@ def check_s2d_hci_s2d_state(section: Section):
         yield Result(state=State.UNKNOWN, summary="No S2D state data found")
         return
     entry = next(iter(section.values()))
-    if entry.details.get("available") is False:
-        yield Result(state=State.UNKNOWN, summary=str(entry.details.get("reason") or "S2D state command is unavailable"), details=str(entry.details))
+    if _get_field(entry.details, "available") is False:
+        yield Result(state=State.UNKNOWN, summary=str(_get_field(entry.details, "reason") or "S2D state command is unavailable"), details=str(entry.details))
         return
     yield Result(state=_state_from_health(entry.state), summary=f"S2D state: {entry.state}", details=str(entry.details))
 
@@ -120,7 +132,7 @@ def check_s2d_hci_storage_subsystems(item: str, section: Section):
         yield Result(state=State.UNKNOWN, summary=f"Storage subsystem {item!r} not found")
         return
     entry = section[item]
-    operational = str(entry.details.get("operational_status") or "unknown")
+    operational = str(_get_field(entry.details, "operational_status") or "unknown")
     yield Result(
         state=_state_from_health(f"{entry.state} {operational}"),
         summary=f"Health: {entry.state}, operational: {operational}",
@@ -156,8 +168,8 @@ def check_s2d_hci_storage_health_report(item: str, section: Section):
         yield Result(state=State.UNKNOWN, summary=f"Storage health report item {item!r} not found")
         return
     entry = section[item]
-    if entry.details.get("available") is False:
-        yield Result(state=State.UNKNOWN, summary=str(entry.details.get("reason") or "Storage health report command is unavailable"), details=str(entry.details))
+    if _get_field(entry.details, "available") is False:
+        yield Result(state=State.UNKNOWN, summary=str(_get_field(entry.details, "reason") or "Storage health report command is unavailable"), details=str(entry.details))
         return
     yield Result(state=_state_from_health(entry.state), summary=f"Health report state: {entry.state}", details=str(entry.details))
 

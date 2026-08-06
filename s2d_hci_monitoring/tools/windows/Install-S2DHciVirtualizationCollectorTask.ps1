@@ -53,6 +53,7 @@ function Test-PathUnderRoot {
     return $fullPath.StartsWith($fullRoot, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
+$AgentRoot = [System.IO.Path]::GetFullPath($AgentRoot)
 $CollectorPath = Resolve-DefaultPath -Candidate $CollectorPath -Fallback (Join-Path $AgentRoot 'plugins\s2d_hci_virtualization.ps1')
 $WrapperPath = Resolve-DefaultPath -Candidate $WrapperPath -Fallback (Join-Path $AgentRoot 'scripts\s2d_hci_virtualization_spool.ps1')
 $ConfigPath = Resolve-DefaultPath -Candidate $ConfigPath -Fallback (Join-Path $AgentRoot 'config\s2d_hci_virtualization.json')
@@ -76,12 +77,13 @@ $plannedConfig = [ordered]@{
     spool_file = $SpoolFile
     require_paths_under_agent_root = $true
 }
-$taskArgument = "-NoProfile -NonInteractive -File `"$WrapperPath`" -ConfigPath `"$ConfigPath`""
+$taskArgument = "-NoProfile -NonInteractive -File `"$WrapperPath`" -ConfigPath `"$ConfigPath`" -AgentRoot `"$AgentRoot`""
 
 if ($DryRun) {
     [pscustomobject]@{
         TaskName = $TaskName
         ServiceAccount = $ServiceAccount
+        AgentRoot = $AgentRoot
         IntervalMinutes = $IntervalMinutes
         WrapperPath = $WrapperPath
         ConfigPath = $ConfigPath
@@ -122,6 +124,7 @@ if ($PSCmdlet.ShouldProcess($TaskName, "Register scheduled task as $ServiceAccou
 [pscustomobject]@{
     TaskName = $TaskName
     ServiceAccount = $ServiceAccount
+    AgentRoot = $AgentRoot
     IntervalMinutes = $IntervalMinutes
     ConfigPath = $ConfigPath
     SpoolFile = $SpoolFile

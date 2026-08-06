@@ -13,7 +13,8 @@
 
 [CmdletBinding()]
 param(
-    [string]$ConfigPath = (Join-Path $env:ProgramData 'checkmk\agent\config\s2d_hci_virtualization.json')
+    [string]$ConfigPath = (Join-Path $env:ProgramData 'checkmk\agent\config\s2d_hci_virtualization.json'),
+    [string]$AgentRoot = (Join-Path $env:ProgramData 'checkmk\agent')
 )
 
 Set-StrictMode -Version Latest
@@ -55,7 +56,7 @@ function Test-PathUnderRoot {
 }
 
 $config = Read-CollectorConfig -Path $ConfigPath
-$agentRoot = Join-Path $env:ProgramData 'checkmk\agent'
+$agentRoot = [System.IO.Path]::GetFullPath($AgentRoot)
 $spoolRoot = Join-Path $agentRoot 'spool'
 $collectorPath = [string]$config.collector_path
 $spoolFile = [string]$config.spool_file

@@ -3,10 +3,10 @@
 from conftest import Metric, Result, State, load_plugin
 
 
-fast = load_plugin("src/cmk_addons_plugins/s2d_hci/agent_based/s2d_hci_fast.py")
-storage = load_plugin("src/cmk_addons_plugins/s2d_hci/agent_based/s2d_hci_storage.py")
-jobs = load_plugin("src/cmk_addons_plugins/s2d_hci/agent_based/s2d_hci_jobs.py")
-health = load_plugin("src/cmk_addons_plugins/s2d_hci/agent_based/s2d_hci_health.py")
+fast = load_plugin("src/s2d_hci/agent_based/s2d_hci_fast.py")
+storage = load_plugin("src/s2d_hci/agent_based/s2d_hci_storage.py")
+jobs = load_plugin("src/s2d_hci/agent_based/s2d_hci_jobs.py")
+health = load_plugin("src/s2d_hci/agent_based/s2d_hci_health.py")
 
 
 def test_node_down_is_critical():
@@ -51,3 +51,19 @@ def test_unavailable_health_cmdlet_is_unknown():
     section = health.parse_s2d_hci_s2d_state([["{\"available\":false,\"reason\":\"Command unavailable\"}"]])
     results = list(health.check_s2d_hci_s2d_state(section))
     assert any(isinstance(entry, Result) and entry.state == State.UNKNOWN for entry in results)
+
+
+def test_native_powershell_s2d_state_property_is_parsed():
+    section = health.parse_s2d_hci_s2d_state([["{\"State\":\"Enabled\",\"Available\":true}"]])
+    results = list(health.check_s2d_hci_s2d_state(section))
+    assert any(isinstance(entry, Result) and entry.state == State.OK for entry in results)
+
+
+def test_duplicate_volume_labels_keep_distinct_services():
+    section = storage.parse_s2d_hci_volumes(
+        [
+            ["{\"filesystem_label\":\"Data\",\"drive_letter\":\"D\",\"path\":\"C:/Volumes/one\",\"health_status\":\"Healthy\"}"],
+            ["{\"filesystem_label\":\"Data\",\"drive_letter\":\"E\",\"path\":\"C:/Volumes/two\",\"health_status\":\"Healthy\"}"],
+        ]
+    )
+    assert set(section) == {"Data [D:]", "Data [E:]"}

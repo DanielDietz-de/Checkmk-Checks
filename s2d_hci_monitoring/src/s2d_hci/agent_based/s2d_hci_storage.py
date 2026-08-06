@@ -7,7 +7,7 @@ disks. Invalid rows are skipped; valid rows remain available for monitoring.
 """
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 from cmk.agent_based.v2 import AgentSection, CheckPlugin, Metric, Result, Service, State, check_levels
@@ -38,8 +38,12 @@ def _as_float(value: object) -> float | None:
         return None
 
 
-def _parse_storage_objects(string_table: Sequence[Sequence[str]], name_fields: Sequence[str]) -> Section:
-    """Parse JSON rows and index each object by the first available name field."""
+def _parse_storage_objects(
+    string_table: Sequence[Sequence[str]],
+    name_fields: Sequence[str],
+    name_factory: Callable[[Mapping[str, object]], str] | None = None,
+) -> Section:
+    """Parse JSON rows and index each object by a stable identifier."""
 
     parsed: dict[str, StorageObject] = {}
     for row in string_table:
@@ -49,11 +53,12 @@ def _parse_storage_objects(string_table: Sequence[Sequence[str]], name_fields: S
             data = json.loads(" ".join(row))
         except json.JSONDecodeError:
             continue
-        name = ""
-        for field in name_fields:
-            if data.get(field):
-                name = str(data[field])
-                break
+        name = name_factory(data) if name_factory is not None else ""
+        if not name:
+            for field in name_fields:
+                if data.get(field):
+                    name = str(data[field])
+                    break
         if not name:
             continue
         percent_free = _as_float(data.get("percent_free"))
@@ -192,8 +197,24 @@ check_plugin_s2d_hci_virtual_disks = CheckPlugin(
 )
 
 
+def _volume_identifier(data: Mapping[str, object]) -> str:
+    """Return a readable identifier that remains unique for duplicate labels."""
+
+    label = str(data.get("filesystem_label") or "").strip()
+    drive_letter = str(data.get("drive_letter") or "").strip().rstrip(":")
+    path = str(data.get("path") or "").strip()
+    locator = f"{drive_letter}:" if drive_letter else path
+    if label and locator:
+        return f"{label} [{locator}]"
+    return locator or label
+
+
 def parse_s2d_hci_volumes(string_table: Sequence[Sequence[str]]) -> Section:
-    return _parse_storage_objects(string_table, ["filesystem_label", "drive_letter", "path"])
+    return _parse_storage_objects(
+        string_table,
+        ["path", "drive_letter", "filesystem_label"],
+        name_factory=_volume_identifier,
+    )
 
 
 agent_section_s2d_hci_volumes = AgentSection(name="s2d_hci_volumes", parse_function=parse_s2d_hci_volumes)

@@ -30,7 +30,7 @@ def test_every_manifest_file_exists():
 
     category_roots = {
         "agents": PACKAGE_ROOT / "src" / "agents",
-        "cmk_addons_plugins": PACKAGE_ROOT / "src" / "cmk_addons_plugins",
+        "cmk_addons_plugins": PACKAGE_ROOT / "src",
     }
     for category, entries in files.items():
         assert category in category_roots
