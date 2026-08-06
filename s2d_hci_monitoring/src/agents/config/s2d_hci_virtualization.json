@@ -1,0 +1,5 @@
+{
+  "collector_path": "C:\\ProgramData\\checkmk\\agent\\plugins\\s2d_hci_virtualization.ps1",
+  "spool_file": "C:\\ProgramData\\checkmk\\agent\\spool\\600_s2d_hci_virtualization.txt",
+  "require_paths_under_agent_root": true
+}
