@@ -76,16 +76,21 @@ if (-not (Test-Path -LiteralPath $spoolRoot -PathType Container)) {
     throw "Checkmk spool directory not found: $spoolRoot"
 }
 
-$output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $collectorPath 2>&1
+$output = & powershell.exe -NoProfile -NonInteractive -File $collectorPath 2>&1
 $spoolDirectory = Split-Path -Parent $spoolFile
 $tempFile = Join-Path $spoolDirectory ('.' + [System.IO.Path]::GetFileName($spoolFile) + ".$PID.tmp")
 
 try {
     [System.IO.File]::WriteAllLines($tempFile, [string[]]$output, [System.Text.Encoding]::UTF8)
-    Move-Item -LiteralPath $tempFile -Destination $spoolFile -Force
+    if ([System.IO.File]::Exists($spoolFile)) {
+        [System.IO.File]::Replace($tempFile, $spoolFile, $null)
+    }
+    else {
+        [System.IO.File]::Move($tempFile, $spoolFile)
+    }
 }
 finally {
-    if (Test-Path -LiteralPath $tempFile -PathType Leaf) {
-        Remove-Item -LiteralPath $tempFile -Force
+    if ([System.IO.File]::Exists($tempFile)) {
+        [System.IO.File]::Delete($tempFile)
     }
 }
