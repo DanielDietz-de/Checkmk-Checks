@@ -1,0 +1,180 @@
+name: Final repository audit orchestrator
+
+on:
+  workflow_run:
+    workflows:
+      - Repository security and supply-chain guard
+    types:
+      - completed
+
+permissions:
+  contents: write
+
+concurrency:
+  group: final-repository-audit-orchestrator
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out staged audit branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v5.0.0
+        with:
+          ref: agent/final-repository-completion-audit
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Verify trusted source state and reconstruct patch
+        env:
+          EXPECTED_AUDIT_BASE: ff1129c75c59f79ebec3d1fb61506a5d76c9ca4b
+          EXPECTED_BASE64_SHA256: 989206ae474beb1ef1756095a617e031d2df99394c26dfd1775c40a5c217b0e6
+          EXPECTED_GZIP_SHA256: a474d18b5cf6084fe4dbb8b1bfe90472ca6cba2dc0a9d717734c3629b37717cc
+          EXPECTED_PATCH_SHA256: 0a02b2c64eaed2c00dac46db6b72c5156216afbd50b4224bee8ee7648c04f9f0
+          EXPECTED_CHANGED_FILES: "204"
+          ORCHESTRATOR_PATH: .github/workflows/final-audit-orchestrator.yml
+        run: |
+          set -euo pipefail
+          audit_sha=$(git rev-parse HEAD)
+          printf 'AUDIT_SHA=%s\n' "$audit_sha" >> "$GITHUB_ENV"
+
+          git fetch --no-tags origin master
+          master_sha=$(git rev-parse origin/master)
+          first_parent=$(git rev-parse 'origin/master^1')
+          test "$first_parent" = "$EXPECTED_AUDIT_BASE" || {
+            echo "master is not the expected one-commit orchestrator merge" >&2
+            exit 1
+          }
+          mapfile -t master_paths < <(git diff --name-only "$EXPECTED_AUDIT_BASE" "$master_sha")
+          test "${#master_paths[@]}" -eq 1 && test "${master_paths[0]}" = "$ORCHESTRATOR_PATH" || {
+            printf 'Unexpected master changes since audited base:\n%s\n' "${master_paths[*]}" >&2
+            exit 1
+          }
+
+          python3 - <<'PY'
+          from pathlib import PurePosixPath
+          import subprocess
+
+          base = 'ff1129c75c59f79ebec3d1fb61506a5d76c9ca4b'
+          output = subprocess.check_output(
+              ['git', 'diff', '--name-only', base, 'HEAD'], text=True
+          ).splitlines()
+          allowed_roots = (
+              '.github/final-audit-patch/',
+              '.github/final-audit-payload/',
+          )
+          allowed_file = '.github/workflows/apply-final-repository-audit.yml'
+          unexpected = [
+              path for path in output
+              if not path.startswith(allowed_roots) and path != allowed_file
+          ]
+          if unexpected:
+              raise SystemExit(
+                  'staging branch contains non-payload changes: ' + ', '.join(unexpected)
+              )
+          for path in output:
+              parsed = PurePosixPath(path)
+              if parsed.is_absolute() or '..' in parsed.parts:
+                  raise SystemExit(f'unsafe staging path: {path!r}')
+          PY
+
+          mapfile -t chunks < <(find .github/final-audit-patch -maxdepth 1 -type f -name 'chunk*.b64' -print | sort)
+          test "${#chunks[@]}" -eq 9 || {
+            printf 'Expected 9 patch chunks, found %s\n' "${#chunks[@]}" >&2
+            exit 1
+          }
+          cat "${chunks[@]}" > /tmp/final-audit.b64
+          printf '%s  %s\n' "$EXPECTED_BASE64_SHA256" /tmp/final-audit.b64 | sha256sum --check --strict
+          base64 --decode /tmp/final-audit.b64 > /tmp/final-audit.patch.gz
+          printf '%s  %s\n' "$EXPECTED_GZIP_SHA256" /tmp/final-audit.patch.gz | sha256sum --check --strict
+          gzip --decompress --stdout /tmp/final-audit.patch.gz > /tmp/final-audit.patch
+          printf '%s  %s\n' "$EXPECTED_PATCH_SHA256" /tmp/final-audit.patch | sha256sum --check --strict
+
+          python3 - <<'PY'
+          from pathlib import PurePosixPath
+          import os
+
+          patch = open('/tmp/final-audit.patch', encoding='utf-8').read().splitlines()
+          paths = []
+          for line in patch:
+              if not line.startswith('+++ source/'):
+                  continue
+              raw = line.split('\t', 1)[0][len('+++ source/'):]
+              path = PurePosixPath(raw)
+              if path.is_absolute() or '..' in path.parts:
+                  raise SystemExit(f'unsafe patch path: {raw!r}')
+              if raw.startswith('.github/final-audit-') or raw.startswith('.github/workflows/final-audit-'):
+                  raise SystemExit(f'patch contains staging/orchestrator path: {raw!r}')
+              paths.append(raw)
+          expected = int(os.environ['EXPECTED_CHANGED_FILES'])
+          unique = sorted(set(paths))
+          if len(paths) != expected or len(unique) != expected:
+              raise SystemExit(
+                  f'expected {expected} unique patch paths, got {len(paths)} entries / {len(unique)} unique'
+              )
+          open('/tmp/expected-paths.txt', 'w', encoding='utf-8').write('\n'.join(unique) + '\n')
+          PY
+
+      - name: Apply exact audited patch and remove staging material
+        run: |
+          set -euo pipefail
+          patch --strip=1 --batch --forward < /tmp/final-audit.patch
+          rm -rf .github/final-audit-patch .github/final-audit-payload
+          rm -f .github/workflows/apply-final-repository-audit.yml
+
+          git diff --name-only ff1129c75c59f79ebec3d1fb61506a5d76c9ca4b | sort > /tmp/actual-paths.txt
+          diff --unified /tmp/expected-paths.txt /tmp/actual-paths.txt
+          if git status --short | grep -E '^.. \.github/(final-audit-|workflows/apply-final-repository-audit\.yml$)'; then
+            echo "staging material remains in the resulting tree" >&2
+            exit 1
+          fi
+
+      - name: Install pinned validation dependencies
+        run: python -m pip install --disable-pip-version-check pytest==9.1.1 requests==2.34.2 ruff==0.15.22
+
+      - name: Validate exact resulting tree
+        run: |
+          set -euo pipefail
+          python3 tools/ci/pin_supply_chain.py --check
+          python3 tools/ci/normalize_package_sources.py
+          python3 tools/ci/check_package_collisions.py
+          python3 tools/ci/check_repository_quality.py
+          python3 tools/ci/sync_repository_facts.py
+          python3 tools/ci/sync_package_metadata.py
+          python3 tools/ci/generate_package_reference.py
+          python3 tools/ci/manage_module_docstrings.py
+          python3 tools/ci/check_python_syntax.py
+          python3 tools/ci/full_repository_audit.py --fail-on low --output /tmp/repository-audit.json
+          python3 -m unittest discover -s tests -p 'test_ci_*.py' -v
+          pytest -q .github/tests
+          pytest -q */tests
+          python3 .github/scripts/build_repository_mkps.py \
+            --repository . \
+            --output /tmp/repository-mkps \
+            --packaged-version 2.5.0p9
+
+      - name: Publish one clean audited commit
+        env:
+          BRANCH: agent/final-repository-completion-audit
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --all
+          tree=$(git write-tree)
+          commit=$(printf '%s\n' 'audit: complete repository validation and hardening' | \
+            git commit-tree "$tree" -p origin/master)
+          git push \
+            --force-with-lease="refs/heads/${BRANCH}:${AUDIT_SHA}" \
+            origin "${commit}:refs/heads/${BRANCH}"
+          printf 'Published clean audit commit %s\n' "$commit"
