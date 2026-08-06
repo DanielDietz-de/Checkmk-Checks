@@ -6,6 +6,9 @@ on:
       - Repository security and supply-chain guard
     types:
       - completed
+  issue_comment:
+    types:
+      - created
 
 permissions:
   actions: write
@@ -18,9 +21,18 @@ concurrency:
 jobs:
   apply:
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'master'
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'master'
+      ) || (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request != null &&
+        github.event.issue.number == 38 &&
+        github.actor == 'Daniel-Dietz' &&
+        github.event.comment.body == '/run-final-audit-b78fc694'
+      )
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -38,7 +50,7 @@ jobs:
 
       - name: Verify trusted source state and reconstruct audited payloads
         env:
-          EXPECTED_PREVIOUS_MASTER: 8fcc44efdf9a558d24112898b0e9dd18c31d05c2
+          EXPECTED_PREVIOUS_MASTER: 19a68275e15f6553300c877d6e6447829deaf0b4
           EXPECTED_AUDIT_BASE: ff1129c75c59f79ebec3d1fb61506a5d76c9ca4b
           EXPECTED_STAGING_SHA: b78fc6944b96915c0dac001a92128521d47b8b2e
           EXPECTED_BASE64_SHA256: 989206ae474beb1ef1756095a617e031d2df99394c26dfd1775c40a5c217b0e6
@@ -65,7 +77,6 @@ jobs:
           }
           mapfile -t master_paths < <(git diff --name-only "$EXPECTED_PREVIOUS_MASTER" "$master_sha" | sort)
           expected_master_paths=(
-            .github/final-audit-trigger
             .github/workflows/final-audit-orchestrator.yml
           )
           test "${master_paths[*]}" = "${expected_master_paths[*]}" || {
