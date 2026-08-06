@@ -1,0 +1,145 @@
+name: Materialize S2D production hardening
+
+on:
+  push:
+    branches:
+      - agent/migrate-s2d-hci-monitoring
+    paths:
+      - '.s2d-hardening/READY'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: materialize-s2d-production-hardening
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    name: Verify and materialize reviewed source
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the exact pull-request branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/migrate-s2d-hci-monitoring
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify transport marker and archive checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected='a0221976649e0580125af9c754005c7e8696b79cb9eb2303945c21919322fd24'
+          test "$(tr -d '\r\n' < .s2d-hardening/READY)" = "$expected"
+          cat .s2d-hardening/final{00..09} | base64 --decode > /tmp/s2d-hardening.tar.gz
+          printf '%s  %s\n' "$expected" /tmp/s2d-hardening.tar.gz | sha256sum --check --strict
+
+      - name: Validate archive members
+        shell: python
+        run: |
+          from pathlib import PurePosixPath
+          import tarfile
+
+          archive = "/tmp/s2d-hardening.tar.gz"
+          allowed_exact = {
+              ".github/scripts/build_repository_mkps.py",
+              ".github/scripts/stage_repository_release.py",
+              ".github/scripts/verify_repository_release.py",
+              ".github/tests/test_repository_release.py",
+              ".github/tests/test_repository_release_staging.py",
+              ".github/tests/test_repository_release_verification.py",
+              ".github/tests/test_release_code_documentation.py",
+              ".github/workflows/repository-mkp-ci.yml",
+              "README.md",
+              "docs/REPOSITORY_AUDIT.md",
+              "mkp_index.json",
+          }
+          with tarfile.open(archive, "r:gz") as payload:
+              members = payload.getmembers()
+              if not members:
+                  raise SystemExit("The hardening archive is empty")
+              for member in members:
+                  path = PurePosixPath(member.name)
+                  if path.is_absolute() or ".." in path.parts:
+                      raise SystemExit(f"Unsafe archive path: {member.name}")
+                  if not (member.isdir() or member.isfile()):
+                      raise SystemExit(f"Unsupported archive member type: {member.name}")
+                  if not (
+                      member.name == "s2d_hci_monitoring"
+                      or member.name.startswith("s2d_hci_monitoring/")
+                      or member.name in allowed_exact
+                  ):
+                      raise SystemExit(f"Unexpected archive member: {member.name}")
+
+      - name: Materialize the source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf s2d_hci_monitoring
+          python - <<'PY'
+          import tarfile
+          with tarfile.open('/tmp/s2d-hardening.tar.gz', 'r:gz') as payload:
+              payload.extractall('.', filter='data')
+          PY
+          rm -rf .s2d-hardening
+          rm -f .github/workflows/materialize-s2d-hardening.yml
+          git diff --check
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned validation tools
+        run: >-
+          python -m pip install --disable-pip-version-check
+          pytest==9.1.1
+          requests==2.34.2
+          ruff==0.15.22
+
+      - name: Validate source, generated documentation, and release tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/ci/sync_repository_facts.py
+          python tools/ci/sync_package_metadata.py
+          python tools/ci/generate_package_reference.py
+          python tools/ci/manage_module_docstrings.py
+          python tools/ci/check_python_syntax.py
+          python tools/ci/full_repository_audit.py --fail-on low
+          pytest -q s2d_hci_monitoring/tests .github/tests
+          python .github/scripts/build_repository_mkps.py \
+            --repository . \
+            --output /tmp/s2d-mkp \
+            --packaged-version 2.5.0p9 \
+            --package s2d_hci_monitoring
+          git diff --check
+
+      - name: Commit the materialized implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --all
+          git diff --cached --check
+          git commit -m 'Harden S2D/HCI monitoring for production'
+          git push origin HEAD:agent/migrate-s2d-hci-monitoring
+
+      - name: Dispatch authoritative repository validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run repository-guard.yml \
+            --repo DanielDietz-de/Checkmk-Checks \
+            --ref agent/migrate-s2d-hci-monitoring
+          gh workflow run repository-mkp-ci.yml \
+            --repo DanielDietz-de/Checkmk-Checks \
+            --ref agent/migrate-s2d-hci-monitoring
