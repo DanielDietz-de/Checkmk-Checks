@@ -2,7 +2,7 @@
 """Register free-space threshold rules for S2D CSVs and volumes."""
 
 from cmk.rulesets.v1 import Help, Title
-from cmk.rulesets.v1.form_specs import DictElement, Dictionary, Float, LevelDirection, SimpleLevels
+from cmk.rulesets.v1.form_specs import DefaultValue, DictElement, Dictionary, Float, LevelDirection, SimpleLevels
 from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, Topic
 
 
@@ -19,7 +19,7 @@ def _free_space_parameter_form(title: str, help_text: str) -> Dictionary:
                     help_text=Help("Warn or alert when free space percentage falls below these levels."),
                     level_direction=LevelDirection.LOWER,
                     form_spec_template=Float(),
-                    prefill_fixed_levels=(15.0, 10.0),
+                    prefill_fixed_levels=DefaultValue(value=(15.0, 10.0)),
                 ),
                 required=True,
             ),
@@ -28,6 +28,8 @@ def _free_space_parameter_form(title: str, help_text: str) -> Dictionary:
 
 
 def _csv_parameter_form() -> Dictionary:
+    """Return the CSV free-space parameter form."""
+
     return _free_space_parameter_form(
         "S2D/HCI CSV thresholds",
         "Configure lower warning and critical thresholds for CSV free space percentage.",
@@ -35,6 +37,8 @@ def _csv_parameter_form() -> Dictionary:
 
 
 def _volume_parameter_form() -> Dictionary:
+    """Return the volume free-space parameter form."""
+
     return _free_space_parameter_form(
         "S2D/HCI volume thresholds",
         "Configure lower warning and critical thresholds for volume free space percentage.",
