@@ -4,7 +4,16 @@
 from __future__ import annotations
 
 from cmk.rulesets.v1 import Help, Title
-from cmk.rulesets.v1.form_specs import DefaultValue, DictElement, Dictionary, Float, LevelDirection, SimpleLevels
+from cmk.rulesets.v1.form_specs import (
+    DefaultValue,
+    DictElement,
+    Dictionary,
+    Float,
+    LevelDirection,
+    SimpleLevels,
+    SingleChoice,
+    SingleChoiceElement,
+)
 from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, Topic
 
 
@@ -19,16 +28,47 @@ def _upper_levels(title: str, warn: float, crit: float) -> SimpleLevels:
     )
 
 
-def _workload_form() -> Dictionary:
-    """Return CPU and memory-pressure thresholds for opt-in VM workloads."""
+def _severity_choice(title: str, default: str) -> SingleChoice:
+    """Return a Checkmk state selector shared by VM workload state-policy fields."""
 
+    return SingleChoice(
+        title=Title(title),
+        elements=(
+            SingleChoiceElement(name="ok", title=Title("OK")),
+            SingleChoiceElement(name="warn", title=Title("WARN")),
+            SingleChoiceElement(name="crit", title=Title("CRIT")),
+            SingleChoiceElement(name="unknown", title=Title("UNKNOWN")),
+        ),
+        prefill=DefaultValue(default),
+    )
+
+
+def _workload_state_elements() -> dict[str, DictElement]:
+    """Return configurable VM operational-state mappings matching check defaults."""
+
+    return {
+        "degraded_state": DictElement(parameter_form=_severity_choice("Degraded or warning state", "warn"), required=True),
+        "paused_state": DictElement(parameter_form=_severity_choice("Paused or suspended state", "warn"), required=True),
+        "draining_state": DictElement(parameter_form=_severity_choice("Draining or resynchronizing state", "warn"), required=True),
+        "offline_state": DictElement(parameter_form=_severity_choice("Offline, failed, or critical state", "crit"), required=True),
+        "unknown_state": DictElement(parameter_form=_severity_choice("Unknown or unrecognized state", "unknown"), required=True),
+    }
+
+
+def _workload_form() -> Dictionary:
+    """Return CPU, memory-pressure, and operational-state settings for opt-in VMs."""
+
+    elements = _workload_state_elements()
+    elements.update(
+        {
+            "levels_upper_cpu": DictElement(parameter_form=_upper_levels("CPU usage", 80.0, 95.0), required=True),
+            "levels_upper_memory_pressure": DictElement(parameter_form=_upper_levels("Memory pressure", 100.0, 120.0), required=True),
+        }
+    )
     return Dictionary(
         title=Title("S2D/HCI virtualization workload thresholds"),
         help_text=Help("Applied only when custom Hyper-V workload monitoring is explicitly enabled."),
-        elements={
-            "levels_upper_cpu": DictElement(parameter_form=_upper_levels("CPU usage", 80.0, 95.0), required=True),
-            "levels_upper_memory_pressure": DictElement(parameter_form=_upper_levels("Memory pressure", 100.0, 120.0), required=True),
-        },
+        elements=elements,
     )
 
 
