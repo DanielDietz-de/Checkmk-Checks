@@ -21,6 +21,19 @@ def test_draining_node_warns():
     assert any(isinstance(entry, Result) and entry.state == State.WARN for entry in results)
 
 
+def test_quorum_collection_failure_is_unknown():
+    section = fast.parse_s2d_hci_quorum(
+        [["{\"section\":\"s2d_hci_quorum\",\"success\":false,\"error\":\"Access denied\"}"]]
+    )
+    results = list(fast.check_s2d_hci_quorum(section))
+    assert any(
+        isinstance(entry, Result)
+        and entry.state == State.UNKNOWN
+        and "Access denied" in entry.summary
+        for entry in results
+    )
+
+
 def test_csv_emits_free_metric():
     section = storage.parse_s2d_hci_csv([["{\"name\":\"CSV1\",\"state\":\"Online\",\"percent_free\":25.0}"]])
     results = list(storage.check_s2d_hci_csv("CSV1", {"levels_lower_free": ("fixed", (15.0, 10.0))}, section))
