@@ -5,12 +5,14 @@
 
 .DESCRIPTION
     Emits fast-changing cluster state sections for Checkmk. Intended cache age: 60-120 seconds.
-    This collector is read-only.
+    This collector is read-only. Required-module startup failures are emitted through the same
+    structured per-section failure protocol as command failures.
 #>
 
 $ErrorActionPreference = 'Stop'
 
 function Write-JsonLine {
+    <# Serialize one non-null object as a compact JSON line. #>
     param([Parameter(ValueFromPipeline)] [object] $InputObject)
     process {
         if ($null -ne $InputObject) {
@@ -20,6 +22,7 @@ function Write-JsonLine {
 }
 
 function Invoke-Section {
+    <# Emit a Checkmk section and convert terminating command failures into structured telemetry. #>
     param(
         [Parameter(Mandatory)] [string] $Name,
         [Parameter(Mandatory)] [scriptblock] $ScriptBlock
@@ -33,7 +36,37 @@ function Invoke-Section {
     }
 }
 
-Import-Module FailoverClusters -ErrorAction Stop
+function Import-CollectorModules {
+    <# Import required modules or emit a failure row for every affected section and stop cleanly. #>
+    param(
+        [Parameter(Mandatory)] [string[]] $ModuleName,
+        [Parameter(Mandatory)] [string[]] $SectionName
+    )
+
+    try {
+        foreach ($module in $ModuleName) {
+            Import-Module $module -ErrorAction Stop
+        }
+    }
+    catch {
+        $message = "Required module import failed: $($_.Exception.Message)"
+        foreach ($section in $SectionName) {
+            Write-Output "<<<$section>>>"
+            [pscustomobject]@{ section = $section; success = $false; error = $message } | Write-JsonLine
+        }
+        exit 0
+    }
+}
+
+Import-CollectorModules -ModuleName @('FailoverClusters') -SectionName @(
+    's2d_hci_cluster_summary',
+    's2d_hci_quorum',
+    's2d_hci_nodes',
+    's2d_hci_networks',
+    's2d_hci_network_interfaces',
+    's2d_hci_cluster_groups',
+    's2d_hci_cluster_resources'
+)
 
 Invoke-Section -Name 's2d_hci_cluster_summary' -ScriptBlock {
     Get-Cluster | ForEach-Object {
