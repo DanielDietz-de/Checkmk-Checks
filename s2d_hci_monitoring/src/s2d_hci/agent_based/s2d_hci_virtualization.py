@@ -27,7 +27,6 @@ WORKLOAD_DEFAULTS: Mapping[str, object] = {
 }
 CHECKPOINT_DEFAULTS: Mapping[str, object] = {
     "levels_upper_age_hours": ("fixed", (24.0, 72.0)),
-    **STATE_DEFAULTS,
 }
 
 
