@@ -2,7 +2,8 @@ name: Final repository audit runner
 
 on:
   schedule:
-    - cron: "10 23 6 8 *"
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
 
 permissions:
   actions: write
@@ -42,10 +43,10 @@ jobs:
           python -m pip install --disable-pip-version-check
           pytest==9.1.1 requests==2.34.2 ruff==0.15.22
 
-      - name: Bind runner to this reschedule merge
+      - name: Bind runner to recurring schedule merge
         run: |
           set -euo pipefail
-          sed -i 's/EXPECTED_PREVIOUS_MASTER = "ebcfaa1c36b7e33c304ec3357f56c85eeb6f0c63"/EXPECTED_PREVIOUS_MASTER = "3321c20ba80085b7ccbd8d295719edd205bb1ae8"/' trusted/.github/scripts/final_audit_runner.py
+          sed -i 's/EXPECTED_PREVIOUS_MASTER = "ebcfaa1c36b7e33c304ec3357f56c85eeb6f0c63"/EXPECTED_PREVIOUS_MASTER = "1fca9af02888187b86614b638f55744ff975824a"/' trusted/.github/scripts/final_audit_runner.py
           sed -i '/".github\/scripts\/final_audit_runner.py",/d' trusted/.github/scripts/final_audit_runner.py
           python -m py_compile trusted/.github/scripts/final_audit_runner.py
 
