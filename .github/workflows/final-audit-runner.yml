@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - .github/final-audit-kick
 
 permissions:
   actions: write
@@ -15,6 +20,11 @@ concurrency:
 
 jobs:
   publish:
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.actor == 'Daniel-Dietz' &&
+       github.head_ref == 'agent/final-audit-kick' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -43,12 +53,8 @@ jobs:
           python -m pip install --disable-pip-version-check
           pytest==9.1.1 requests==2.34.2 ruff==0.15.22
 
-      - name: Bind runner to recurring schedule merge
-        run: |
-          set -euo pipefail
-          sed -i 's/EXPECTED_PREVIOUS_MASTER = "ebcfaa1c36b7e33c304ec3357f56c85eeb6f0c63"/EXPECTED_PREVIOUS_MASTER = "1fca9af02888187b86614b638f55744ff975824a"/' trusted/.github/scripts/final_audit_runner.py
-          sed -i '/".github\/scripts\/final_audit_runner.py",/d' trusted/.github/scripts/final_audit_runner.py
-          python -m py_compile trusted/.github/scripts/final_audit_runner.py
+      - name: Verify trusted runner syntax
+        run: python -m py_compile trusted/.github/scripts/final_audit_runner.py
 
       - name: Reconstruct, validate, and publish exact audit tree
         id: audit
