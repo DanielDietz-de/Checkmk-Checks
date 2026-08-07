@@ -64,6 +64,12 @@ def _state_from_cluster_state(state: str) -> State:
     return State.UNKNOWN
 
 
+def _is_explicit_false(value: object) -> bool:
+    """Return whether a structured collector success value explicitly means false."""
+
+    return value is False or (isinstance(value, str) and value.strip().lower() == "false")
+
+
 def _discover_items(section: Section):
     for item in section:
         yield Service(item=item)
@@ -271,6 +277,14 @@ def check_s2d_hci_quorum(section: Section):
         yield Result(state=State.UNKNOWN, summary="No quorum data found")
         return
     entry = next(iter(section.values()))
+    if _is_explicit_false(entry.details.get("success")):
+        error = str(entry.details.get("error") or "unknown collector error")
+        yield Result(
+            state=State.UNKNOWN,
+            summary=f"Quorum collection failed: {error}",
+            details=str(entry.details),
+        )
+        return
     resource_state = str(entry.details.get("quorum_resource_state") or "")
     state = State.OK if resource_state.lower() in {"online", "", "none"} else State.CRIT
     yield Result(state=state, summary=f"Quorum type: {entry.name}, resource state: {resource_state or 'n/a'}", details=str(entry.details))
