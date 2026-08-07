@@ -5,12 +5,14 @@
 
 .DESCRIPTION
     Emits CSV, pool, virtual disk, volume, and physical disk sections. Intended cache age: 300 seconds.
-    This collector is read-only.
+    This collector is read-only. Required-module startup failures are emitted through the same
+    structured per-section failure protocol as command failures.
 #>
 
 $ErrorActionPreference = 'Stop'
 
 function Write-JsonLine {
+    <# Serialize one non-null object as a compact JSON line. #>
     param([Parameter(ValueFromPipeline)] [object] $InputObject)
     process {
         if ($null -ne $InputObject) {
@@ -20,14 +22,42 @@ function Write-JsonLine {
 }
 
 function Invoke-Section {
+    <# Emit a Checkmk section and convert terminating command failures into structured telemetry. #>
     param([string] $Name, [scriptblock] $ScriptBlock)
     Write-Output "<<<$Name>>>"
     try { & $ScriptBlock }
     catch { [pscustomobject]@{ section = $Name; success = $false; error = $_.Exception.Message } | Write-JsonLine }
 }
 
-Import-Module FailoverClusters -ErrorAction Stop
-Import-Module Storage -ErrorAction Stop
+function Import-CollectorModules {
+    <# Import required modules or emit a failure row for every affected section and stop cleanly. #>
+    param(
+        [Parameter(Mandatory)] [string[]] $ModuleName,
+        [Parameter(Mandatory)] [string[]] $SectionName
+    )
+
+    try {
+        foreach ($module in $ModuleName) {
+            Import-Module $module -ErrorAction Stop
+        }
+    }
+    catch {
+        $message = "Required module import failed: $($_.Exception.Message)"
+        foreach ($section in $SectionName) {
+            Write-Output "<<<$section>>>"
+            [pscustomobject]@{ section = $section; success = $false; error = $message } | Write-JsonLine
+        }
+        exit 0
+    }
+}
+
+Import-CollectorModules -ModuleName @('FailoverClusters', 'Storage') -SectionName @(
+    's2d_hci_csv',
+    's2d_hci_storage_pools',
+    's2d_hci_virtual_disks',
+    's2d_hci_volumes',
+    's2d_hci_physical_disks'
+)
 
 Invoke-Section -Name 's2d_hci_csv' -ScriptBlock {
     Get-ClusterSharedVolume | Sort-Object Name | ForEach-Object {
