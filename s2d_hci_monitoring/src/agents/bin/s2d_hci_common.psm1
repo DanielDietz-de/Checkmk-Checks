@@ -267,7 +267,7 @@ function Write-S2DHciSection {
         }
     }
     catch {
-        Add-S2DHciCollectorError -Context $Context -Message "$Name: $($_.Exception.Message)"
+        Add-S2DHciCollectorError -Context $Context -Message "${Name}: $($_.Exception.Message)"
         try {
             Write-S2DHciJsonLine -InputObject ([pscustomobject]@{
                 section = $Name
