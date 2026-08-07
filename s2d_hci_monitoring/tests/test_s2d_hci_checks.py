@@ -4,7 +4,32 @@ from __future__ import annotations
 
 import json
 
-from cmk.agent_based.v2 import Metric, State
+import cmk.agent_based.v2 as cmk_v2
+from cmk.agent_based.v2 import Metric, Result, State
+
+
+def _compat_check_levels(value, levels_upper=None, levels_lower=None, metric_name=None, label=None, boundaries=None, render_func=None):
+    """Provide the fixed-level helper when another package installed a smaller Checkmk test stub."""
+
+    del boundaries, render_func
+    if metric_name:
+        yield Metric(metric_name, value)
+    if levels_upper and levels_upper[0] == "fixed":
+        warn, crit = levels_upper[1]
+        state = State.CRIT if value >= crit else State.WARN if value >= warn else State.OK
+        yield Result(state, f"{label}: {value}")
+    elif levels_lower and levels_lower[0] == "fixed":
+        warn, crit = levels_lower[1]
+        state = State.CRIT if value <= crit else State.WARN if value <= warn else State.OK
+        yield Result(state, f"{label}: {value}")
+
+
+# Full-repository collection loads many package-local conftest stubs into the
+# same interpreter. Guarantee the one API helper needed by the S2D modules is
+# present immediately before importing those production modules.
+if not hasattr(cmk_v2, "check_levels"):
+    cmk_v2.check_levels = _compat_check_levels
+
 from s2d_hci.agent_based import s2d_hci_fast as fast
 from s2d_hci.agent_based import s2d_hci_jobs as jobs
 from s2d_hci.agent_based import s2d_hci_storage as storage
