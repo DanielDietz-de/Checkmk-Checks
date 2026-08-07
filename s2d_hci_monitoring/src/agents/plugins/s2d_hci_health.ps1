@@ -5,12 +5,14 @@
 
 .DESCRIPTION
     Emits S2D and storage health report data. Intended cache age: 600 seconds.
-    This collector is read-only.
+    This collector is read-only. Required-module startup failures are emitted through the same
+    structured per-section failure protocol as command failures.
 #>
 
 $ErrorActionPreference = 'Stop'
 
 function Write-JsonLine {
+    <# Serialize one non-null object as a compact JSON line. #>
     param([Parameter(ValueFromPipeline)] [object] $InputObject)
     process {
         if ($null -ne $InputObject) {
@@ -20,14 +22,37 @@ function Write-JsonLine {
 }
 
 function Invoke-Section {
+    <# Emit a Checkmk section and convert terminating command failures into structured telemetry. #>
     param([string] $Name, [scriptblock] $ScriptBlock)
     Write-Output "<<<$Name>>>"
     try { & $ScriptBlock }
     catch { [pscustomobject]@{ section = $Name; success = $false; error = $_.Exception.Message } | Write-JsonLine }
 }
 
+function Import-CollectorModules {
+    <# Import required modules or emit a failure row for every affected section and stop cleanly. #>
+    param(
+        [Parameter(Mandatory)] [string[]] $ModuleName,
+        [Parameter(Mandatory)] [string[]] $SectionName
+    )
+
+    try {
+        foreach ($module in $ModuleName) {
+            Import-Module $module -ErrorAction Stop
+        }
+    }
+    catch {
+        $message = "Required module import failed: $($_.Exception.Message)"
+        foreach ($section in $SectionName) {
+            Write-Output "<<<$section>>>"
+            [pscustomobject]@{ section = $section; success = $false; error = $message } | Write-JsonLine
+        }
+        exit 0
+    }
+}
 
 function Get-PropertyValue {
+    <# Return the first non-null property value from the supplied candidate names. #>
     param(
         [Parameter(Mandatory)] [object] $InputObject,
         [Parameter(Mandatory)] [string[]] $Names
@@ -43,6 +68,7 @@ function Get-PropertyValue {
 }
 
 function ConvertTo-S2DStateRecord {
+    <# Normalize native S2D cmdlet output into the stable JSON schema consumed by Checkmk. #>
     param(
         [Parameter(Mandatory)] [object] $InputObject,
         [Parameter(Mandatory)] [string] $SourceCommand
@@ -68,12 +94,16 @@ function ConvertTo-S2DStateRecord {
 }
 
 function Test-CommandAvailable {
+    <# Return whether a PowerShell command is available in the current session. #>
     param([Parameter(Mandatory)] [string] $Name)
     $null -ne (Get-Command -Name $Name -ErrorAction SilentlyContinue)
 }
 
-Import-Module FailoverClusters -ErrorAction Stop
-Import-Module Storage -ErrorAction Stop
+Import-CollectorModules -ModuleName @('FailoverClusters', 'Storage') -SectionName @(
+    's2d_hci_s2d_state',
+    's2d_hci_storage_subsystems',
+    's2d_hci_storage_health_report'
+)
 
 Invoke-Section -Name 's2d_hci_s2d_state' -ScriptBlock {
     if (Test-CommandAvailable -Name 'Get-ClusterStorageSpacesDirect') {
