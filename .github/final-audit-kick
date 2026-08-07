@@ -1,1 +1,2 @@
 trigger final repository audit publication
+retry after transport canonicalization fix
