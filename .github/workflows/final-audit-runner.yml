@@ -62,7 +62,7 @@ jobs:
           source = runner.read_text(encoding="utf-8")
           replacements = {
               'EXPECTED_PREVIOUS_MASTER = "0c4189e1cf2af6e1765454768ca888b5e45ff762"':
-                  'EXPECTED_PREVIOUS_MASTER = "6e9b0f8d64e0bbb0f0e4e321cf3a0f4e3075b6f5"',
+                  'EXPECTED_PREVIOUS_MASTER = "f35423a8d032ed1bba4bfb7ab94bc55b866584fe"',
               'EXPECTED_MASTER_PATHS = (".github/scripts/final_audit_runner.py",)':
                   'EXPECTED_MASTER_PATHS = (".github/workflows/final-audit-runner.yml",)',
               'EXPECTED_GZIP_SHA256 = "a474d18b5cf6084fe4dbb8b1bfe90472ca6cba2dc0a9d717734c3629b37717cc"':
@@ -94,7 +94,7 @@ jobs:
           ADDITIONS_XZ_SHA256 = "9c2f00b5c45dfe747a7873da56709f2cb7c0c7724b86c7e77db4a5e6c49e65cb"
 
           def decode_transport(encoded: bytes, label: str) -> bytes:
-              """Decode base64 transport while authenticating decoded content separately."""
+              """Decode a transport string whose content is authenticated separately."""
               try:
                   return base64.b64decode(encoded, validate=False)
               except (binascii.Error, ValueError) as exc:
@@ -110,6 +110,44 @@ jobs:
                   return digest(gzip.decompress(compressed))
               except (gzip.BadGzipFile, EOFError, OSError):
                   return None
+
+          def strict_base64(encoded: bytes) -> bytes | None:
+              """Strictly decode canonical base64 or return ``None`` when framing is invalid."""
+              try:
+                  return base64.b64decode(encoded, validate=True)
+              except (binascii.Error, ValueError):
+                  return None
+
+          def recover_additions(encoded: bytes) -> bytes:
+              """Recover one transport insertion only when the pinned XZ digest proves it."""
+              canonical = b"".join(encoded.split())
+              direct = strict_base64(canonical)
+              if direct is not None and digest(direct) == ADDITIONS_XZ_SHA256:
+                  return direct
+
+              if len(canonical) % 4 != 1:
+                  raise SystemExit(
+                      "additions transport does not match the pinned XZ digest and has "
+                      f"unexpected base64 length {len(canonical)} (mod4={len(canonical) % 4})"
+                  )
+
+              matches: list[tuple[int, bytes]] = []
+              for index in range(len(canonical)):
+                  candidate = canonical[:index] + canonical[index + 1 :]
+                  decoded = strict_base64(candidate)
+                  if decoded is not None and digest(decoded) == ADDITIONS_XZ_SHA256:
+                      matches.append((index, decoded))
+                      if len(matches) > 1:
+                          break
+
+              if len(matches) != 1:
+                  raise SystemExit(
+                      "additions transport cannot be uniquely recovered by one-character "
+                      f"deletion: length={len(canonical)} matches={len(matches)}"
+                  )
+              index, decoded = matches[0]
+              print(f"Recovered authenticated additions transport by removing byte at index {index}")
+              return decoded
 
           patch_dir = Path("work/.github/final-audit-patch")
           chunks = sorted(patch_dir.glob("chunk*.b64"))
@@ -155,13 +193,9 @@ jobs:
               chunk.write_bytes(b"")
 
           additions = Path("work/.github/final-audit-additions/additions.b64")
-          additions_archive = decode_transport(additions.read_bytes(), "additions xz")
-          actual_additions = digest(additions_archive)
-          if actual_additions != ADDITIONS_XZ_SHA256:
-              raise SystemExit(
-                  "additions xz digest mismatch: "
-                  f"actual={actual_additions} expected={ADDITIONS_XZ_SHA256}"
-              )
+          additions_archive = recover_additions(additions.read_bytes())
+          if digest(additions_archive) != ADDITIONS_XZ_SHA256:
+              raise SystemExit("recovered additions archive failed pinned XZ digest verification")
           additions.write_bytes(base64.b64encode(additions_archive) + b"\n")
           PY
 
