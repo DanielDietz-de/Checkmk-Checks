@@ -62,13 +62,13 @@ jobs:
           source = runner.read_text(encoding="utf-8")
           replacements = {
               'EXPECTED_PREVIOUS_MASTER = "0c4189e1cf2af6e1765454768ca888b5e45ff762"':
-                  'EXPECTED_PREVIOUS_MASTER = "10aa7a9fb818b2dd29837e4c33a08a8e41150852"',
+                  'EXPECTED_PREVIOUS_MASTER = "9d916871e2b7e2c91cfa800ad9b44051603aaa0f"',
               'EXPECTED_MASTER_PATHS = (".github/scripts/final_audit_runner.py",)':
                   'EXPECTED_MASTER_PATHS = (".github/workflows/final-audit-runner.yml",)',
           }
           for old, new in replacements.items():
-              if old not in source:
-                  raise SystemExit(f"trusted runner binding not found: {old}")
+              if source.count(old) != 1:
+                  raise SystemExit(f"trusted runner binding not found exactly once: {old}")
               source = source.replace(old, new, 1)
           runner.write_text(source, encoding="utf-8")
           PY
@@ -84,39 +84,61 @@ jobs:
           import hashlib
           from pathlib import Path
 
-          def decode_and_verify(encoded: bytes, expected: str, label: str) -> bytes:
-              """Decode transport-tolerant base64 and require the pinned binary digest."""
+          PATCH_GZIP_SHA256 = "a474d18b5cf6084fe4dbb8b1bfe90472ca6cba2dc0a9d717734c3629b37717cc"
+          ADDITIONS_XZ_SHA256 = "9c2f00b5c45dfe747a7873da56709f2cb7c0c7724b86c7e77db4a5e6c49e65cb"
+
+          def decode_transport(encoded: bytes, label: str) -> bytes:
+              """Decode base64 transport while deferring trust to a pinned binary digest."""
               try:
-                  decoded = base64.b64decode(encoded, validate=False)
+                  return base64.b64decode(encoded, validate=False)
               except (binascii.Error, ValueError) as exc:
                   raise SystemExit(f"{label} transport cannot be decoded: {exc}") from exc
-              actual = hashlib.sha256(decoded).hexdigest()
-              if actual != expected:
-                  raise SystemExit(
-                      f"{label} digest mismatch: actual={actual} expected={expected}"
-                  )
-              return decoded
+
+          def digest(data: bytes) -> str:
+              """Return the SHA-256 digest used to authenticate decoded transport bytes."""
+              return hashlib.sha256(data).hexdigest()
 
           patch_dir = Path("work/.github/final-audit-patch")
           chunks = sorted(patch_dir.glob("chunk*.b64"))
           if len(chunks) != 9:
               raise SystemExit(f"expected 9 patch chunks, found {len(chunks)}")
-          encoded_patch = b"".join(chunk.read_bytes() for chunk in chunks)
-          compressed_patch = decode_and_verify(
-              encoded_patch,
-              "a474d18b5cf6084fe4dbb8b1bfe90472ca6cba2dc0a9d717734c3629b37717cc",
-              "audit patch gzip",
+
+          single_stream = decode_transport(
+              b"".join(chunk.read_bytes() for chunk in chunks),
+              "audit patch single stream",
           )
+          fragmented_stream = b"".join(
+              decode_transport(chunk.read_bytes(), f"audit patch {chunk.name}")
+              for chunk in chunks
+          )
+          candidates = {
+              "single-stream": single_stream,
+              "per-fragment": fragmented_stream,
+          }
+          compressed_patch = next(
+              (data for data in candidates.values() if digest(data) == PATCH_GZIP_SHA256),
+              None,
+          )
+          if compressed_patch is None:
+              observed = ", ".join(
+                  f"{name}={digest(data)}" for name, data in candidates.items()
+              )
+              raise SystemExit(
+                  f"audit patch gzip digest mismatch: {observed}; expected={PATCH_GZIP_SHA256}"
+              )
+
           chunks[0].write_bytes(base64.b64encode(compressed_patch) + b"\n")
           for chunk in chunks[1:]:
               chunk.write_bytes(b"")
 
           additions = Path("work/.github/final-audit-additions/additions.b64")
-          additions_archive = decode_and_verify(
-              additions.read_bytes(),
-              "9c2f00b5c45dfe747a7873da56709f2cb7c0c7724b86c7e77db4a5e6c49e65cb",
-              "additions xz",
-          )
+          additions_archive = decode_transport(additions.read_bytes(), "additions xz")
+          actual_additions = digest(additions_archive)
+          if actual_additions != ADDITIONS_XZ_SHA256:
+              raise SystemExit(
+                  "additions xz digest mismatch: "
+                  f"actual={actual_additions} expected={ADDITIONS_XZ_SHA256}"
+              )
           additions.write_bytes(base64.b64encode(additions_archive) + b"\n")
           PY
 
