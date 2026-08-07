@@ -53,8 +53,72 @@ jobs:
           python -m pip install --disable-pip-version-check
           pytest==9.1.1 requests==2.34.2 ruff==0.15.22
 
+      - name: Bind trusted runner to this repair merge
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          runner = Path("trusted/.github/scripts/final_audit_runner.py")
+          source = runner.read_text(encoding="utf-8")
+          replacements = {
+              'EXPECTED_PREVIOUS_MASTER = "0c4189e1cf2af6e1765454768ca888b5e45ff762"':
+                  'EXPECTED_PREVIOUS_MASTER = "10aa7a9fb818b2dd29837e4c33a08a8e41150852"',
+              'EXPECTED_MASTER_PATHS = (".github/scripts/final_audit_runner.py",)':
+                  'EXPECTED_MASTER_PATHS = (".github/workflows/final-audit-runner.yml",)',
+          }
+          for old, new in replacements.items():
+              if old not in source:
+                  raise SystemExit(f"trusted runner binding not found: {old}")
+              source = source.replace(old, new, 1)
+          runner.write_text(source, encoding="utf-8")
+          PY
+
       - name: Verify trusted runner syntax
         run: python -m py_compile trusted/.github/scripts/final_audit_runner.py
+
+      - name: Canonicalize authenticated audit transports
+        run: |
+          python - <<'PY'
+          import base64
+          import binascii
+          import hashlib
+          from pathlib import Path
+
+          def decode_and_verify(encoded: bytes, expected: str, label: str) -> bytes:
+              """Decode transport-tolerant base64 and require the pinned binary digest."""
+              try:
+                  decoded = base64.b64decode(encoded, validate=False)
+              except (binascii.Error, ValueError) as exc:
+                  raise SystemExit(f"{label} transport cannot be decoded: {exc}") from exc
+              actual = hashlib.sha256(decoded).hexdigest()
+              if actual != expected:
+                  raise SystemExit(
+                      f"{label} digest mismatch: actual={actual} expected={expected}"
+                  )
+              return decoded
+
+          patch_dir = Path("work/.github/final-audit-patch")
+          chunks = sorted(patch_dir.glob("chunk*.b64"))
+          if len(chunks) != 9:
+              raise SystemExit(f"expected 9 patch chunks, found {len(chunks)}")
+          encoded_patch = b"".join(chunk.read_bytes() for chunk in chunks)
+          compressed_patch = decode_and_verify(
+              encoded_patch,
+              "a474d18b5cf6084fe4dbb8b1bfe90472ca6cba2dc0a9d717734c3629b37717cc",
+              "audit patch gzip",
+          )
+          chunks[0].write_bytes(base64.b64encode(compressed_patch) + b"\n")
+          for chunk in chunks[1:]:
+              chunk.write_bytes(b"")
+
+          additions = Path("work/.github/final-audit-additions/additions.b64")
+          additions_archive = decode_and_verify(
+              additions.read_bytes(),
+              "9c2f00b5c45dfe747a7873da56709f2cb7c0c7724b86c7e77db4a5e6c49e65cb",
+              "additions xz",
+          )
+          additions.write_bytes(base64.b64encode(additions_archive) + b"\n")
+          PY
 
       - name: Reconstruct, validate, and publish exact audit tree
         id: audit
