@@ -2,16 +2,17 @@
 """Publish the checksum-pinned final repository audit tree.
 
 This temporary bootstrap runs only from the trusted default branch. It treats
-PR #38's staging branch as untrusted transport: every accepted path, archive,
-patch, byte count, and resulting repository file is verified before code from
-the reconstructed tree is executed. Publication uses force-with-lease against
-the exact reviewed staging SHA.
+PR #38's staging branch as untrusted transport: every accepted path, decoded
+archive, patch, byte count, and resulting repository file is verified before
+code from the reconstructed tree is executed. Publication uses
+force-with-lease against the exact reviewed staging SHA.
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import binascii
 import gzip
 import hashlib
 import io
@@ -28,18 +29,13 @@ import urllib.request
 
 REPOSITORY = "DanielDietz-de/Checkmk-Checks"
 BRANCH = "agent/final-repository-completion-audit"
-EXPECTED_PREVIOUS_MASTER = "5c241040efb86ecd84f4a9db338a4243292d2512"
-EXPECTED_MASTER_PATHS = (
-    ".github/scripts/final_audit_runner.py",
-    ".github/workflows/final-audit-runner.yml",
-)
+EXPECTED_PREVIOUS_MASTER = "0c4189e1cf2af6e1765454768ca888b5e45ff762"
+EXPECTED_MASTER_PATHS = (".github/scripts/final_audit_runner.py",)
 EXPECTED_AUDIT_BASE = "ff1129c75c59f79ebec3d1fb61506a5d76c9ca4b"
 EXPECTED_STAGING_SHA = "a63b0b2b0b495d316eb506c47cd514f627e746e2"
-EXPECTED_BASE64_SHA256 = "989206ae474beb1ef1756095a617e031d2df99394c26dfd1775c40a5c217b0e6"
 EXPECTED_GZIP_SHA256 = "a474d18b5cf6084fe4dbb8b1bfe90472ca6cba2dc0a9d717734c3629b37717cc"
 EXPECTED_PATCH_SHA256 = "0a02b2c64eaed2c00dac46db6b72c5156216afbd50b4224bee8ee7648c04f9f0"
 EXPECTED_PATCH_FILES = 204
-EXPECTED_ADDITIONS_BASE64_SHA256 = "04ed99e34b860d01c7fc86dddf5cd03437c85fe35d76cd56f948f561b9268257"
 EXPECTED_ADDITIONS_XZ_SHA256 = "9c2f00b5c45dfe747a7873da56709f2cb7c0c7724b86c7e77db4a5e6c49e65cb"
 EXPECTED_FILES = 1667
 EXPECTED_MANIFEST_SHA256 = "d84a25b3b61e63ff5ab13c86bf1d78375b7fd5ced4183282a5dbf16096800cd4"
@@ -95,6 +91,31 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def require_digest(data: bytes, expected: str, label: str) -> None:
+    """Require ``data`` to match a pinned digest and report both values."""
+
+    actual = sha256_bytes(data)
+    require(
+        actual == expected,
+        f"{label} digest mismatch: actual={actual} expected={expected}",
+    )
+
+
+def decode_base64_transport(data: bytes, label: str) -> bytes:
+    """Decode base64 after removing transport-only ASCII whitespace.
+
+    Line wrapping and trailing newlines are not security-relevant. The decoded
+    binary is authenticated independently by a pinned SHA-256 digest.
+    """
+
+    canonical = b"".join(data.split())
+    require(bool(canonical), f"{label} base64 transport is empty")
+    try:
+        return base64.b64decode(canonical, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise RuntimeError(f"{label} base64 transport is invalid: {exc}") from exc
+
+
 def verify_master_state(repository: Path) -> str:
     """Verify that the bootstrap merge is the sole change after trusted master."""
 
@@ -146,25 +167,15 @@ def verify_staging_state(repository: Path) -> None:
 
 
 def decode_audit_patch(repository: Path) -> bytes:
-    """Reassemble, authenticate, decompress, and validate the audit patch."""
+    """Reassemble, decode, authenticate, decompress, and validate the patch."""
 
     chunks = sorted((repository / ".github/final-audit-patch").glob("chunk*.b64"))
     require(len(chunks) == 9, f"expected 9 patch chunks, found {len(chunks)}")
     encoded = b"".join(path.read_bytes() for path in chunks)
-    require(
-        sha256_bytes(encoded) == EXPECTED_BASE64_SHA256,
-        "audit patch base64 digest mismatch",
-    )
-    compressed = base64.b64decode(encoded, validate=False)
-    require(
-        sha256_bytes(compressed) == EXPECTED_GZIP_SHA256,
-        "audit patch gzip digest mismatch",
-    )
+    compressed = decode_base64_transport(encoded, "audit patch")
+    require_digest(compressed, EXPECTED_GZIP_SHA256, "audit patch gzip")
     patch = gzip.decompress(compressed)
-    require(
-        sha256_bytes(patch) == EXPECTED_PATCH_SHA256,
-        "audit patch digest mismatch",
-    )
+    require_digest(patch, EXPECTED_PATCH_SHA256, "audit patch")
     validate_patch_paths(patch)
     return patch
 
@@ -192,23 +203,19 @@ def validate_patch_paths(patch: bytes) -> None:
         paths.append(raw)
     require(
         len(paths) == EXPECTED_PATCH_FILES and len(set(paths)) == EXPECTED_PATCH_FILES,
-        "unexpected or duplicate audit patch paths",
+        (
+            f"expected {EXPECTED_PATCH_FILES} unique patch paths; "
+            f"got {len(paths)} entries and {len(set(paths))} unique paths"
+        ),
     )
 
 
 def extract_additions(repository: Path, destination: Path) -> None:
-    """Authenticate and safely extract the full-tree documentation additions."""
+    """Decode, authenticate, and safely extract documentation additions."""
 
     encoded = (repository / ".github/final-audit-additions/additions.b64").read_bytes()
-    require(
-        sha256_bytes(encoded) == EXPECTED_ADDITIONS_BASE64_SHA256,
-        "additions base64 digest mismatch",
-    )
-    archive_bytes = base64.b64decode(encoded, validate=False)
-    require(
-        sha256_bytes(archive_bytes) == EXPECTED_ADDITIONS_XZ_SHA256,
-        "additions xz digest mismatch",
-    )
+    archive_bytes = decode_base64_transport(encoded, "additions archive")
+    require_digest(archive_bytes, EXPECTED_ADDITIONS_XZ_SHA256, "additions xz")
     total = 0
     with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:xz") as archive:
         members = archive.getmembers()
