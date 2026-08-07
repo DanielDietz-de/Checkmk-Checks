@@ -8,7 +8,8 @@
     It reads non-secret settings from a JSON configuration file, executes the configured
     read-only collector script, and atomically replaces the configured spool file.
 
-    Do not configure passwords in this file or in the JSON configuration file.
+    The last valid spool file is preserved whenever the collector process exits with a
+    non-zero status. Do not configure passwords in this file or in the JSON configuration.
 #>
 
 [CmdletBinding()]
@@ -21,6 +22,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Get-DefaultConfig {
+    <# Return the non-secret default collector and spool configuration. #>
     $agentRoot = Join-Path $env:ProgramData 'checkmk\agent'
     [pscustomobject]@{
         collector_path = Join-Path $agentRoot 'plugins\s2d_hci_virtualization.ps1'
@@ -30,6 +32,7 @@ function Get-DefaultConfig {
 }
 
 function Read-CollectorConfig {
+    <# Load supported settings from JSON while retaining safe defaults. #>
     param([Parameter(Mandatory)] [string]$Path)
 
     $config = Get-DefaultConfig
@@ -45,6 +48,7 @@ function Read-CollectorConfig {
 }
 
 function Test-PathUnderRoot {
+    <# Return whether a normalized path remains below the required root. #>
     param(
         [Parameter(Mandatory)] [string]$Path,
         [Parameter(Mandatory)] [string]$Root
@@ -78,6 +82,15 @@ if (-not (Test-Path -LiteralPath $spoolRoot -PathType Container)) {
 }
 
 $output = & powershell.exe -NoProfile -NonInteractive -File $collectorPath 2>&1
+$collectorExitCode = $LASTEXITCODE
+if ($collectorExitCode -ne 0) {
+    $diagnostics = ([string[]]$output -join [System.Environment]::NewLine).Trim()
+    if ($diagnostics.Length -gt 4096) {
+        $diagnostics = $diagnostics.Substring(0, 4096) + ' [truncated]'
+    }
+    throw "Collector process exited with code $collectorExitCode; the last valid spool file was preserved. Diagnostics: $diagnostics"
+}
+
 $spoolDirectory = Split-Path -Parent $spoolFile
 $tempFile = Join-Path $spoolDirectory ('.' + [System.IO.Path]::GetFileName($spoolFile) + ".$PID.tmp")
 
