@@ -2,7 +2,7 @@
 
 ## Repository gates
 
-The package is expected to pass the repository security/supply-chain guard and MKP validation workflows. Those gates cover source normalization, documentation synchronization, Python syntax, package tests, deterministic MKP creation, checksums/evidence, and clean Checkmk plug-in registration/runtime validation.
+The package must pass the repository security/supply-chain guard and MKP validation workflows. Those gates cover source normalization, documentation synchronization, Python syntax, package tests, deterministic MKP creation, checksums/evidence, and clean Checkmk plug-in registration/runtime validation.
 
 Package tests specifically enforce:
 
@@ -19,9 +19,9 @@ Package tests specifically enforce:
 - Bakery deployment/timeout/config contracts;
 - function/class documentation coverage.
 
-## Windows static validation
+## Windows PowerShell validation
 
-Where Windows runners are available, validate Windows PowerShell 5.1 parsing and PSScriptAnalyzer against the PowerShell source. Static contract tests remain in the package so critical safety properties are still reviewed when a Windows runner is temporarily unavailable.
+The dedicated **S2D HCI Windows validation** workflow is a required merge gate for this package. It runs on `windows-2025`, parses every package `.ps1` and `.psm1` file using Windows PowerShell 5.1, and runs PSScriptAnalyzer 1.25.0. Any parser error or error-severity PSScriptAnalyzer finding fails the PR. Package static contract tests supplement this Windows gate; they do not replace it.
 
 ## Environmental acceptance
 
