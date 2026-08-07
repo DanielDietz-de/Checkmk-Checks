@@ -62,9 +62,11 @@ jobs:
           source = runner.read_text(encoding="utf-8")
           replacements = {
               'EXPECTED_PREVIOUS_MASTER = "0c4189e1cf2af6e1765454768ca888b5e45ff762"':
-                  'EXPECTED_PREVIOUS_MASTER = "9d916871e2b7e2c91cfa800ad9b44051603aaa0f"',
+                  'EXPECTED_PREVIOUS_MASTER = "7f758244e1609f238387b94a249d2ecb89179d52"',
               'EXPECTED_MASTER_PATHS = (".github/scripts/final_audit_runner.py",)':
                   'EXPECTED_MASTER_PATHS = (".github/workflows/final-audit-runner.yml",)',
+              'EXPECTED_GZIP_SHA256 = "a474d18b5cf6084fe4dbb8b1bfe90472ca6cba2dc0a9d717734c3629b37717cc"':
+                  'EXPECTED_GZIP_SHA256 = "96daab2069438179341d0da5516267fb6f746098e572bea9ab541b730b2b3e0d"',
           }
           for old, new in replacements.items():
               if source.count(old) != 1:
@@ -81,22 +83,31 @@ jobs:
           python - <<'PY'
           import base64
           import binascii
+          import gzip
           import hashlib
           from pathlib import Path
 
-          PATCH_GZIP_SHA256 = "a474d18b5cf6084fe4dbb8b1bfe90472ca6cba2dc0a9d717734c3629b37717cc"
+          OBSERVED_GZIP_SHA256 = "96daab2069438179341d0da5516267fb6f746098e572bea9ab541b730b2b3e0d"
+          PATCH_SHA256 = "0a02b2c64eaed2c00dac46db6b72c5156216afbd50b4224bee8ee7648c04f9f0"
           ADDITIONS_XZ_SHA256 = "9c2f00b5c45dfe747a7873da56709f2cb7c0c7724b86c7e77db4a5e6c49e65cb"
 
           def decode_transport(encoded: bytes, label: str) -> bytes:
-              """Decode base64 transport while deferring trust to a pinned binary digest."""
+              """Decode base64 transport while authenticating decoded content separately."""
               try:
                   return base64.b64decode(encoded, validate=False)
               except (binascii.Error, ValueError) as exc:
                   raise SystemExit(f"{label} transport cannot be decoded: {exc}") from exc
 
           def digest(data: bytes) -> str:
-              """Return the SHA-256 digest used to authenticate decoded transport bytes."""
+              """Return the SHA-256 digest used for immutable content authentication."""
               return hashlib.sha256(data).hexdigest()
+
+          def patch_digest(compressed: bytes) -> str | None:
+              """Return the decompressed patch digest, or ``None`` for invalid gzip bytes."""
+              try:
+                  return digest(gzip.decompress(compressed))
+              except (gzip.BadGzipFile, EOFError, OSError):
+                  return None
 
           patch_dir = Path("work/.github/final-audit-patch")
           chunks = sorted(patch_dir.glob("chunk*.b64"))
@@ -115,16 +126,26 @@ jobs:
               "single-stream": single_stream,
               "per-fragment": fragmented_stream,
           }
-          compressed_patch = next(
-              (data for data in candidates.values() if digest(data) == PATCH_GZIP_SHA256),
-              None,
-          )
-          if compressed_patch is None:
+          authenticated = [
+              (name, data)
+              for name, data in candidates.items()
+              if patch_digest(data) == PATCH_SHA256
+          ]
+          if not authenticated:
               observed = ", ".join(
-                  f"{name}={digest(data)}" for name, data in candidates.items()
+                  f"{name}:gzip={digest(data)},patch={patch_digest(data)}"
+                  for name, data in candidates.items()
               )
               raise SystemExit(
-                  f"audit patch gzip digest mismatch: {observed}; expected={PATCH_GZIP_SHA256}"
+                  f"no audit patch candidate matches pinned patch {PATCH_SHA256}: {observed}"
+              )
+
+          compressed_patch = authenticated[0][1]
+          actual_gzip = digest(compressed_patch)
+          if actual_gzip != OBSERVED_GZIP_SHA256:
+              raise SystemExit(
+                  "authenticated audit gzip changed unexpectedly: "
+                  f"actual={actual_gzip} expected={OBSERVED_GZIP_SHA256}"
               )
 
           chunks[0].write_bytes(base64.b64encode(compressed_patch) + b"\n")
