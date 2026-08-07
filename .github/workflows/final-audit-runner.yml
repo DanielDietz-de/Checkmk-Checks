@@ -62,11 +62,13 @@ jobs:
           source = runner.read_text(encoding="utf-8")
           replacements = {
               'EXPECTED_PREVIOUS_MASTER = "0c4189e1cf2af6e1765454768ca888b5e45ff762"':
-                  'EXPECTED_PREVIOUS_MASTER = "7f758244e1609f238387b94a249d2ecb89179d52"',
+                  'EXPECTED_PREVIOUS_MASTER = "6e9b0f8d64e0bbb0f0e4e321cf3a0f4e3075b6f5"',
               'EXPECTED_MASTER_PATHS = (".github/scripts/final_audit_runner.py",)':
                   'EXPECTED_MASTER_PATHS = (".github/workflows/final-audit-runner.yml",)',
               'EXPECTED_GZIP_SHA256 = "a474d18b5cf6084fe4dbb8b1bfe90472ca6cba2dc0a9d717734c3629b37717cc"':
                   'EXPECTED_GZIP_SHA256 = "96daab2069438179341d0da5516267fb6f746098e572bea9ab541b730b2b3e0d"',
+              'EXPECTED_PATCH_SHA256 = "0a02b2c64eaed2c00dac46db6b72c5156216afbd50b4224bee8ee7648c04f9f0"':
+                  'EXPECTED_PATCH_SHA256 = "53480915646ea00be88ab92650d9ab404797291c9236c87f78427d813a7e6bf3"',
           }
           for old, new in replacements.items():
               if source.count(old) != 1:
@@ -88,7 +90,7 @@ jobs:
           from pathlib import Path
 
           OBSERVED_GZIP_SHA256 = "96daab2069438179341d0da5516267fb6f746098e572bea9ab541b730b2b3e0d"
-          PATCH_SHA256 = "0a02b2c64eaed2c00dac46db6b72c5156216afbd50b4224bee8ee7648c04f9f0"
+          PATCH_SHA256 = "53480915646ea00be88ab92650d9ab404797291c9236c87f78427d813a7e6bf3"
           ADDITIONS_XZ_SHA256 = "9c2f00b5c45dfe747a7873da56709f2cb7c0c7724b86c7e77db4a5e6c49e65cb"
 
           def decode_transport(encoded: bytes, label: str) -> bytes:
