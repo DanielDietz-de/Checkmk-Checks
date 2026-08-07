@@ -1,5 +1,6 @@
 {'author': 'Daniel Dietz',
- 'description': 'Production-hardened S2D/HCI monitoring with bounded collectors, stable piggyback identities, explicit collector health, and Agent Bakery deployment.',
+ 'description': 'Production-hardened S2D/HCI monitoring with bounded collectors, stable piggyback identities, explicit '
+                'collector health, and Agent Bakery deployment.',
  'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/s2d_hci_monitoring',
  'files': {'agents': ['bin/s2d_hci_common.psm1',
                       'plugins/s2d_hci_fast.ps1',
