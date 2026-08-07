@@ -2,3 +2,4 @@ trigger final repository audit publication
 retry after transport canonicalization fix
 retry after exact patch-content authentication
 retry after authenticated additions recovery
+retry after truncated XZ prefix recovery
