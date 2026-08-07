@@ -1,94 +1,85 @@
 #!/usr/bin/env python3
-"""Parse and evaluate fast-changing Windows S2D/HCI cluster state.
+"""Monitor fast-changing Failover Cluster state emitted by the elected collector."""
 
-The module consumes JSON-lines sections emitted by the read-only Windows
-collector and registers Check API V2 services for cluster, quorum, node,
-network, group, and resource state. Malformed rows are ignored so one damaged
-record does not suppress otherwise valid cluster telemetry.
-"""
+from __future__ import annotations
 
-import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 
 from cmk.agent_based.v2 import AgentSection, CheckPlugin, Result, Service, State
 
-
-@dataclass(frozen=True)
-class ClusterObject:
-    """Normalized cluster object retained with its original detail mapping."""
-
-    name: str
-    state: str
-    details: Mapping[str, object]
-
-
-Section = Mapping[str, ClusterObject]
+from .s2d_hci_protocol import (
+    DEFAULT_STATE_POLICY,
+    ProtocolObject,
+    Section,
+    collector_error,
+    discover_items,
+    parse_protocol_objects,
+    state_from_text,
+)
 
 
-def _parse_json_objects(string_table: Sequence[Sequence[str]], name_key: str = "name") -> Section:
-    """Return valid JSON rows indexed by a stable object name."""
-
-    parsed: dict[str, ClusterObject] = {}
-    for row in string_table:
-        if not row:
-            continue
-        try:
-            data = json.loads(" ".join(row))
-        except json.JSONDecodeError:
-            continue
-        name = str(
-            data.get(name_key)
-            or data.get("friendly_name")
-            or data.get("quorum_type")
-            or data.get("adapter")
-            or data.get("resource_type")
-            or data.get("section")
-            or "cluster"
-        )
-        state = str(data.get("state") or data.get("quorum_resource_state") or data.get("success") or "unknown")
-        parsed[name] = ClusterObject(name=name, state=state, details=data)
-    return parsed
+STATE_DEFAULTS = dict(DEFAULT_STATE_POLICY)
 
 
-def _state_from_cluster_state(state: str) -> State:
-    """Map Microsoft cluster state text to a conservative Checkmk state."""
+def _parse_fast(
+    string_table: Sequence[Sequence[str]],
+    *,
+    identity_fields: Sequence[str],
+    display_fields: Sequence[str],
+    state_fields: Sequence[str] = ("state", "quorum_resource_state"),
+    fallback_name: str,
+) -> Section:
+    """Parse one fast collector section using the shared versioned protocol."""
 
-    normalized = state.lower()
-    if normalized in {"up", "online", "ok", "true", "succeeded"}:
-        return State.OK
-    if normalized in {"paused", "draining", "warning", "degraded"}:
-        return State.WARN
-    if normalized in {"down", "offline", "failed", "false"}:
-        return State.CRIT
-    return State.UNKNOWN
-
-
-def _is_explicit_false(value: object) -> bool:
-    """Return whether a structured collector success value explicitly means false."""
-
-    return value is False or (isinstance(value, str) and value.strip().lower() == "false")
-
-
-def _discover_items(section: Section):
-    for item in section:
-        yield Service(item=item)
+    return parse_protocol_objects(
+        string_table,
+        identity_fields=identity_fields,
+        display_fields=display_fields,
+        state_fields=state_fields,
+        fallback_name=fallback_name,
+    )
 
 
-def _check_cluster_object(item: str, section: Section, label: str):
-    if item not in section:
-        yield Result(state=State.UNKNOWN, summary=f"{label} {item!r} not found")
-        return
-    entry = section[item]
-    yield Result(
-        state=_state_from_cluster_state(entry.state),
-        summary=f"State: {entry.state}",
+def _discover_summary(section: Section):
+    """Discover a single summary or parser-error service for each record."""
+
+    yield from discover_items(section)
+
+
+def _check_entry(
+    item: str,
+    params: Mapping[str, object],
+    section: Section,
+    *,
+    label: str,
+    state_value: object | None = None,
+) -> tuple[ProtocolObject | None, Result]:
+    """Validate one normalized object and return its baseline Checkmk result."""
+
+    entry = section.get(item)
+    if entry is None:
+        return None, Result(state=State.UNKNOWN, summary=f"{label} {item!r} not found")
+    error = collector_error(entry)
+    if error:
+        return entry, Result(state=State.UNKNOWN, summary=f"{label} collection failed: {error}", details=str(entry.details))
+    effective_state = entry.state if state_value is None else state_value
+    return entry, Result(
+        state=state_from_text(effective_state, params),
+        summary=f"{label}: {entry.name}, state: {effective_state}",
         details=str(entry.details),
     )
 
 
 def parse_s2d_hci_cluster_summary(string_table: Sequence[Sequence[str]]) -> Section:
-    return _parse_json_objects(string_table)
+    """Parse cluster summary records keyed by cluster name."""
+
+    return _parse_fast(
+        string_table,
+        identity_fields=("identity", "name"),
+        display_fields=("name",),
+        state_fields=("state", "success"),
+        fallback_name="Cluster",
+    )
 
 
 agent_section_s2d_hci_cluster_summary = AgentSection(
@@ -98,21 +89,24 @@ agent_section_s2d_hci_cluster_summary = AgentSection(
 
 
 def discover_s2d_hci_cluster_summary(section: Section):
-    for item in section:
-        yield Service(item=item)
+    """Discover cluster summary services and any synthetic parser errors."""
+
+    yield from _discover_summary(section)
 
 
-def check_s2d_hci_cluster_summary(item: str, section: Section):
-    if item not in section:
-        yield Result(state=State.UNKNOWN, summary=f"Cluster summary {item!r} not found")
+def check_s2d_hci_cluster_summary(item: str, params: Mapping[str, object], section: Section):
+    """Evaluate cluster availability while exposing collection failures as UNKNOWN."""
+
+    entry = section.get(item)
+    if entry is None:
+        yield Result(state=State.UNKNOWN, summary=f"Cluster {item!r} not found")
         return
-    entry = section[item]
-    if entry.state.lower() in {"false", "failed"}:
-        state = State.CRIT
-    else:
-        state = State.OK
+    error = collector_error(entry)
+    if error:
+        yield Result(state=State.UNKNOWN, summary=f"Cluster collection failed: {error}", details=str(entry.details))
+        return
     yield Result(
-        state=state,
+        state=State.OK,
         summary=f"Cluster: {entry.name}, owner: {entry.details.get('owner_node', 'n/a')}",
         details=str(entry.details),
     )
@@ -123,31 +117,98 @@ check_plugin_s2d_hci_cluster_summary = CheckPlugin(
     service_name="S2D/HCI cluster %s",
     discovery_function=discover_s2d_hci_cluster_summary,
     check_function=check_s2d_hci_cluster_summary,
+    check_default_parameters=STATE_DEFAULTS,
+    check_ruleset_name="s2d_hci_state_policy",
+)
+
+
+def parse_s2d_hci_quorum(string_table: Sequence[Sequence[str]]) -> Section:
+    """Parse quorum records while retaining structured command failures."""
+
+    return _parse_fast(
+        string_table,
+        identity_fields=("identity", "quorum_type", "section"),
+        display_fields=("quorum_type", "section"),
+        state_fields=("quorum_resource_state", "success"),
+        fallback_name="Quorum",
+    )
+
+
+agent_section_s2d_hci_quorum = AgentSection(name="s2d_hci_quorum", parse_function=parse_s2d_hci_quorum)
+
+
+def discover_s2d_hci_quorum(section: Section):
+    """Discover quorum services and explicit parser or collector failures."""
+
+    yield from discover_items(section)
+
+
+def check_s2d_hci_quorum(item: str, params: Mapping[str, object], section: Section):
+    """Evaluate quorum resource state and never classify structured failures as OK."""
+
+    entry = section.get(item)
+    if entry is None:
+        yield Result(state=State.UNKNOWN, summary=f"Quorum record {item!r} not found")
+        return
+    error = collector_error(entry)
+    if error:
+        yield Result(state=State.UNKNOWN, summary=f"Quorum collection failed: {error}", details=str(entry.details))
+        return
+    resource_state = str(entry.details.get("quorum_resource_state") or "none")
+    state = State.OK if resource_state.lower() in {"online", "none", ""} else state_from_text(resource_state, params)
+    yield Result(
+        state=state,
+        summary=f"Quorum type: {entry.name}, resource state: {resource_state}",
+        details=str(entry.details),
+    )
+
+
+check_plugin_s2d_hci_quorum = CheckPlugin(
+    name="s2d_hci_quorum",
+    service_name="S2D/HCI quorum %s",
+    discovery_function=discover_s2d_hci_quorum,
+    check_function=check_s2d_hci_quorum,
+    check_default_parameters=STATE_DEFAULTS,
+    check_ruleset_name="s2d_hci_state_policy",
 )
 
 
 def parse_s2d_hci_nodes(string_table: Sequence[Sequence[str]]) -> Section:
-    return _parse_json_objects(string_table)
+    """Parse cluster nodes keyed by their stable node names."""
+
+    return _parse_fast(
+        string_table,
+        identity_fields=("identity", "name"),
+        display_fields=("name",),
+        fallback_name="Cluster node",
+    )
 
 
 agent_section_s2d_hci_nodes = AgentSection(name="s2d_hci_nodes", parse_function=parse_s2d_hci_nodes)
 
 
 def discover_s2d_hci_nodes(section: Section):
-    for item in section:
-        yield Service(item=item)
+    """Discover cluster nodes and synthetic input-error services."""
+
+    yield from discover_items(section)
 
 
-def check_s2d_hci_nodes(item: str, section: Section):
-    if item not in section:
+def check_s2d_hci_nodes(item: str, params: Mapping[str, object], section: Section):
+    """Evaluate node and drain state according to the configured state policy."""
+
+    entry = section.get(item)
+    if entry is None:
         yield Result(state=State.UNKNOWN, summary=f"Node {item!r} not found")
         return
-    entry = section[item]
-    drain_status = entry.details.get("drain_status")
-    state = _state_from_cluster_state(entry.state)
-    if state is State.OK and str(drain_status).lower() not in {"notinitiated", "none", "0", ""}:
-        state = State.WARN
-    yield Result(state=state, summary=f"State: {entry.state}, drain: {drain_status}", details=str(entry.details))
+    error = collector_error(entry)
+    if error:
+        yield Result(state=State.UNKNOWN, summary=f"Node collection failed: {error}", details=str(entry.details))
+        return
+    state = state_from_text(entry.state, params)
+    drain = str(entry.details.get("drain_status") or "none")
+    if state == State.OK and drain.lower() not in {"notinitiated", "none", "0", ""}:
+        state = state_from_text("draining", params)
+    yield Result(state=state, summary=f"Node: {entry.name}, state: {entry.state}, drain: {drain}", details=str(entry.details))
 
 
 check_plugin_s2d_hci_nodes = CheckPlugin(
@@ -155,23 +216,48 @@ check_plugin_s2d_hci_nodes = CheckPlugin(
     service_name="S2D/HCI node %s",
     discovery_function=discover_s2d_hci_nodes,
     check_function=check_s2d_hci_nodes,
+    check_default_parameters=STATE_DEFAULTS,
+    check_ruleset_name="s2d_hci_state_policy",
 )
 
 
+def _parse_named_state(string_table: Sequence[Sequence[str]], fallback_name: str) -> Section:
+    """Parse a generic named cluster object using identity when the collector supplies one."""
+
+    return _parse_fast(
+        string_table,
+        identity_fields=("identity", "name", "section"),
+        display_fields=("name", "section"),
+        fallback_name=fallback_name,
+    )
+
+
+def _check_named_state(item: str, params: Mapping[str, object], section: Section, label: str):
+    """Evaluate a generic cluster object with common collection-error handling."""
+
+    _entry, result = _check_entry(item, params, section, label=label)
+    yield result
+
+
 def parse_s2d_hci_networks(string_table: Sequence[Sequence[str]]) -> Section:
-    return _parse_json_objects(string_table)
+    """Parse cluster network state."""
+
+    return _parse_named_state(string_table, "Cluster network")
 
 
 agent_section_s2d_hci_networks = AgentSection(name="s2d_hci_networks", parse_function=parse_s2d_hci_networks)
 
 
 def discover_s2d_hci_networks(section: Section):
-    for item in section:
-        yield Service(item=item)
+    """Discover cluster network services."""
+
+    yield from discover_items(section)
 
 
-def check_s2d_hci_networks(item: str, section: Section):
-    yield from _check_cluster_object(item, section, "Network")
+def check_s2d_hci_networks(item: str, params: Mapping[str, object], section: Section):
+    """Evaluate cluster network operational state."""
+
+    yield from _check_named_state(item, params, section, "Network")
 
 
 check_plugin_s2d_hci_networks = CheckPlugin(
@@ -179,11 +265,15 @@ check_plugin_s2d_hci_networks = CheckPlugin(
     service_name="S2D/HCI network %s",
     discovery_function=discover_s2d_hci_networks,
     check_function=check_s2d_hci_networks,
+    check_default_parameters=STATE_DEFAULTS,
+    check_ruleset_name="s2d_hci_state_policy",
 )
 
 
 def parse_s2d_hci_network_interfaces(string_table: Sequence[Sequence[str]]) -> Section:
-    return _parse_json_objects(string_table)
+    """Parse cluster network interfaces using the collector composite identity."""
+
+    return _parse_named_state(string_table, "Cluster network interface")
 
 
 agent_section_s2d_hci_network_interfaces = AgentSection(
@@ -193,11 +283,15 @@ agent_section_s2d_hci_network_interfaces = AgentSection(
 
 
 def discover_s2d_hci_network_interfaces(section: Section):
-    yield from _discover_items(section)
+    """Discover cluster network-interface services."""
+
+    yield from discover_items(section)
 
 
-def check_s2d_hci_network_interfaces(item: str, section: Section):
-    yield from _check_cluster_object(item, section, "Network interface")
+def check_s2d_hci_network_interfaces(item: str, params: Mapping[str, object], section: Section):
+    """Evaluate cluster network-interface state."""
+
+    yield from _check_named_state(item, params, section, "Network interface")
 
 
 check_plugin_s2d_hci_network_interfaces = CheckPlugin(
@@ -205,11 +299,15 @@ check_plugin_s2d_hci_network_interfaces = CheckPlugin(
     service_name="S2D/HCI network interface %s",
     discovery_function=discover_s2d_hci_network_interfaces,
     check_function=check_s2d_hci_network_interfaces,
+    check_default_parameters=STATE_DEFAULTS,
+    check_ruleset_name="s2d_hci_state_policy",
 )
 
 
 def parse_s2d_hci_cluster_groups(string_table: Sequence[Sequence[str]]) -> Section:
-    return _parse_json_objects(string_table)
+    """Parse clustered role/group state."""
+
+    return _parse_named_state(string_table, "Cluster group")
 
 
 agent_section_s2d_hci_cluster_groups = AgentSection(
@@ -219,11 +317,15 @@ agent_section_s2d_hci_cluster_groups = AgentSection(
 
 
 def discover_s2d_hci_cluster_groups(section: Section):
-    yield from _discover_items(section)
+    """Discover cluster group services."""
+
+    yield from discover_items(section)
 
 
-def check_s2d_hci_cluster_groups(item: str, section: Section):
-    yield from _check_cluster_object(item, section, "Cluster group")
+def check_s2d_hci_cluster_groups(item: str, params: Mapping[str, object], section: Section):
+    """Evaluate clustered role/group state."""
+
+    yield from _check_named_state(item, params, section, "Cluster group")
 
 
 check_plugin_s2d_hci_cluster_groups = CheckPlugin(
@@ -231,11 +333,15 @@ check_plugin_s2d_hci_cluster_groups = CheckPlugin(
     service_name="S2D/HCI cluster group %s",
     discovery_function=discover_s2d_hci_cluster_groups,
     check_function=check_s2d_hci_cluster_groups,
+    check_default_parameters=STATE_DEFAULTS,
+    check_ruleset_name="s2d_hci_state_policy",
 )
 
 
 def parse_s2d_hci_cluster_resources(string_table: Sequence[Sequence[str]]) -> Section:
-    return _parse_json_objects(string_table)
+    """Parse clustered resource state."""
+
+    return _parse_named_state(string_table, "Cluster resource")
 
 
 agent_section_s2d_hci_cluster_resources = AgentSection(
@@ -245,11 +351,15 @@ agent_section_s2d_hci_cluster_resources = AgentSection(
 
 
 def discover_s2d_hci_cluster_resources(section: Section):
-    yield from _discover_items(section)
+    """Discover clustered resource services."""
+
+    yield from discover_items(section)
 
 
-def check_s2d_hci_cluster_resources(item: str, section: Section):
-    yield from _check_cluster_object(item, section, "Cluster resource")
+def check_s2d_hci_cluster_resources(item: str, params: Mapping[str, object], section: Section):
+    """Evaluate clustered resource state."""
+
+    yield from _check_named_state(item, params, section, "Cluster resource")
 
 
 check_plugin_s2d_hci_cluster_resources = CheckPlugin(
@@ -257,42 +367,6 @@ check_plugin_s2d_hci_cluster_resources = CheckPlugin(
     service_name="S2D/HCI cluster resource %s",
     discovery_function=discover_s2d_hci_cluster_resources,
     check_function=check_s2d_hci_cluster_resources,
-)
-
-
-def parse_s2d_hci_quorum(string_table: Sequence[Sequence[str]]) -> Section:
-    return _parse_json_objects(string_table, name_key="quorum_type")
-
-
-agent_section_s2d_hci_quorum = AgentSection(name="s2d_hci_quorum", parse_function=parse_s2d_hci_quorum)
-
-
-def discover_s2d_hci_quorum(section: Section):
-    if section:
-        yield Service()
-
-
-def check_s2d_hci_quorum(section: Section):
-    if not section:
-        yield Result(state=State.UNKNOWN, summary="No quorum data found")
-        return
-    entry = next(iter(section.values()))
-    if _is_explicit_false(entry.details.get("success")):
-        error = str(entry.details.get("error") or "unknown collector error")
-        yield Result(
-            state=State.UNKNOWN,
-            summary=f"Quorum collection failed: {error}",
-            details=str(entry.details),
-        )
-        return
-    resource_state = str(entry.details.get("quorum_resource_state") or "")
-    state = State.OK if resource_state.lower() in {"online", "", "none"} else State.CRIT
-    yield Result(state=state, summary=f"Quorum type: {entry.name}, resource state: {resource_state or 'n/a'}", details=str(entry.details))
-
-
-check_plugin_s2d_hci_quorum = CheckPlugin(
-    name="s2d_hci_quorum",
-    service_name="S2D/HCI quorum",
-    discovery_function=discover_s2d_hci_quorum,
-    check_function=check_s2d_hci_quorum,
+    check_default_parameters=STATE_DEFAULTS,
+    check_ruleset_name="s2d_hci_state_policy",
 )

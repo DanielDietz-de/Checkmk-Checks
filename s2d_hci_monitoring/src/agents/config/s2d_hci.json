@@ -1,0 +1,11 @@
+{
+  "protocol_version": 1,
+  "max_records": 2000,
+  "max_output_bytes": 1048576,
+  "max_runtime_seconds": 120,
+  "include_addresses": false,
+  "include_paths": false,
+  "include_serials": false,
+  "include_locations": false,
+  "virtualization_enabled": false
+}

@@ -1,113 +1,139 @@
 # s2d_hci_monitoring
 
-<!-- compatibility-badges:start -->
-![Checkmk min](https://img.shields.io/badge/Checkmk%20min-2.5.0-2f4f4f) ![packaged](https://img.shields.io/badge/packaged-2.5.0p9-blue) ![usable until](https://img.shields.io/badge/usable%20until-2.5.99-green)
-<!-- compatibility-badges:end -->
+Read-only, production-hardened monitoring for Microsoft Failover Clustering, Storage Spaces Direct (S2D), HCI storage, and optional Hyper-V workloads on Checkmk 2.5.
 
-Read-only monitoring for Microsoft Windows Failover Clustering, Storage Spaces Direct, HCI storage, and Hyper-V workloads. The package uses split Windows collectors plus Checkmk Check API V2, Rulesets API V1, and Graphing API V1 components.
+## What the package does
 
-## Scope and compatibility
+The package separates collection into bounded Windows PowerShell collectors and server-side Checkmk plug-ins. Cluster-wide collectors elect exactly one currently `Up` cluster node and send cluster data to a stable `s2d-cluster-<cluster>` piggyback host. Optional Hyper-V workload data is sent to stable `s2d-vm-<vm-guid>` piggyback hosts, so VM live migration does not change monitoring identity.
 
-- Checkmk 2.5.0 through 2.5.99; Checkmk 2.4 and Check API V1 are not supported.
-- Windows PowerShell 5.1 or newer.
-- `FailoverClusters`, `Storage`, and `Hyper-V` modules where the corresponding collector is deployed.
-- Local read access to the monitored Microsoft management cmdlets.
-- Optional virtualization spool mode under a dedicated gMSA with only the required Hyper-V read access and Checkmk spool write access.
+Every collector record uses **protocol version 1** and a per-run `run_id`. Every physical collector invocation emits `<<<s2d_hci_collector_health>>>`, including success/completion state, role, record count, byte count, elapsed time, configured limits, and bounded error messages. Malformed JSON, duplicate identities, protocol mismatches, structured collector failures, incomplete runs, and truncation are surfaced as UNKNOWN/CRIT monitoring instead of silently becoming empty discovery.
 
-The package monitors cluster identity, quorum, nodes, networks, resources, CSVs, pools, disks, volumes, storage jobs, S2D health, optional performance history, Hyper-V host state, workloads, integration services, replication, checkpoints, virtual NICs, and virtual disks. It does not alter cluster, storage, Hyper-V, service, registry, network, or firewall state.
+## Compatibility and prerequisites
 
-## Collector design
+- Checkmk: **2.5.0 through 2.5.99**.
+- Windows PowerShell: **5.1 or newer**.
+- Failover cluster collectors: `FailoverClusters` module.
+- Storage collectors: `Storage` module.
+- Hyper-V collector: `Hyper-V` module; custom workload collection is **disabled by default**.
+- gMSA task installation: `ActiveDirectory` tooling providing `Test-ADServiceAccount`.
 
-| Collector | Recommended interval |
-| --- | ---: |
-| `s2d_hci_fast.ps1` | 60–120 seconds |
-| `s2d_hci_storage.ps1` | 300 seconds |
-| `s2d_hci_jobs.ps1` | 300 seconds |
-| `s2d_hci_health.ps1` | 600 seconds |
-| `s2d_hci_perf.ps1` | 900 seconds |
-| `s2d_hci_virtualization.ps1` | 120–300 seconds |
+The collectors are read-only. They do not modify cluster, storage, Hyper-V, registry, firewall, service, or network configuration.
 
-Collectors emit compact JSON lines below `s2d_hci_*` agent sections. Malformed individual rows are ignored without suppressing valid rows from the same section. Expensive collectors must use Checkmk caching or the documented spool workflow; do not add sleeps to the scripts.
+## Collectors and default intervals
 
-See [Architecture](docs/ARCHITECTURE.md) and [gMSA spool collector](docs/GMSA_SPOOL_COLLECTOR.md).
+| Collector | Scope | Default Bakery interval |
+| --- | --- | ---: |
+| `s2d_hci_fast.ps1` | cluster identity, quorum, nodes, networks, roles/resources | 120 s |
+| `s2d_hci_storage.ps1` | CSVs, pools, virtual disks, volumes, physical disks | 300 s |
+| `s2d_hci_jobs.ps1` | storage repair/resynchronization jobs | 300 s |
+| `s2d_hci_health.ps1` | S2D state, storage subsystems, health reports | 600 s |
+| `s2d_hci_virtualization.ps1` | optional Hyper-V host and VM telemetry | 300 s |
 
-## Installation
+The former unbounded performance-history collector is intentionally **not packaged**.
 
-1. Obtain the MKP and matching SHA-256 file produced by a successful repository validation run.
-2. Verify it with `sha256sum --check s2d_hci_monitoring-1.0.0.mkp.sha256`.
-3. Install and enable it through Checkmk Setup or the `mkp` command supported by the installed 2.5 release.
-4. Deploy only the applicable Windows collectors through the normal controlled agent process.
-5. Run `cmk-validate-plugins`, inspect raw `s2d_hci_*` sections, rediscover services on a test host, and verify representative OK, WARN, CRIT, and UNKNOWN states.
+## Agent Bakery deployment
 
-The MKP provides the agent files but does not currently implement Agent Bakery deployment. Detailed installation, upgrade, rollback, removal, and troubleshooting procedures are in [Installation and operations](docs/INSTALLATION_AND_OPERATIONS.md).
+Use **Setup > Agents > Windows, Linux, Solaris, AIX > Agent rules > S2D/HCI monitoring collectors** and apply the rule only to intended Windows cluster nodes. The rule can independently deploy the four cluster/storage collectors, opt into custom Hyper-V collection, deploy gMSA spool support binaries, configure hard record/output/runtime limits, and opt into sensitive fields.
 
-## Thresholds
+Safe defaults are:
 
-Rules are provided for CSV and volume free-space levels, workload CPU and memory pressure, and retained checkpoint age. Defaults are:
+- `max_records`: 2000
+- `max_output_bytes`: 1 MiB
+- `max_runtime_seconds`: 120
+- addresses: excluded
+- filesystem/VHD paths: excluded
+- physical-disk serials/unique IDs: excluded
+- physical locations: excluded
+- custom Hyper-V workload monitoring: disabled
 
-- free space: WARN below 15%, CRIT below 10%;
-- workload CPU: WARN at 80%, CRIT at 95%;
-- memory pressure: WARN at 100%, CRIT at 120%;
-- checkpoint age: WARN at 24 hours, CRIT at 72 hours.
+The Bakery places the shared PowerShell module in the Windows agent `bin` directory and writes `config/s2d_hci.json`. Direct plug-ins receive an agent-level timeout in addition to their own internal limits.
 
-Apply rules narrowly to intended cluster nodes and items.
+## Manual deployment
 
-## Security and failure behavior
+Manual deployment is supported for controlled environments. Copy the files listed in `src/info` to the corresponding Checkmk Windows agent source locations. At minimum, direct plug-ins require `bin/s2d_hci_common.psm1` and `config/s2d_hci.json` in addition to the selected plug-in scripts. Prefer Agent Bakery for repeatable deployments.
 
-All packaged collectors are intended to remain read-only. Do not grant broad administrative roles where narrower read access is sufficient. The gMSA task path stores no password, uses the Scheduled Tasks `ServiceAccount` logon type, confines configured paths to the Checkmk agent root, and atomically replaces the spool file without an execution-policy bypass.
+For gMSA spool mode, follow [gMSA spool collector](docs/GMSA_SPOOL_COLLECTOR.md). Do not run direct and spool-based virtualization collection simultaneously.
 
-Known unhealthy or offline states map conservatively to WARN or CRIT. Unknown vendor values, unavailable optional cmdlets, malformed data, and missing expected telemetry map to UNKNOWN rather than a false healthy state. The numeric spool-file prefix bounds stale-data lifetime.
+## Thresholds and state policy
 
-Raw agent output can contain infrastructure-sensitive names, addresses, serial numbers, paths, and topology. Sanitize diagnostics before public disclosure. See [Security](docs/SECURITY.md).
+Rules are provided for:
 
-## Validation status and limitations
+- CSV free space: WARN below 15%, CRIT below 10%;
+- volume free space: WARN below 15%, CRIT below 10%;
+- VM CPU: WARN at 80%, CRIT at 95%;
+- VM memory pressure: WARN at 100%, CRIT at 120%;
+- retained checkpoint age: WARN at 24 h, CRIT at 72 h;
+- operational-state mapping for degraded, paused, draining/resynchronizing, offline/failed, and unknown states.
 
-Focused tests cover manifest integrity, parser behavior, state mappings, metrics, malformed numeric input, and Hyper-V workload conditions. Repository gates validate syntax, deterministic packaging, documentation synchronization, source security, and clean Checkmk registration. Live validation on representative Windows Server, Failover Cluster, S2D, and Hyper-V builds remains a deployment requirement because Microsoft cmdlet output varies by build, role, language, and feature availability.
+Unknown or unrecognized vendor states default to **UNKNOWN**, not OK.
 
-See [Validation and release evidence](docs/VALIDATION.md).
+## Security model
 
-## Migration, provenance, and license
+Collectors enforce bounded runtime, record count, and output bytes. Sensitive fields are omitted by default. Stable identities use non-sensitive Microsoft IDs where available or short SHA-256-derived identifiers where raw IDs, paths, or serials should not be exposed.
 
-The stable `s2d_hci_*` section, check, service, ruleset, and metric names are preserved from `Daniel-Dietz/S2D-Monitoring`. Do not run direct and spool-based virtualization collection simultaneously because duplicate sections are ambiguous.
+The gMSA workflow validates the service account locally, confines all paths to the Checkmk agent root, rejects reparse-point escapes, grants scoped NTFS rights, uses `RunLevel Limited`, uses `MultipleInstances IgnoreNew`, avoids `ExecutionPolicy Bypass`, and replaces the spool atomically only after validating a complete successful protocol run. A failed run preserves the last valid spool file.
 
-The migration baseline is source commit `c6aa39d8fa62c1a550c07308f99e75c94ba5a7c2`. See [Upstream provenance](docs/UPSTREAM_PROVENANCE.md).
+See [Security](docs/SECURITY.md) for the threat model and operational controls.
 
-This package retains the [PolyForm Internal Use License 1.0.0](LICENSE), which applies specifically to this package.
+## Validation and production acceptance
+
+Repository validation covers Python syntax, package tests, PowerShell contract checks, deterministic MKP creation, checksums, SPDX/provenance generation from repository release tooling, and clean Checkmk registration/runtime validation. The package also documents a production acceptance checklist for representative Windows Server/S2D/Hyper-V infrastructure.
+
+Repository CI cannot truthfully substitute for environment-specific evidence such as real cluster cmdlet output, gMSA permissions, alert routing, live migration, and production runtime measurements. Record those results before production promotion.
+
+See [Validation](docs/VALIDATION.md) and [Production acceptance](docs/PRODUCTION_ACCEPTANCE.md).
+
+## Documentation index
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Collector protocol](docs/PROTOCOL.md)
+- [Installation and operations](docs/INSTALLATION_AND_OPERATIONS.md)
+- [gMSA spool collector](docs/GMSA_SPOOL_COLLECTOR.md)
+- [Security](docs/SECURITY.md)
+- [Validation](docs/VALIDATION.md)
+- [Production acceptance](docs/PRODUCTION_ACCEPTANCE.md)
+- [Release and rollback](docs/RELEASE.md)
+- [Upstream provenance](docs/UPSTREAM_PROVENANCE.md)
+
+## Migration and license
+
+The original migration baseline is `Daniel-Dietz/S2D-Monitoring` commit `c6aa39d8fa62c1a550c07308f99e75c94ba5a7c2`. The production-hardening requirements were taken from source PR #8 and reimplemented directly in this repository because that PR's encoded materialization bundle was not reliable.
+
+This package retains the [PolyForm Internal Use License 1.0.0](LICENSE).
 
 <!-- code-derived-reference:start -->
 ## Code-derived operational reference
 
-This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+This section is generated from the canonical manifest and current source tree. Edit code or `src/info` first; generated repository tooling must be synchronized before merge.
 
 ### Installation
 
-- Canonical package: `s2d_hci_monitoring` version `1.0.0`; minimum Checkmk version `2.5.0`; maximum asserted version: 2.5.99.
-- Canonical manifest: `s2d_hci_monitoring/src/info`; it declares 18 packaged files.
-- No committed MKP artifact is present; build and validate the package from `src/` before installation.
-- No committed checksum file is present; do not distribute an unverified locally built artifact.
-- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+- Canonical package: `s2d_hci_monitoring` version `1.1.0`; minimum Checkmk version `2.5.0`; maximum asserted version: `2.5.99`.
+- Canonical manifest: `s2d_hci_monitoring/src/info`; it declares 21 packaged files.
+- Source under `src/` is authoritative; release artifacts must be generated from that tree.
 
 ### Configuration and components
 
-- **Agent-based checks:** `src/s2d_hci/agent_based/s2d_hci_fast.py`, `src/s2d_hci/agent_based/s2d_hci_health.py`, `src/s2d_hci/agent_based/s2d_hci_jobs.py`, `src/s2d_hci/agent_based/s2d_hci_perf.py`, `src/s2d_hci/agent_based/s2d_hci_storage.py`, `src/s2d_hci/agent_based/s2d_hci_virtualization.py`.
-- **Rulesets:** `src/s2d_hci/rulesets/ruleset_s2d_hci.py`, `src/s2d_hci/rulesets/ruleset_s2d_hci_workloads.py`.
-- **Graphing:** `src/s2d_hci/graphing/graphing_s2d_hci.py`.
-- **Check manuals:** `src/s2d_hci/checkman/s2d_hci`.
-- **Other packaged source:** `src/agents/config/s2d_hci_virtualization.json`, `src/agents/plugins/s2d_hci_fast.ps1`, `src/agents/plugins/s2d_hci_health.ps1`, `src/agents/plugins/s2d_hci_jobs.ps1`, `src/agents/plugins/s2d_hci_perf.ps1`, `src/agents/plugins/s2d_hci_storage.ps1`, `src/agents/plugins/s2d_hci_virtualization.ps1`, `src/agents/scripts/s2d_hci_virtualization_spool.ps1`.
-- Registered check plug-in names: `s2d_hci_cluster_groups`, `s2d_hci_cluster_resources`, `s2d_hci_cluster_summary`, `s2d_hci_csv`, `s2d_hci_network_interfaces`, `s2d_hci_networks`, `s2d_hci_nodes`, `s2d_hci_performance_history`, `s2d_hci_physical_disks`, `s2d_hci_quorum`, `s2d_hci_s2d_state`, `s2d_hci_storage_health_report`, `s2d_hci_storage_jobs`, `s2d_hci_storage_pools`, `s2d_hci_storage_subsystems`, `s2d_hci_virtual_disks`, `s2d_hci_virtualization_checkpoints`, `s2d_hci_virtualization_hard_disks`, `s2d_hci_virtualization_host`, `s2d_hci_virtualization_network_adapters`, `s2d_hci_virtualization_replication`, `s2d_hci_virtualization_services`, `s2d_hci_virtualization_workloads`, `s2d_hci_volumes`.
+- **Agent-based checks:** collector health, cluster/quorum/node/network/resource state, CSV/storage objects/jobs/health, and optional Hyper-V host/workload/service/replication/checkpoint/NIC/disk state.
+- **Rulesets:** Agent Bakery deployment, operational-state policy, CSV/volume capacity thresholds, VM CPU/memory thresholds, and checkpoint-age thresholds.
+- **Graphing:** capacity, storage-job, VM CPU/memory, and checkpoint-age metrics.
+- **Windows agent source:** shared protocol module, five collectors, bounded JSON configuration, and fail-safe virtualization spool wrapper.
+- **Bakery server plug-in:** `src/lib/python3/cmk/base/cee/plugins/bakery/s2d_hci.py`.
 
 ### Validation
 
-- Package-specific tests: `tests/test_graphing_contracts.py`, `tests/test_manifest_integrity.py`, `tests/test_powershell_contracts.py`, `tests/test_s2d_hci_checks.py`, `tests/test_s2d_hci_virtualization.py`.
-- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+- Package tests enforce protocol handling, duplicate visibility, collector-health behavior, manifest ownership, removed performance-history code, PowerShell safety contracts, Bakery contracts, and function-level documentation.
+- Any behavior change must update focused tests and documentation before generated repository facts are refreshed.
 
 ### Security
 
-- No Checkmk password or secret form was detected in the current package source.
-- Static analysis did not identify a supported direct remote-network client. This is not proof of network isolation; review extensionless and non-Python executables before deployment.
+- No password or secret is accepted by the package configuration.
+- Sensitive addresses, paths, serials, IDs, and locations are minimized by default.
+- gMSA spool publication is fail-safe and path-confined.
 
 ### Troubleshooting
 
-- Emitted Checkmk sections detected in source: `s2d_hci_csv`, `s2d_hci_networks`, `s2d_hci_nodes`, `s2d_hci_physical_disks`, `s2d_hci_quorum`, `s2d_hci_storage_jobs`, `s2d_hci_storage_pools`, `s2d_hci_virtual_disks`, `s2d_hci_virtualization_checkpoints`, `s2d_hci_virtualization_hard_disks`, `s2d_hci_virtualization_host`, `s2d_hci_virtualization_network_adapters`, `s2d_hci_virtualization_replication`, `s2d_hci_virtualization_services`, `s2d_hci_virtualization_workloads`.
-- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
+- Start with `S2D/HCI collector <collector>` services on physical nodes.
+- Cluster-wide services are expected on `s2d-cluster-*` piggyback hosts.
+- Custom VM services are expected on `s2d-vm-<guid>` piggyback hosts only when explicitly enabled.
 <!-- code-derived-reference:end -->

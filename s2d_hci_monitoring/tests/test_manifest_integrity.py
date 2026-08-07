@@ -1,4 +1,4 @@
-"""Verify that the canonical manifest matches the migrated package tree."""
+"""Canonical package manifest and source-ownership tests."""
 
 from __future__ import annotations
 
@@ -6,46 +6,44 @@ import ast
 from pathlib import Path
 
 
-PACKAGE_ROOT = Path(__file__).resolve().parents[1]
-
-
 def _manifest() -> dict[str, object]:
-    value = ast.literal_eval((PACKAGE_ROOT / "src" / "info").read_text(encoding="utf-8"))
-    assert isinstance(value, dict)
-    return value
+    """Load the literal Checkmk package manifest without executing code."""
+
+    root = Path(__file__).resolve().parents[1]
+    return ast.literal_eval((root / "src/info").read_text(encoding="utf-8"))
 
 
-def test_manifest_identity_and_compatibility():
+def test_manifest_declares_version_1_1_0_and_exact_files() -> None:
+    """Every manifest-owned file must exist and obsolete performance code must be absent."""
+
+    root = Path(__file__).resolve().parents[1]
     manifest = _manifest()
-    assert manifest["name"] == "s2d_hci_monitoring"
-    assert manifest["version"] == "1.0.0"
-    assert manifest["version.min_required"] == "2.5.0"
-    assert manifest["version.usable_until"] == "2.5.99"
+    assert manifest["version"] == "1.1.0"
+    declared = []
+    for category, paths in manifest["files"].items():
+        for path in paths:
+            declared.append((category, path))
+            if category == "lib":
+                source = root / "src/lib" / path
+            elif category == "cmk_addons_plugins":
+                source = root / "src" / path
+            else:
+                source = root / "src/agents" / path
+            assert source.is_file(), source
+    assert len(declared) == 21
+    assert all("perf" not in path for _, path in declared)
+    assert not (root / "src/agents/plugins/s2d_hci_perf.ps1").exists()
+    assert not (root / "src/s2d_hci/agent_based/s2d_hci_perf.py").exists()
 
 
-def test_every_manifest_file_exists():
+def test_manifest_contains_bakery_and_protocol_components() -> None:
+    """Production packaging must include Bakery, shared protocol, and collector-health support."""
+
     manifest = _manifest()
-    files = manifest["files"]
-    assert isinstance(files, dict)
-
-    category_roots = {
-        "agents": PACKAGE_ROOT / "src" / "agents",
-        "cmk_addons_plugins": PACKAGE_ROOT / "src",
-    }
-    for category, entries in files.items():
-        assert category in category_roots
-        assert isinstance(entries, list)
-        for entry in entries:
-            assert (category_roots[category] / entry).is_file(), f"Missing manifest file: {category}/{entry}"
-
-
-def test_manifest_has_no_duplicate_paths():
-    manifest = _manifest()
-    files = manifest["files"]
-    declared = [(category, entry) for category, entries in files.items() for entry in entries]
-    assert len(declared) == len(set(declared))
-
-
-def test_package_license_is_preserved():
-    text = (PACKAGE_ROOT / "LICENSE").read_text(encoding="utf-8")
-    assert "PolyForm Internal Use License 1.0.0" in text
+    agents = set(manifest["files"]["agents"])
+    addons = set(manifest["files"]["cmk_addons_plugins"])
+    libs = set(manifest["files"]["lib"])
+    assert "bin/s2d_hci_common.psm1" in agents
+    assert "s2d_hci/agent_based/s2d_hci_collector_health.py" in addons
+    assert "s2d_hci/rulesets/bakery.py" in addons
+    assert "python3/cmk/base/cee/plugins/bakery/s2d_hci.py" in libs

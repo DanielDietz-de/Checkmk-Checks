@@ -1,78 +1,41 @@
 # Architecture
 
-## Purpose
+## Goals
 
-`s2d_hci_monitoring` separates inexpensive cluster state from slower storage, health, performance, and Hyper-V workload collection. This prevents one expensive Microsoft cmdlet from delaying all monitoring data and permits independent cache intervals.
+The design prioritizes deterministic service identity, explicit failure visibility, bounded collection, least privilege, and repeatable Checkmk deployment. It deliberately avoids a mutable coordinator or any action that changes Microsoft cluster state.
 
-## Data flow
+## Collection topology
 
-```text
-Windows cluster node
-  ├─ cached Checkmk agent plug-ins
-  │    ├─ fast cluster state
-  │    ├─ storage inventory and capacity
-  │    ├─ storage jobs
-  │    ├─ S2D and storage health
-  │    └─ optional performance history
-  └─ optional gMSA scheduled task
-       └─ Hyper-V collector -> temporary file -> atomic spool replacement
+Each physical cluster node runs the selected read-only collectors. Cluster-wide collectors call `Get-S2DHciClusterContext`, which selects the alphabetically first node currently reported `Up`. Only that elected node emits cluster/storage data. All nodes still emit their own collector-health record so failed election, missing modules, and standby state remain visible.
 
-Checkmk agent output
-  -> JSON-lines agent sections
-  -> Check API V2 parsers
-  -> discovered services, state results, and metrics
-  -> ruleset thresholds and graphing definitions
-```
+The elected node wraps cluster-wide sections in a Checkmk piggyback block named `s2d-cluster-<normalized-cluster-name>`. Because that name is independent of the current owner node, failover does not churn cluster monitoring identity.
 
-## Component boundaries
+Hyper-V collection is disabled by default. When enabled, each VM is emitted to `s2d-vm-<VM GUID>`, which keeps the monitoring host stable across live migration. Host-level VMMS health stays on the physical Hyper-V host.
 
-### Windows collectors
+## Versioned protocol
 
-The six collectors under `src/agents/plugins/` query only local Microsoft management cmdlets. They emit named sections and compact JSON lines. Each section invocation catches its own exception and emits a structured error row so an unavailable feature does not suppress unrelated sections in the same script.
+Every data row contains `protocol_version=1` and a UUID `run_id`. Server-side parsers reject unsupported versions and missing run IDs. Duplicate stable identities become explicit synthetic UNKNOWN services rather than overwriting earlier rows. Malformed JSON becomes a synthetic UNKNOWN parser service. Structured PowerShell section errors use `success=false` and are surfaced as UNKNOWN.
 
-### Spool wrapper
+Every collector invocation ends with `s2d_hci_collector_health`, including success, complete/truncated flags, record/output/runtime accounting, collector role, logical host, cluster name, source host, and bounded errors.
 
-`src/agents/scripts/s2d_hci_virtualization_spool.ps1` exists for environments where the Checkmk agent service identity must not receive Hyper-V access. It:
+## Bounds
 
-1. reads a non-secret JSON configuration;
-2. canonicalizes and constrains paths to the Checkmk agent and spool roots;
-3. executes the read-only virtualization collector without an execution-policy bypass;
-4. writes the complete output to a same-directory temporary file;
-5. atomically replaces the live spool file;
-6. deletes a leftover temporary file on failure.
+The shared PowerShell module enforces three independent limits before emitting each record:
 
-The wrapper does not provision accounts, alter Hyper-V, or grant permissions.
+1. maximum wall-clock runtime;
+2. maximum emitted data-record count;
+3. maximum UTF-8 data bytes.
 
-### Checkmk plug-ins
+Default limits are 120 seconds, 2000 records, and 1 MiB. JSON configuration accepts only bounded integers and explicit Boolean values.
 
-Server-side code is below `src/s2d_hci/` and is packaged into the `cmk_addons_plugins` MKP component:
+Checkmk Agent Bakery also supplies a Windows plug-in timeout, providing a second process-level boundary for direct collection. gMSA spool mode uses Task Scheduler `ExecutionTimeLimit` and `MultipleInstances IgnoreNew`.
 
-- `agent_based/`: parsers, discovery, state logic, and metrics;
-- `rulesets/`: free-space, CPU, memory-pressure, and checkpoint-age thresholds;
-- `graphing/`: metric units, graphs, and perfometers;
-- `checkman/`: Checkmk service manual.
+## Stable identity
 
-All Python code uses `cmk.agent_based.v2`, Rulesets API V1, and Graphing API V1.
+Storage objects use Microsoft stable IDs where available. Raw identifiers that may expose serials or paths are hashed before becoming service identity. Volumes use drive letters where present or a hashed stable identifier, with the filesystem label retained as display data. VM host identity uses the VM GUID. Per-VM objects use checkpoint IDs, NIC IDs, or controller coordinates.
 
-## Stable contracts
+## Failure isolation
 
-The following identifiers are compatibility contracts and must not be renamed without a migration plan:
+Each Windows section executes independently through `Write-S2DHciSection`. A cmdlet error in one section does not stop later independent sections. The collector health envelope records that the overall run was incomplete. `Get-StorageHealthReport` is additionally isolated per storage subsystem.
 
-- `s2d_hci_*` agent section names;
-- CheckPlugin names and service names;
-- ruleset names and parameter keys;
-- metric names;
-- spool configuration keys;
-- the numeric spool-file lifetime prefix.
-
-## Error isolation
-
-Malformed JSON rows are skipped individually. Unsupported optional cmdlets emit an explicit `available: false` record and become UNKNOWN. Known unhealthy Microsoft states become WARN or CRIT according to the service contract. No parser treats missing telemetry as OK.
-
-## Performance model
-
-Cache expensive collectors independently. The health and performance scripts may be significantly slower on large clusters. Runtime must be measured on representative nodes before production rollout, and the configured Checkmk agent timeout must exceed the measured worst case with margin.
-
-## Trust boundaries
-
-Collector output can contain infrastructure-sensitive names, serial numbers, paths, addresses, and topology. It is trusted only after local collection but remains untrusted parser input on the Checkmk server. Parsers therefore validate JSON and numeric conversion and avoid evaluating data as code.
+The virtualization spool wrapper publishes only after validating exit code, JSON framing, protocol version, one consistent run ID, exactly one virtualization health envelope, and successful/complete/non-truncated status.

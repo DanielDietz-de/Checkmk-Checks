@@ -1,51 +1,68 @@
-"""Static contracts for PowerShell deployment and collector behavior."""
+"""Static safety contracts for Windows PowerShell collectors and gMSA tooling."""
+
+from __future__ import annotations
 
 from pathlib import Path
 
-
-PACKAGE_ROOT = Path(__file__).resolve().parents[1]
-COLLECTOR_PATHS = (
-    "src/agents/plugins/s2d_hci_fast.ps1",
-    "src/agents/plugins/s2d_hci_storage.ps1",
-    "src/agents/plugins/s2d_hci_health.ps1",
-    "src/agents/plugins/s2d_hci_jobs.ps1",
-    "src/agents/plugins/s2d_hci_perf.ps1",
-)
+ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_s2d_collector_normalizes_native_cmdlet_output():
-    text = (PACKAGE_ROOT / "src/agents/plugins/s2d_hci_health.ps1").read_text(encoding="utf-8")
-    assert "ConvertTo-S2DStateRecord" in text
-    assert "source_command" in text
-    assert "state =" in text
-    assert "Get-ClusterStorageSpacesDirect | Write-JsonLine" not in text
-    assert "Get-ClusterS2D | Write-JsonLine" not in text
+def _read(relative: str) -> str:
+    """Read one package file as normalized UTF-8 text."""
+
+    return (ROOT / relative).read_text(encoding="utf-8")
 
 
-def test_spool_wrapper_accepts_the_installer_agent_root():
-    wrapper = (PACKAGE_ROOT / "src/agents/scripts/s2d_hci_virtualization_spool.ps1").read_text(encoding="utf-8")
-    installer_path = PACKAGE_ROOT / "tools/windows/Install-S2DHciVirtualizationCollectorTask.ps1"
-    if installer_path.exists():
-        installer = installer_path.read_text(encoding="utf-8")
-        assert '-AgentRoot `"$AgentRoot`"' in installer
-    assert "[string]$AgentRoot" in wrapper
-    assert "GetFullPath($AgentRoot)" in wrapper
+def test_common_module_enforces_bounds_and_protocol() -> None:
+    """Shared collection must enforce protocol, runtime, record, and output limits."""
+
+    text = _read("src/agents/bin/s2d_hci_common.psm1")
+    for token in ("protocol_version", "run_id", "max_runtime_seconds", "max_records", "max_output_bytes", "s2d_hci_collector_health"):
+        assert token in text
+    assert "Get-S2DHciClusterContext" in text
+    assert "<<<<$HostName>>>>" in text
 
 
-def test_spool_wrapper_preserves_last_good_data_on_native_failure():
-    wrapper = (PACKAGE_ROOT / "src/agents/scripts/s2d_hci_virtualization_spool.ps1").read_text(encoding="utf-8")
-    exit_check = wrapper.index("$collectorExitCode = $LASTEXITCODE")
-    replacement = wrapper.index("[System.IO.File]::WriteAllLines")
-    assert exit_check < replacement
-    assert "if ($collectorExitCode -ne 0)" in wrapper
-    assert "the last valid spool file was preserved" in wrapper
+def test_sensitive_fields_and_virtualization_default_off() -> None:
+    """The committed configuration must minimize sensitive telemetry and disable custom VM collection."""
+
+    text = _read("src/agents/config/s2d_hci.json").lower()
+    for key in ("include_addresses", "include_paths", "include_serials", "include_locations", "virtualization_enabled"):
+        assert f'"{key}": false' in text
 
 
-def test_collectors_emit_structured_required_module_failures():
-    for relative_path in COLLECTOR_PATHS:
-        text = (PACKAGE_ROOT / relative_path).read_text(encoding="utf-8")
-        assert "function Import-CollectorModules" in text
-        assert "Import-Module $module -ErrorAction Stop" in text
-        assert "Required module import failed:" in text
-        assert "success = $false" in text
-        assert "exit 0" in text
+def test_gmsa_task_is_non_elevated_and_bounded() -> None:
+    """The scheduled task must avoid elevation and overlapping/unbounded runs."""
+
+    text = _read("tools/windows/Install-S2DHciVirtualizationCollectorTask.ps1")
+    assert "-RunLevel Limited" in text
+    assert "-RunLevel Highest" not in text
+    assert "MultipleInstances IgnoreNew" in text
+    assert "ExecutionTimeLimit" in text
+    assert "Test-ADServiceAccount" in text
+    assert "icacls.exe" in text
+    assert "ExecutionPolicy Bypass" not in text
+
+
+def test_spool_wrapper_preserves_last_good_output() -> None:
+    """The spool wrapper must validate process and protocol success before atomic replacement."""
+
+    text = _read("src/agents/scripts/s2d_hci_virtualization_spool.ps1")
+    assert "$collectorExitCode = $LASTEXITCODE" in text
+    assert "Test-S2DHciCollectorOutput" in text
+    assert "unsupported or missing protocol version" in text.lower()
+    assert "mixes multiple run identifiers" in text
+    assert "File]::Replace" in text
+    assert "Assert-S2DHciNoReparsePoint" in text
+    assert "ExecutionPolicy Bypass" not in text
+
+
+def test_cluster_and_vm_piggyback_contracts_exist() -> None:
+    """Collectors must use stable logical cluster and VM GUID piggyback identities."""
+
+    fast = _read("src/agents/plugins/s2d_hci_fast.ps1")
+    virt = _read("src/agents/plugins/s2d_hci_virtualization.ps1")
+    assert "Get-S2DHciClusterContext" in fast
+    assert "Start-S2DHciPiggyback" in fast
+    assert '"s2d-vm-" + $VmId.Guid' in virt
+    assert "virtualization_enabled" in virt

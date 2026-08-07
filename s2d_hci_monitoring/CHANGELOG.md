@@ -7,7 +7,7 @@
 - Added deterministic one-node cluster collection and stable logical cluster piggyback identity.
 - Made custom Hyper-V monitoring opt-in and moved VM telemetry to stable VM-GUID piggyback hosts.
 - Removed the unbounded performance-history collector.
-- Added runtime, record-count, output-size, and concurrent-run controls.
+- Added runtime, record-count, output-size, and concurrency boundaries.
 - Hardened gMSA spool mode with native exit checks, protocol validation, reparse/path confinement, scoped ACLs, local gMSA validation, non-elevated task execution, and atomic last-good preservation.
 - Added privacy-minimizing defaults for paths, addresses, serials, IDs, and physical locations.
 - Added operational-state policy rules and Agent Bakery deployment.

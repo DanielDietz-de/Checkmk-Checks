@@ -1,92 +1,50 @@
 #requires -Version 5.1
 <#
 .SYNOPSIS
-    Validates the effective identity and read access required by the collector.
-
+    Validate the runtime identity and permissions for the virtualization collector.
 .DESCRIPTION
-    Run this script through the scheduled task identity to prove that the gMSA can
-    read local Hyper-V monitoring data and write to the configured Checkmk spool
-    directory. The script does not modify Hyper-V, cluster, storage, service,
-    registry, or firewall configuration.
+    Confirms that the supplied gMSA is locally usable and reports read/write
+    access to the exact collector, wrapper, configuration, and spool paths.
 #>
 
 [CmdletBinding()]
 param(
-    [string]$ConfigPath = (Join-Path $env:ProgramData 'checkmk\agent\config\s2d_hci_virtualization.json')
+    [Parameter(Mandatory)] [ValidatePattern('^[^\\]+\\[^\\]+\$$')] [string]$ServiceAccount,
+    [string]$AgentRoot = (Join-Path $env:ProgramData 'checkmk\agent')
 )
 
 Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Continue'
+$ErrorActionPreference = 'Stop'
 
-function New-ValidationResult {
+function Test-S2DHciAclIdentity {
+    <# Return whether icacls reports the requested identity on a path. #>
     param(
-        [Parameter(Mandatory)] [string]$Check,
-        [Parameter(Mandatory)] [bool]$Success,
-        [string]$Detail = ''
+        [Parameter(Mandatory)] [string]$Path,
+        [Parameter(Mandatory)] [string]$Identity
     )
-    [pscustomobject]@{ check = $Check; success = $Success; detail = $Detail }
+
+    if (-not (Test-Path -LiteralPath $Path)) { return $false }
+    $text = (& icacls.exe $Path 2>&1 | Out-String)
+    return $LASTEXITCODE -eq 0 -and $text.IndexOf($Identity, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
 }
 
-function Test-CommandReadAccess {
-    param(
-        [Parameter(Mandatory)] [string]$CommandName,
-        [scriptblock]$Probe
-    )
-    if (-not (Get-Command -Name $CommandName -ErrorAction SilentlyContinue)) {
-        return New-ValidationResult -Check $CommandName -Success $false -Detail 'Command not available.'
-    }
-    try {
-        if ($Probe) { & $Probe | Out-Null }
-        return New-ValidationResult -Check $CommandName -Success $true -Detail 'Read probe succeeded.'
-    }
-    catch {
-        return New-ValidationResult -Check $CommandName -Success $false -Detail $_.Exception.Message
-    }
+$adCommand = Get-Command -Name 'Test-ADServiceAccount' -ErrorAction SilentlyContinue
+$gmsaUsable = $false
+if ($adCommand) { $gmsaUsable = [bool](Test-ADServiceAccount -Identity $ServiceAccount.Split('\')[-1] -ErrorAction Stop) }
+$root = [System.IO.Path]::GetFullPath($AgentRoot)
+$paths = [ordered]@{
+    Collector = Join-Path $root 'bin\s2d_hci_virtualization.ps1'
+    Wrapper = Join-Path $root 'bin\s2d_hci_virtualization_spool.ps1'
+    Config = Join-Path $root 'config\s2d_hci_virtualization_spool.json'
+    SpoolDirectory = Join-Path $root 'spool'
 }
 
-$config = $null
-if (Test-Path -LiteralPath $ConfigPath -PathType Leaf) {
-    try {
-        $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    }
-    catch {
-        New-ValidationResult -Check 'Configuration' -Success $false -Detail $_.Exception.Message
-        exit 2
-    }
+[pscustomobject]@{
+    ServiceAccount = $ServiceAccount
+    ActiveDirectoryValidationAvailable = ($null -ne $adCommand)
+    GmsaUsable = $gmsaUsable
+    CollectorAclPresent = Test-S2DHciAclIdentity -Path $paths.Collector -Identity $ServiceAccount
+    WrapperAclPresent = Test-S2DHciAclIdentity -Path $paths.Wrapper -Identity $ServiceAccount
+    ConfigAclPresent = Test-S2DHciAclIdentity -Path $paths.Config -Identity $ServiceAccount
+    SpoolAclPresent = Test-S2DHciAclIdentity -Path $paths.SpoolDirectory -Identity $ServiceAccount
 }
-
-$identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-$results = @()
-$results += New-ValidationResult -Check 'EffectiveIdentity' -Success $true -Detail $identity.Name
-$results += Test-CommandReadAccess -CommandName 'Get-VM' -Probe { Get-VM -ErrorAction Stop | Select-Object -First 1 }
-$results += Test-CommandReadAccess -CommandName 'Get-VMIntegrationService' -Probe { Get-VM -ErrorAction Stop | Select-Object -First 1 | ForEach-Object { Get-VMIntegrationService -VMName $_.Name -ErrorAction Stop | Select-Object -First 1 } }
-$results += Test-CommandReadAccess -CommandName 'Get-VMNetworkAdapter' -Probe { Get-VM -ErrorAction Stop | Select-Object -First 1 | ForEach-Object { Get-VMNetworkAdapter -VMName $_.Name -ErrorAction Stop | Select-Object -First 1 } }
-$results += Test-CommandReadAccess -CommandName 'Get-VMHardDiskDrive' -Probe { Get-VM -ErrorAction Stop | Select-Object -First 1 | ForEach-Object { Get-VMHardDiskDrive -VMName $_.Name -ErrorAction Stop | Select-Object -First 1 } }
-$results += Test-CommandReadAccess -CommandName 'Get-VMReplication' -Probe { Get-VMReplication -ErrorAction Stop | Select-Object -First 1 }
-
-if ($config -and $config.PSObject.Properties.Name -contains 'spool_file') {
-    $probeFile = $null
-    try {
-        $spoolFile = [string]$config.spool_file
-        $spoolDir = Split-Path -Parent $spoolFile
-        $probeFile = Join-Path $spoolDir ('.s2d_hci_identity_probe_' + $PID + '.tmp')
-        [System.IO.File]::WriteAllText($probeFile, 'probe', [System.Text.Encoding]::UTF8)
-        [System.IO.File]::Delete($probeFile)
-        $results += New-ValidationResult -Check 'SpoolWriteAccess' -Success $true -Detail $spoolDir
-    }
-    catch {
-        if ($probeFile -and [System.IO.File]::Exists($probeFile)) {
-            [System.IO.File]::Delete($probeFile)
-        }
-        $results += New-ValidationResult -Check 'SpoolWriteAccess' -Success $false -Detail $_.Exception.Message
-    }
-}
-else {
-    $results += New-ValidationResult -Check 'SpoolWriteAccess' -Success $false -Detail 'No spool_file configured.'
-}
-
-$results | ConvertTo-Json -Depth 5
-if ($results | Where-Object { -not $_.success }) {
-    exit 2
-}
-exit 0

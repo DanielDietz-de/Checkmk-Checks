@@ -1,78 +1,44 @@
-title: S2D/HCI monitoring
+title: S2D/HCI production monitoring
 agents: windows
 catalog: storage/hci
 license: PolyForm Internal Use 1.0.0
 distribution: check_mk
 
 description:
- This package monitors Windows Failover Cluster, Microsoft virtualization workloads,
- Storage Spaces Direct, and HCI components using split Checkmk Windows agent plug-ins.
- It is compatible with Checkmk 2.5.0 and newer and uses Check API V2.
+ Production-hardened read-only monitoring for Windows Failover Clustering,
+ Storage Spaces Direct, HCI storage, and optional Hyper-V workloads. Collector
+ protocol version 1 provides explicit run IDs and collector-health records.
+ Cluster-wide data is emitted by one deterministically elected node to a stable
+ logical cluster piggyback host. Optional VM data is emitted to stable VM-GUID
+ piggyback hosts so live migration does not churn service identity.
 
 item:
- Services are itemized by node name, network name, CSV name, storage pool name,
- virtual disk name, physical disk serial number, storage job name, workload name,
- workload integration service, workload network adapter, workload disk, and retained
- recovery point/checkpoint name depending on the section.
+ Storage and cluster services use stable collector identities. Human-readable
+ object names are retained in service summaries. Parser errors, duplicate
+ identities, protocol mismatches, and structured command failures become visible
+ UNKNOWN services instead of silently disappearing.
 
 inventory:
- Services are discovered from the following sections when valid JSON lines are
- present:
-
- <<<s2d_hci_nodes>>>
- <<<s2d_hci_networks>>>
- <<<s2d_hci_quorum>>>
- <<<s2d_hci_csv>>>
- <<<s2d_hci_storage_pools>>>
- <<<s2d_hci_virtual_disks>>>
- <<<s2d_hci_physical_disks>>>
- <<<s2d_hci_storage_jobs>>>
- <<<s2d_hci_virtualization_host>>>
- <<<s2d_hci_virtualization_workloads>>>
- <<<s2d_hci_virtualization_services>>>
- <<<s2d_hci_virtualization_replication>>>
- <<<s2d_hci_virtualization_checkpoints>>>
- <<<s2d_hci_virtualization_network_adapters>>>
- <<<s2d_hci_virtualization_hard_disks>>>
-
-examples:
- Example section line:
-
- <<<s2d_hci_nodes>>>
- {"name":"NODE01","state":"Up","node_weight":1,"dynamic_weight":1,"drain_status":"NotInitiated"}
-
- <<<s2d_hci_virtualization_workloads>>>
- {"name":"VM01","state":"Running","cpu_usage":12,"memory_assigned":8589934592,"memory_demand":6442450944}
+ Services are discovered from the s2d_hci_* data sections and from
+ <<<s2d_hci_collector_health>>>. Hyper-V workload sections are disabled by
+ default and must be explicitly enabled through the Agent Bakery configuration
+ or the bounded JSON configuration.
 
 perfdata:
- The package emits metrics for CSV free percentage, volume free percentage, pool
- allocated bytes, storage job percentage, workload CPU usage, workload memory
- pressure, and retained recovery point/checkpoint age. Each emitted metric has a
- Graphing API V1 definition.
+ Metrics are provided for CSV/volume free percentage, storage-pool allocated
+ bytes, storage-job progress, VM CPU usage, VM memory pressure, and checkpoint
+ age. The removed performance-history collector is intentionally not packaged.
 
 parameters:
- The ruleset s2d_hci_csv configures CSV free-space lower warning and critical
- thresholds. The default levels are 15 percent warning and 10 percent critical.
- The ruleset s2d_hci_volumes configures volume free-space lower warning and
- critical thresholds. The workload ruleset configures CPU and memory pressure
- upper thresholds for workload services.
+ Rules configure CSV and volume free-space thresholds, VM CPU/memory and
+ checkpoint-age thresholds, and the operational-state severity policy used for
+ degraded, paused, draining, offline, and unknown Microsoft states.
 
 troubleshooting:
- Verify that the Windows agent output contains the expected sections. Verify that
- FailoverClusters, Storage, and Hyper-V modules are available on the monitored
- cluster node. Use Checkmk agent plug-in caching instead of adding sleeps to the
- PowerShell scripts.
-
- Tested Checkmk version range: 2.5.0 and newer.
- Recommended cache intervals:
- - s2d_hci_fast.ps1: 60-120 seconds
- - s2d_hci_storage.ps1: 300 seconds
- - s2d_hci_jobs.ps1: 300 seconds
- - s2d_hci_health.ps1: 600 seconds
- - s2d_hci_perf.ps1: 900 seconds
- - s2d_hci_virtualization.ps1: 120-300 seconds
-
- Installation: install and enable the s2d_hci_monitoring MKP, deploy the required
- Windows collectors, reload Checkmk, and rediscover services on a test host first.
- Removal: disable and remove the MKP, remove host-side collector and scheduled-task
- files, then reload the Checkmk site.
+ First inspect the S2D/HCI collector-health services on physical cluster nodes.
+ A failed, incomplete, or truncated collector run is explicitly visible there.
+ Inspect raw agent output for protocol_version=1 and a consistent run_id. Cluster
+ data appears on the logical s2d-cluster-* piggyback host. Custom VM data appears
+ on s2d-vm-<guid> piggyback hosts only when virtualization collection is enabled.
+ Verify required FailoverClusters, Storage, ActiveDirectory, and Hyper-V modules
+ for the selected deployment mode.

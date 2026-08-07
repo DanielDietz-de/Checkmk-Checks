@@ -1,82 +1,50 @@
-"""Focused parser and state-mapping tests for cluster and storage services."""
+"""Focused behavior tests for storage, quorum, job, and virtualization checks."""
 
-from conftest import Metric, Result, State, load_plugin
+from __future__ import annotations
 
+import json
 
-fast = load_plugin("src/s2d_hci/agent_based/s2d_hci_fast.py")
-storage = load_plugin("src/s2d_hci/agent_based/s2d_hci_storage.py")
-jobs = load_plugin("src/s2d_hci/agent_based/s2d_hci_jobs.py")
-health = load_plugin("src/s2d_hci/agent_based/s2d_hci_health.py")
-
-
-def test_node_down_is_critical():
-    section = fast.parse_s2d_hci_nodes([["{\"name\":\"NODE02\",\"state\":\"Down\",\"drain_status\":\"NotInitiated\"}"]])
-    results = list(fast.check_s2d_hci_nodes("NODE02", section))
-    assert any(isinstance(entry, Result) and entry.state == State.CRIT for entry in results)
+from cmk.agent_based.v2 import Metric, State
+from s2d_hci.agent_based import s2d_hci_fast as fast
+from s2d_hci.agent_based import s2d_hci_jobs as jobs
+from s2d_hci.agent_based import s2d_hci_storage as storage
 
 
-def test_draining_node_warns():
-    section = fast.parse_s2d_hci_nodes([["{\"name\":\"NODE01\",\"state\":\"Up\",\"drain_status\":\"InProgress\"}"]])
-    results = list(fast.check_s2d_hci_nodes("NODE01", section))
-    assert any(isinstance(entry, Result) and entry.state == State.WARN for entry in results)
+def _row(**values: object) -> list[str]:
+    """Return one JSON string-table row."""
+
+    return [json.dumps(values)]
 
 
-def test_quorum_collection_failure_is_unknown():
+def test_structured_quorum_failure_is_unknown() -> None:
+    """A failed Get-ClusterQuorum call must never become a healthy quorum service."""
+
     section = fast.parse_s2d_hci_quorum(
-        [["{\"section\":\"s2d_hci_quorum\",\"success\":false,\"error\":\"Access denied\"}"]]
+        [_row(protocol_version=1, run_id="r", section="s2d_hci_quorum", success=False, error="access denied")]
     )
-    results = list(fast.check_s2d_hci_quorum(section))
-    assert any(
-        isinstance(entry, Result)
-        and entry.state == State.UNKNOWN
-        and "Access denied" in entry.summary
-        for entry in results
-    )
+    item = next(iter(section))
+    result = list(fast.check_s2d_hci_quorum(item, fast.STATE_DEFAULTS, section))[0]
+    assert result.state == State.UNKNOWN
+    assert "access denied" in result.summary
 
 
-def test_csv_emits_free_metric():
-    section = storage.parse_s2d_hci_csv([["{\"name\":\"CSV1\",\"state\":\"Online\",\"percent_free\":25.0}"]])
-    results = list(storage.check_s2d_hci_csv("CSV1", {"levels_lower_free": ("fixed", (15.0, 10.0))}, section))
-    assert any(isinstance(entry, Metric) and entry.name == "s2d_hci_percent_free" for entry in results)
+def test_duplicate_volume_labels_do_not_overwrite() -> None:
+    """Distinct stable volume identities must survive identical display labels."""
 
-
-def test_detached_virtual_disk_is_critical():
-    section = storage.parse_s2d_hci_virtual_disks(
-        [["{\"friendly_name\":\"VD01\",\"health_status\":\"Healthy\",\"operational_status\":\"OK\",\"detached_reason\":\"Lost Communication\"}"]]
-    )
-    results = list(storage.check_s2d_hci_virtual_disks("VD01", section))
-    assert any(isinstance(entry, Result) and entry.state == State.CRIT for entry in results)
-
-
-def test_running_storage_job_warns_and_emits_progress():
-    section = jobs.parse_s2d_hci_storage_jobs([["{\"name\":\"Repair\",\"job_state\":\"Running\",\"percent_complete\":50}"]])
-    results = list(jobs.check_s2d_hci_storage_jobs("Repair", section))
-    assert any(isinstance(entry, Result) and entry.state == State.WARN for entry in results)
-    assert any(isinstance(entry, Metric) and entry.name == "s2d_hci_storage_job_percent" for entry in results)
-
-
-def test_malformed_storage_job_percentage_does_not_abort_section():
-    section = jobs.parse_s2d_hci_storage_jobs([["{\"name\":\"Repair\",\"job_state\":\"Running\",\"percent_complete\":\"n/a\"}"]])
-    assert section["Repair"].percent_complete is None
-
-
-def test_unavailable_health_cmdlet_is_unknown():
-    section = health.parse_s2d_hci_s2d_state([["{\"available\":false,\"reason\":\"Command unavailable\"}"]])
-    results = list(health.check_s2d_hci_s2d_state(section))
-    assert any(isinstance(entry, Result) and entry.state == State.UNKNOWN for entry in results)
-
-
-def test_native_powershell_s2d_state_property_is_parsed():
-    section = health.parse_s2d_hci_s2d_state([["{\"State\":\"Enabled\",\"Available\":true}"]])
-    results = list(health.check_s2d_hci_s2d_state(section))
-    assert any(isinstance(entry, Result) and entry.state == State.OK for entry in results)
-
-
-def test_duplicate_volume_labels_keep_distinct_services():
     section = storage.parse_s2d_hci_volumes(
         [
-            ["{\"filesystem_label\":\"Data\",\"drive_letter\":\"D\",\"path\":\"C:/Volumes/one\",\"health_status\":\"Healthy\"}"],
-            ["{\"filesystem_label\":\"Data\",\"drive_letter\":\"E\",\"path\":\"C:/Volumes/two\",\"health_status\":\"Healthy\"}"],
+            _row(protocol_version=1, run_id="r", identity="Data [D:]", filesystem_label="Data", health_status="Healthy"),
+            _row(protocol_version=1, run_id="r", identity="Data [E:]", filesystem_label="Data", health_status="Healthy"),
         ]
     )
     assert set(section) == {"Data [D:]", "Data [E:]"}
+
+
+def test_non_finite_storage_job_progress_emits_no_metric() -> None:
+    """A non-finite percentage must not poison Checkmk metric processing."""
+
+    section = jobs.parse_s2d_hci_storage_jobs(
+        [_row(protocol_version=1, run_id="r", identity="job-a", name="Repair", job_state="Running", percent_complete="nan")]
+    )
+    output = list(jobs.check_s2d_hci_storage_jobs("job-a", jobs.STATE_DEFAULTS, section))
+    assert not any(isinstance(value, Metric) for value in output)

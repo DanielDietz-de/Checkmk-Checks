@@ -1,14 +1,15 @@
-"""Minimal Checkmk API stubs for isolated package behavior tests."""
+"""Minimal Checkmk API stubs for isolated S2D/HCI behavior tests."""
 
 from __future__ import annotations
 
-import importlib.util
 import sys
 import types
 from pathlib import Path
 
 
 class State:
+    """Small state stand-in matching the values used by check tests."""
+
     OK = "OK"
     WARN = "WARN"
     CRIT = "CRIT"
@@ -16,35 +17,57 @@ class State:
 
 
 class Result:
+    """Capture Checkmk result state and text for unit assertions."""
+
     def __init__(self, state, summary, details=None):
+        """Store the supplied Checkmk result fields."""
+
         self.state = state
         self.summary = summary
         self.details = details
 
 
 class Service:
+    """Capture a discovered service item."""
+
     def __init__(self, item=None):
+        """Store the optional service item."""
+
         self.item = item
 
 
 class Metric:
+    """Capture a metric name and numeric value."""
+
     def __init__(self, name, value):
+        """Store metric fields."""
+
         self.name = name
         self.value = value
 
 
 class AgentSection:
+    """Capture AgentSection registration arguments."""
+
     def __init__(self, name, parse_function):
+        """Store section registration fields."""
+
         self.name = name
         self.parse_function = parse_function
 
 
 class CheckPlugin:
+    """Capture CheckPlugin keyword arguments."""
+
     def __init__(self, **kwargs):
+        """Store the complete registration dictionary."""
+
         self.kwargs = kwargs
 
 
 def check_levels(value, levels_upper=None, levels_lower=None, metric_name=None, label=None, boundaries=None, render_func=None):
+    """Implement the fixed-level subset used by package unit tests."""
+
     del boundaries, render_func
     if metric_name:
         yield Metric(metric_name, value)
@@ -58,7 +81,9 @@ def check_levels(value, levels_upper=None, levels_lower=None, metric_name=None, 
         yield Result(state, f"{label}: {value}")
 
 
-def install_cmk_agent_based_stub():
+def _install_cmk_stub() -> None:
+    """Install the minimal `cmk.agent_based.v2` module required by tests."""
+
     cmk = types.ModuleType("cmk")
     agent_based = types.ModuleType("cmk.agent_based")
     v2 = types.ModuleType("cmk.agent_based.v2")
@@ -74,14 +99,10 @@ def install_cmk_agent_based_stub():
     sys.modules["cmk.agent_based.v2"] = v2
 
 
-def load_plugin(relative_path: str):
-    install_cmk_agent_based_stub()
+def pytest_sessionstart(session) -> None:
+    """Prepare namespace import paths and Checkmk stubs before test collection."""
+
+    del session
     package_root = Path(__file__).resolve().parents[1]
-    module_path = package_root / relative_path
-    module_name = "test_loaded_" + module_path.stem
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
+    sys.path.insert(0, str(package_root / "src"))
+    _install_cmk_stub()

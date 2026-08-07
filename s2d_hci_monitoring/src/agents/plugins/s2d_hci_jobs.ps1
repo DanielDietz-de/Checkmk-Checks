@@ -1,69 +1,48 @@
 #requires -Version 5.1
 <#
 .SYNOPSIS
-    Storage jobs Checkmk collector for Windows S2D/HCI clusters.
-
+    Bounded storage-job collector for S2D/HCI monitoring.
 .DESCRIPTION
-    Emits active storage job data. Intended cache age: 300 seconds.
-    This collector is read-only. Required-module startup failures are emitted through the same
-    structured per-section failure protocol as command failures.
+    Runs only on the elected cluster collector, emits storage jobs to the
+    logical cluster piggyback host, and reports explicit collector health.
 #>
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$agentRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+Import-Module (Join-Path $agentRoot 'bin\s2d_hci_common.psm1') -Force -ErrorAction Stop
+$config = Get-S2DHciConfig -AgentRoot $agentRoot
+$context = New-S2DHciRunContext -Collector 'jobs' -Config $config
+$piggybackOpen = $false
 
-function Write-JsonLine {
-    <# Serialize one non-null object as a compact JSON line. #>
-    param([Parameter(ValueFromPipeline)] [object] $InputObject)
-    process {
-        if ($null -ne $InputObject) {
-            $InputObject | ConvertTo-Json -Compress -Depth 6
+try {
+    Import-Module FailoverClusters -ErrorAction Stop
+    Import-Module Storage -ErrorAction Stop
+    $clusterContext = Get-S2DHciClusterContext -Context $context
+    if ($clusterContext.IsLeader) {
+        Start-S2DHciPiggyback -HostName $clusterContext.LogicalHost
+        $piggybackOpen = $true
+        Write-S2DHciSection -Name 's2d_hci_storage_jobs' -Context $context -ScriptBlock {
+            Get-StorageJob -ErrorAction Stop | Sort-Object Name | ForEach-Object {
+                [pscustomobject]@{
+                    identity = "job-$(Get-S2DHciStableHash -Value ([string]$_.Name))"
+                    name = [string]$_.Name
+                    is_background_task = $_.IsBackgroundTask
+                    job_state = $_.JobState.ToString()
+                    percent_complete = $_.PercentComplete
+                    bytes_processed = $_.BytesProcessed
+                    bytes_total = $_.BytesTotal
+                    elapsed_seconds = [int64]$_.ElapsedTime.TotalSeconds
+                    recovery_action = [string]$_.RecoveryAction
+                }
+            }
         }
     }
 }
-
-function Invoke-Section {
-    <# Emit a Checkmk section and convert terminating command failures into structured telemetry. #>
-    param([string] $Name, [scriptblock] $ScriptBlock)
-    Write-Output "<<<$Name>>>"
-    try { & $ScriptBlock }
-    catch { [pscustomobject]@{ section = $Name; success = $false; error = $_.Exception.Message } | Write-JsonLine }
+catch {
+    Add-S2DHciCollectorError -Context $context -Message "jobs startup: $($_.Exception.Message)"
 }
-
-function Import-CollectorModules {
-    <# Import required modules or emit a failure row for every affected section and stop cleanly. #>
-    param(
-        [Parameter(Mandatory)] [string[]] $ModuleName,
-        [Parameter(Mandatory)] [string[]] $SectionName
-    )
-
-    try {
-        foreach ($module in $ModuleName) {
-            Import-Module $module -ErrorAction Stop
-        }
-    }
-    catch {
-        $message = "Required module import failed: $($_.Exception.Message)"
-        foreach ($section in $SectionName) {
-            Write-Output "<<<$section>>>"
-            [pscustomobject]@{ section = $section; success = $false; error = $message } | Write-JsonLine
-        }
-        exit 0
-    }
-}
-
-Import-CollectorModules -ModuleName @('Storage') -SectionName @('s2d_hci_storage_jobs')
-
-Invoke-Section -Name 's2d_hci_storage_jobs' -ScriptBlock {
-    Get-StorageJob | Sort-Object Name | ForEach-Object {
-        [pscustomobject]@{
-            name = $_.Name
-            is_background_task = $_.IsBackgroundTask
-            job_state = $_.JobState.ToString()
-            percent_complete = $_.PercentComplete
-            bytes_processed = $_.BytesProcessed
-            bytes_total = $_.BytesTotal
-            elapsed_time = $_.ElapsedTime.ToString()
-            recovery_action = $_.RecoveryAction
-        }
-    } | Write-JsonLine
+finally {
+    if ($piggybackOpen) { Stop-S2DHciPiggyback }
+    Write-S2DHciCollectorHealth -Context $context
 }
