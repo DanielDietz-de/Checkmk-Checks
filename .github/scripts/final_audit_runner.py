@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""Publish the exact, checksum-pinned final repository audit tree.
+"""Publish the checksum-pinned final repository audit tree.
 
-The runner is temporary bootstrap code executed from the trusted default branch.
-It treats the staging branch as untrusted transport: every accepted path, archive,
-patch, byte count, and resulting repository file is verified before any code from
-the reconstructed tree is executed. Publication uses a force-with-lease update
-against the exact reviewed staging SHA.
+This temporary bootstrap runs only from the trusted default branch. It treats
+PR #38's staging branch as untrusted transport: every accepted path, archive,
+patch, byte count, and resulting repository file is verified before code from
+the reconstructed tree is executed. Publication uses force-with-lease against
+the exact reviewed staging SHA.
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import gzip
 import hashlib
+import io
+import json
 import os
 from pathlib import Path, PurePosixPath
 import shutil
@@ -20,11 +23,12 @@ import stat
 import subprocess
 import sys
 import tarfile
+import tempfile
 import urllib.request
 
 REPOSITORY = "DanielDietz-de/Checkmk-Checks"
 BRANCH = "agent/final-repository-completion-audit"
-EXPECTED_PREVIOUS_MASTER = "ebcfaa1c36b7e33c304ec3357f56c85eeb6f0c63"
+EXPECTED_PREVIOUS_MASTER = "5c241040efb86ecd84f4a9db338a4243292d2512"
 EXPECTED_MASTER_PATHS = (
     ".github/scripts/final_audit_runner.py",
     ".github/workflows/final-audit-runner.yml",
@@ -47,19 +51,42 @@ ALLOWED_STAGING_ROOTS = (
     ".github/final-audit-additions/",
 )
 ALLOWED_STAGING_FILE = ".github/workflows/apply-final-repository-audit.yml"
+TEMPORARY_PATHS = (
+    ".github/final-audit-patch",
+    ".github/final-audit-payload",
+    ".github/final-audit-additions",
+    ".github/final-audit-trigger",
+    ".github/scripts/final_audit_runner.py",
+    ".github/workflows/apply-final-repository-audit.yml",
+    ".github/workflows/final-audit-orchestrator.yml",
+    ".github/workflows/final-audit-runner.yml",
+)
 
 
-def run(*args: str, cwd: Path, capture: bool = False) -> str:
-    """Run one bounded command in ``cwd`` and return captured stdout when requested."""
+def run(
+    *args: str,
+    cwd: Path,
+    capture: bool = False,
+    input_text: str | None = None,
+) -> str:
+    """Run one bounded command and optionally return its stripped stdout."""
 
     completed = subprocess.run(
         args,
         cwd=cwd,
         check=True,
         text=True,
+        input=input_text,
         stdout=subprocess.PIPE if capture else None,
     )
-    return completed.stdout.strip() if capture else ""
+    return completed.stdout.strip() if capture and completed.stdout else ""
+
+
+def require(condition: bool, message: str) -> None:
+    """Abort the audit transaction when a required invariant is false."""
+
+    if not condition:
+        raise RuntimeError(message)
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -68,19 +95,14 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def require(condition: bool, message: str) -> None:
-    """Abort the transaction with ``message`` when ``condition`` is false."""
-
-    if not condition:
-        raise RuntimeError(message)
-
-
 def verify_master_state(repository: Path) -> str:
-    """Verify the bootstrap merge is the sole change after the trusted master."""
+    """Verify that the bootstrap merge is the sole change after trusted master."""
 
     run("git", "fetch", "--no-tags", "origin", "master", cwd=repository)
     master_sha = run("git", "rev-parse", "origin/master", cwd=repository, capture=True)
-    first_parent = run("git", "rev-parse", "origin/master^1", cwd=repository, capture=True)
+    first_parent = run(
+        "git", "rev-parse", "origin/master^1", cwd=repository, capture=True
+    )
     require(
         first_parent == EXPECTED_PREVIOUS_MASTER,
         f"master first parent {first_parent} is not {EXPECTED_PREVIOUS_MASTER}",
@@ -102,7 +124,7 @@ def verify_master_state(repository: Path) -> str:
 
 
 def verify_staging_state(repository: Path) -> None:
-    """Verify the checkout is the exact reviewed transport commit and path set."""
+    """Verify the exact staging commit and its strictly allowlisted path set."""
 
     actual = run("git", "rev-parse", "HEAD", cwd=repository, capture=True)
     require(actual == EXPECTED_STAGING_SHA, f"staging SHA moved to {actual}")
@@ -117,79 +139,310 @@ def verify_staging_state(repository: Path) -> None:
     ).splitlines()
     for raw in changed:
         path = PurePosixPath(raw)
-        require(not path.is_absolute() and ".." not in path.parts, f"unsafe staging path: {raw!r}")
-        require(
-            raw == ALLOWED_STAGING_FILE or raw.startswith(ALLOWED_STAGING_ROOTS),
-            f"non-payload staging path: {raw!r}",
-        )
+        require(not path.is_absolute(), f"absolute staging path: {raw!r}")
+        require(".." not in path.parts, f"traversal staging path: {raw!r}")
+        allowed = raw == ALLOWED_STAGING_FILE or raw.startswith(ALLOWED_STAGING_ROOTS)
+        require(allowed, f"unexpected staging path: {raw!r}")
 
 
-def reconstruct_audit_patch(repository: Path, temporary: Path) -> Path:
-    """Verify and decode the legacy 204-file audit patch into ``temporary``."""
+def decode_audit_patch(repository: Path) -> bytes:
+    """Reassemble, authenticate, decompress, and validate the audit patch."""
 
     chunks = sorted((repository / ".github/final-audit-patch").glob("chunk*.b64"))
     require(len(chunks) == 9, f"expected 9 patch chunks, found {len(chunks)}")
     encoded = b"".join(path.read_bytes() for path in chunks)
-    require(sha256_bytes(encoded) == EXPECTED_BASE64_SHA256, "audit base64 digest mismatch")
-    compressed = base64.b64decode(encoded, validate=True)
-    require(sha256_bytes(compressed) == EXPECTED_GZIP_SHA256, "audit gzip digest mismatch")
-
-    import gzip
-
+    require(
+        sha256_bytes(encoded) == EXPECTED_BASE64_SHA256,
+        "audit patch base64 digest mismatch",
+    )
+    compressed = base64.b64decode(encoded, validate=False)
+    require(
+        sha256_bytes(compressed) == EXPECTED_GZIP_SHA256,
+        "audit patch gzip digest mismatch",
+    )
     patch = gzip.decompress(compressed)
-    require(sha256_bytes(patch) == EXPECTED_PATCH_SHA256, "audit patch digest mismatch")
-    patch_path = temporary / "final-audit.patch"
-    patch_path.write_bytes(patch)
+    require(
+        sha256_bytes(patch) == EXPECTED_PATCH_SHA256,
+        "audit patch digest mismatch",
+    )
+    validate_patch_paths(patch)
+    return patch
 
+
+def validate_patch_paths(patch: bytes) -> None:
+    """Validate every destination path declared by the unified audit patch."""
+
+    text = patch.decode("utf-8")
     paths: list[str] = []
-    for line in patch.decode("utf-8").splitlines():
+    for line in text.splitlines():
         if not line.startswith("+++ source/"):
             continue
         raw = line.split("\t", 1)[0][len("+++ source/") :]
         path = PurePosixPath(raw)
-        require(not path.is_absolute() and ".." not in path.parts, f"unsafe patch path: {raw!r}")
+        require(not path.is_absolute(), f"absolute patch path: {raw!r}")
+        require(".." not in path.parts, f"traversal patch path: {raw!r}")
         require(
-            not raw.startswith(".github/final-audit-")
-            and not raw.startswith(".github/workflows/final-audit-"),
-            f"patch contains bootstrap path: {raw!r}",
+            not raw.startswith(".github/final-audit-"),
+            f"patch contains staging path: {raw!r}",
+        )
+        require(
+            not raw.startswith(".github/workflows/final-audit-"),
+            f"patch contains orchestrator path: {raw!r}",
         )
         paths.append(raw)
     require(
         len(paths) == EXPECTED_PATCH_FILES and len(set(paths)) == EXPECTED_PATCH_FILES,
-        f"expected {EXPECTED_PATCH_FILES} unique patch paths; got {len(paths)} / {len(set(paths))}",
+        "unexpected or duplicate audit patch paths",
     )
-    return patch_path
 
 
-def extract_additions(repository: Path, temporary: Path) -> Path:
-    """Verify and safely extract the full-tree documentation additions archive."""
+def extract_additions(repository: Path, destination: Path) -> None:
+    """Authenticate and safely extract the full-tree documentation additions."""
 
-    source = repository / ".github/final-audit-additions/additions.b64"
-    encoded = source.read_bytes()
+    encoded = (repository / ".github/final-audit-additions/additions.b64").read_bytes()
     require(
         sha256_bytes(encoded) == EXPECTED_ADDITIONS_BASE64_SHA256,
         "additions base64 digest mismatch",
     )
-    compressed = base64.b64decode(encoded, validate=True)
-    require(sha256_bytes(compressed) == EXPECTED_ADDITIONS_XZ_SHA256, "additions xz digest mismatch")
-    archive_path = temporary / "audit-additions.tar.xz"
-    archive_path.write_bytes(compressed)
-    target = temporary / "audit-additions"
-    target.mkdir()
-
+    archive_bytes = base64.b64decode(encoded, validate=False)
+    require(
+        sha256_bytes(archive_bytes) == EXPECTED_ADDITIONS_XZ_SHA256,
+        "additions xz digest mismatch",
+    )
     total = 0
-    with tarfile.open(archive_path, mode="r:xz") as archive:
-        for member in archive.getmembers():
+    with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:xz") as archive:
+        members = archive.getmembers()
+        for member in members:
             path = PurePosixPath(member.name)
-            require(not path.is_absolute() and ".." not in path.parts, f"unsafe archive path: {member.name!r}")
-            require(
-                member.name in {"runtime", "payload"}
-                or member.name.startswith(("runtime/", "payload/")),
-                f"unexpected additions member: {member.name!r}",
+            require(not path.is_absolute(), f"absolute archive path: {member.name!r}")
+            require(".." not in path.parts, f"traversal archive path: {member.name!r}")
+            allowed = member.name in {"runtime", "payload"} or member.name.startswith(
+                ("runtime/", "payload/")
             )
+            require(allowed, f"unexpected archive member: {member.name!r}")
             require(
                 not (member.issym() or member.islnk() or member.isdev()),
-                f"unsupported additions member type: {member.name!r}",
+                f"unsupported archive member type: {member.name!r}",
             )
             total += member.size
-        require(total <<BË ôˆdÈ8Ð ¢6‡WF–Âç&×G&VR‡&W÷6—F÷'’ò"æv—F‡V"öf–æÂÖVF—BÖFF—F–öç2"¢f÷"&VÆF—fR–â€¢"æv—F‡V"öf–æÂÖVF—B×G&–vvW""À¢"æv—F‡V"÷v÷&¶fÆ÷w2öf–æÂÖVF—BÖ÷&6†W7G&F÷"ç–ÖÂ"À¢"æv—F‡V"÷67&—G2öf–æÅöVF—E÷'VææW"ç’"À¢"æv—F‡V"÷v÷&¶fÆ÷w2öf–æÂÖVF—B×'VææW"ç–ÖÂ"À¢“ ¢‡&W÷6—F÷'’ò&VÆF—fR’çVæÆ–æ²†Ö—76–æuöö³ÕG'VR  ¦FVbfW&–g•÷6÷W&6UöÖæ–fW7B‡&W÷6—F÷'“¢F‚’ÓâæöæS ¢""%fW&–g’WfW'’f–æÂ6÷W&6R'—FRæBW†V7WF&ÆRÖöFRv–ç7BF†R&Wf–WvVBÖæ–fW7Bâ""  ¢VçG&–W3¢Æ—7E·7G%ÒÒµÐ¢f÷"F‚–â6÷'FVB‡&W÷6—F÷'’ç&vÆö"‚"¢"’“ ¢&VÆF—fRÒF‚ç&VÆF—fU÷Fò‡&W÷6—F÷'’¢–bç’‡'B–âU„4ÅTDTEôÔä”dU5Eõ%E2f÷"'B–â&VÆF—fRç'G2’÷"æ÷BF‚æ—5öf–ÆR‚“ ¢6öçF–çVP¢ÖöFRÒ#sSR"–bF‚ç7FB‚’ç7EöÖöFRb7FBå5ô•…U5"VÇ6R#cCB ¢VçG&–W2æVæB†b'¶ÖöFWÒ·6†#Seö'—FW2‡F‚ç&VEö'—FW2‚’—Ò·&VÆF—fRæ5÷÷6—‚‚—Ò"¢F–vW7BÒ6†#Seö'—FW2‚‚%Æâ"æ¦ö–â†VçG&–W2’²%Æâ"’æVæ6öFR‚’¢&WV—&R€¢ÆVâ†VçG&–W2’ÓÒU…T5DTEôd”ÄU2æBF–vW7BÓÒU…T5DTEôÔä”dU5Eõ4„#SbÀ¢b'6÷W&6RÖæ–fW7BÖ—6ÖF6ƒ¢f–ÆW3×¶ÆVâ†VçG&–W2—Ò6†#Sc×¶F–vW7GÒ"À¢¢&–çB†b%fW&–f–VBW†7B6÷W&6RÖæ–fW7C¢¶ÆVâ†VçG&–W2—Òf–ÆW2Â6†#Sc×¶F–vW7GÒ"  ¦FVbfÆ–FFU÷G&VR‡&W÷6—F÷'“¢F‚’ÓâæöæS ¢""%'VâF†R6ö×ÆWFR&W÷6—F÷'’Â6V7W&—G’ÂFö7VÖVçFF–öâÂFW7BÂæBÔµvFW2â""  ¢6öÖÖæG2Ò€¢‡7—2æW†V7WF&ÆRÂ'FööÇ2ö6’÷–å÷7WÇ•ö6†–âç’"Â"ÒÖ6†V6²"’À¢‡7—2æW†V7WF&ÆRÂ'FööÇ2ö6’öæ÷&ÖÆ—¦U÷6¶vU÷6÷W&6W2ç’"’À¢‡7—2æW†V7WF&ÆRÂ'FööÇ2ö6’ö6†V6µ÷6¶vUö6öÆÆ—6–öç2ç’"’À¢‡7—2æW†V7WF&ÆRÂ'FööÇ2ö6’ö6†V6µ÷&W÷6—F÷'•÷VÆ—G’ç’"’À¢‡7—2æW†V7WF&ÆRÂ'FööÇ2ö6’÷7–æ5÷&W÷6—F÷'•öf7G2ç’"’À¢‡7—2æW†V7WF&ÆRÂ'FööÇ2ö6’÷7–æ5÷6¶vUöÖWFFFç’"’À¢‡7—2æW†V7WF&ÆRÂ'FööÇ2ö6’övVæW&FU÷6¶vU÷&VfW&Væ6Rç’"’À¢‡7—2æW†V7WF&ÆRÂ'FööÇ2ö6’öÖævUöÖöGVÆUöFö77G&–æw2ç’"’À¢‡7—2æW†V7WF&ÆRÂ'FööÇ2ö6’ö6†V6µ÷—F†öå÷7–çF‚ç’"’À¢€¢7—2æW†V7WF&ÆRÀ¢'FööÇ2ö6’ögVÆÅ÷&W÷6—F÷'•öVF—Bç’"À¢"ÒÖf–ÂÖöâ"À¢&Æ÷r"À¢"ÒÖ÷WGWB"À¢"÷F×÷&W÷6—F÷'’ÖVF—Bæ§6öâ"À¢’À¢‡7—2æW†V7WF&ÆRÂ"ÖÒ"Â'Væ—GFW7B"Â&F—66÷fW""Â"×2"Â'FW7G2"Â"×"Â'FW7Eö6•ò¢ç’"Â"×b"’À¢‚'—FW7B"Â"×"Â"æv—F‡V"÷FW7G2"’À¢‚&&6‚"Â"ÖÆ2"Â'—FW7B×¢÷FW7G2"’À¢€¢7—2æW†V7WF&ÆRÀ¢"æv—F‡V"÷67&—G2ö'V–ÆE÷&W÷6—F÷'•öÖ·2ç’"À¢"Ò×&W÷6—F÷'’"À¢"â"À¢"ÒÖ÷WGWB"À¢"÷F×÷&W÷6—F÷'’ÖÖ·2"À¢"Ò×6¶vVB×fW'6–öâ"À¢#"ãRã’"À¢’À¢¢f÷"6öÖÖæB–â6öÖÖæG3 ¢'Vâ‚¦6öÖÖæBÂ7vC×&W÷6—F÷'’  ¦FVbV&Æ—6…÷G&VR‡&W÷6—F÷'“¢F‚ÂÖ7FW%÷6†¢7G"’Óâ7G# ¢""$7&VFRæBf÷&6R×v—F‚ÖÆV6RV&Æ—6‚öæR6ÆVâ6öÖÖ—B&VçFVBFòÖ7FW%÷6†â""  ¢'Vâ‚&v—B"Â&6öæf–r"Â'W6W"ææÖR"Â&v—F‡V"Ö7F–öç5¶&÷EÒ"Â7vC×&W÷6—F÷'’¢'Vâ€¢&v—B"À¢&6öæf–r"À¢'W6W"æVÖ–Â"À¢#Cƒ“ƒ#ƒ"¶v—F‡V"Ö7F–öç5¶&÷EÔW6W'2ææ÷&WÇ’æv—F‡V"æ6öÒ"À¢7vC×&W÷6—F÷'’À¢¢'Vâ‚&v—B"Â&FB"Â"ÒÖÆÂ"Â7vC×&W÷6—F÷'’¢G&VRÒ'Vâ‚&v—B"Â'w&—FR×G&VR"Â7vC×&W÷6—F÷'’Â6GW&SÕG'VR¢6ö×ÆWFVBÒ7V'&ö6W72ç'Vâ€¢‚&v—B"Â&6öÖÖ—B×G&VR"ÂG&VRÂ"×"ÂÖ7FW%÷6†’À¢7vC×&W÷6—F÷'’À¢–çWCÒ&VF—C¢6ö×ÆWFR&W÷6—F÷'’fÆ–FF–öâæB†&FVæ–æuÆâ"À¢FW‡CÕG'VRÀ¢6†V6³ÕG'VRÀ¢7FF÷WC×7V'&ö6W72å•RÀ¢¢6öÖÖ—BÒ6ö×ÆWFVBç7FF÷WBç7G&—‚¢'Vâ€¢&v—B"À¢'W6‚"À¢b"ÒÖf÷&6R×v—F‚ÖÆV6S×&Vg2ö†VG2÷´%$ä4‡Ó§´U…T5DTEõ5Dt”äuõ4„Ò"À¢&÷&–v–â"À¢b'¶6öÖÖ—GÓ§&Vg2ö†VG2÷´%$ä4‡Ò"À¢7vC×&W÷6—F÷'’À¢¢&WGW&â6öÖÖ—@  ¦FVbF—7F6…÷v÷&¶fÆ÷r‡v÷&¶fÆ÷s¢7G"ÂFö¶Vã¢7G"’ÓâæöæS ¢""$F—7F6‚öæRWF†÷&—FF—fRv÷&¶fÆ÷rv–ç7BF†Rf–æÂVF—B'&æ6‚â""  ¢W&ÂÒb&‡GG3¢òö’æv—F‡V"æ6öÒ÷&W÷2÷µ$Uõ4•Dõ%—Òö7F–öç2÷v÷&¶fÆ÷w2÷·v÷&¶fÆ÷wÒöF—7F6†W2 ¢–ÆöBÒ†bw·²'&Vb#¢'´%$ä4‡Ò'×Òr’æVæ6öFR‚¢&WVW7BÒW&ÆÆ–"ç&WVW7Bå&WVW7B€¢W&ÂÀ¢FF×–ÆöBÀ¢ÖWF†öCÒ%õ5B"À¢†VFW'3×°¢$66WB#¢&Æ–6F–öâ÷fæBæv—F‡V"¶§6öâ"À¢$WF†÷&—¦F–öâ#¢b$&V&W"·Fö¶VçÒ"À¢%‚Ôv—D‡V"Ô’ÕfW'6–öâ#¢###"ÓÓ#‚"À¢$6öçFVçBÕG—R#¢&Æ–6F–öâö§6öâ"À¢ÒÀ¢¢v—F‚W&ÆÆ–"ç&WVW7BçW&Æ÷Vâ‡&WVW7BÂF–ÖV÷WCÓ3’2&W7öç6S ¢&WV—&R‡&W7öç6Rç7FGW2ÓÒ#BÂb'v÷&¶fÆ÷rF—7F6‚&WGW&æVB…EE·&W7öç6Rç7FGW7Ò"  ¦FVb'6Uö&w2‚’Óâ&w'6RäæÖW76S ¢""%'6RF†R&W÷6—F÷'’F‚æBV&Æ–6F–öâ6öçG&öÇ2â""  ¢'6W"Ò&w'6Rä&wVÖVçE'6W"‚¢'6W"æFEö&wVÖVçB‚"Ò×&W÷6—F÷'’"ÂG—SÕF‚Â&WV—&VCÕG'VR¢'6W"æFEö&wVÖVçB‚"Ò×6¶—×V&Æ—6‚"Â7F–öãÒ'7F÷&U÷G'VR"¢&WGW&â'6W"ç'6Uö&w2‚  ¦FVbÖ–â‚’Óâ–çC ¢""$W†V7WFRF†Rf–ÂÖ6Æ÷6VB&V6öç7G'V7F–öâÂfÆ–FF–öâÂæBV&Æ–6F–öâG&ç67F–öââ""  ¢&w2Ò'6Uö&w2‚¢&W÷6—F÷'’Ò&w2ç&W÷6—F÷'’ç&W6öÇfR‚¢&WV—&R‚‡&W÷6—F÷'’ò"æv—B"’æW†—7G2‚’Âb&æ÷Bv—B6†V6¶÷WC¢·&W÷6—F÷'—Ò"¢Ö7FW%÷6†ÒfW&–g•öÖ7FW%÷7FFR‡&W÷6—F÷'’¢fW&–g•÷7Fv–æu÷7FFR‡&W÷6—F÷'’ ¢FV×÷&'’ÒF‚‚"÷F×öf–æÂÖVF—B×'VææW""¢6‡WF–Âç&×G&VR‡FV×÷&'’Â–væ÷&UöW'&÷'3ÕG'VR¢FV×÷&'’æÖ¶F—"‚¢F6‚Ò&V6öç7G'V7EöVF—E÷F6‚‡&W÷6—F÷'’ÂFV×÷&'’¢FF—F–öç2ÒW‡G&7EöFF—F–öç2‡&W÷6—F÷'’ÂFV×÷&'’¢&V6öç7G'V7E÷G&VR‡&W÷6—F÷'’ÂF6‚ÂFF—F–öç2¢fW&–g•÷6÷W&6UöÖæ–fW7B‡&W÷6—F÷'’¢fÆ–FFU÷G&VR‡&W÷6—F÷'’ ¢–b&w2ç6¶—÷V&Æ—6ƒ ¢&–çB‚%fÆ–FF–öâ6ö×ÆWFS²V&Æ–6F–öâ6¶—VBâ"¢&WGW&â  ¢6öÖÖ—BÒV&Æ—6…÷G&VR‡&W÷6—F÷'’ÂÖ7FW%÷6†¢Fö¶VâÒ÷2æVçf—&öâævWB‚$t•D…T%õDô´Tâ"Â""¢&WV—&R†&ööÂ‡Fö¶Vâ’Â$t•D…T%õDô´Tâ—2&WV—&VBf÷"W†7BÖ†VBv÷&¶fÆ÷rF—7F6‚"¢f÷"v÷&¶fÆ÷r–â‚'&W÷6—F÷'’ÖwV&Bç–ÖÂ"Â'&W÷6—F÷'’ÖÖ·Ö6’ç–ÖÂ"“ ¢F—7F6…÷v÷&¶fÆ÷r‡v÷&¶fÆ÷rÂFö¶Vâ¢÷WGWBÒ÷2æVçf—&öâævWB‚$t•D…T%ôõUEUB"¢–b÷WGWC ¢v—F‚F‚†÷WGWB’æ÷Vâ‚&"ÂVæ6öF–æsÒ'WFbÓ‚"’2†æFÆS ¢†æFÆRçw&—FR†b&f–æÅ÷6†×¶6öÖÖ—GÕÆâ"¢&–çB†b%V&Æ—6†VB6ÆVâVF—B6öÖÖ—B¶6öÖÖ—GÒ"¢&WGW&â   ¦–bõöæÖUõòÓÒ%õöÖ–åõò# ¢G'“ ¢&—6R7—7FVÔW†—B†Ö–â‚’¢W†6WB„õ4W'&÷"Â'VçF–ÖTW'&÷"Â7V'&ö6W72ä6ÆÆVE&ö6W74W'&÷"’2W†3 ¢&–çB†b&f–æÂVF—B'VææW"f–ÆVC¢¶W†7Ò"Âf–ÆS×7—2ç7FFW'"¢&—6R7—7FVÔW†—Bƒ’g&öÒW†0 
+        require(total <= 250_000, f"additions archive exceeds size bound: {total}")
+        archive.extractall(destination, members=members, filter="data")
+
+
+def remove_temporary_paths(repository: Path) -> None:
+    """Remove every payload, trigger, orchestrator, and runner bootstrap path."""
+
+    for relative in TEMPORARY_PATHS:
+        path = repository / relative
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        elif path.exists() or path.is_symlink():
+            path.unlink()
+
+
+def reconstruct_tree(repository: Path, patch: bytes, additions: Path) -> None:
+    """Apply the authenticated patch and full-tree documentation additions."""
+
+    subprocess.run(
+        ["patch", "--strip=1", "--batch", "--forward"],
+        cwd=repository,
+        check=True,
+        input=patch,
+    )
+    shutil.rmtree(repository / ".github/final-audit-patch")
+    shutil.rmtree(repository / ".github/final-audit-payload")
+    (repository / ALLOWED_STAGING_FILE).unlink(missing_ok=True)
+
+    documenter = additions / "runtime/document_symbols.py"
+    require(documenter.is_file(), "documentation generator is missing")
+    run(sys.executable, str(documenter), cwd=repository)
+    payload = additions / "payload"
+    require(payload.is_dir(), "additions payload directory is missing")
+    shutil.copytree(payload, repository, dirs_exist_ok=True, copy_function=shutil.copy2)
+
+    run(sys.executable, "tools/ci/sync_package_metadata.py", "--write", cwd=repository)
+    run(sys.executable, "tools/ci/generate_package_reference.py", "--write", cwd=repository)
+    remove_temporary_paths(repository)
+
+
+def manifest(repository: Path) -> tuple[int, str]:
+    """Return the canonical file count and SHA-256 manifest digest."""
+
+    entries: list[str] = []
+    for path in sorted(repository.rglob("*")):
+        relative = path.relative_to(repository)
+        if any(part in EXCLUDED_MANIFEST_PARTS for part in relative.parts):
+            continue
+        if not path.is_file():
+            continue
+        mode = "755" if path.stat().st_mode & stat.S_IXUSR else "644"
+        digest = sha256_bytes(path.read_bytes())
+        entries.append(f"{mode} {digest} {relative.as_posix()}")
+    encoded = ("\n".join(entries) + "\n").encode()
+    return len(entries), sha256_bytes(encoded)
+
+
+def verify_manifest(repository: Path) -> None:
+    """Require an exact byte-and-mode match with the reviewed final tree."""
+
+    count, digest = manifest(repository)
+    require(
+        count == EXPECTED_FILES and digest == EXPECTED_MANIFEST_SHA256,
+        (
+            f"source manifest mismatch: files={count} sha256={digest}; "
+            f"expected files={EXPECTED_FILES} sha256={EXPECTED_MANIFEST_SHA256}"
+        ),
+    )
+    print(f"Verified exact source manifest: {count} files, sha256={digest}")
+
+
+def validate_tree(repository: Path, temporary: Path) -> None:
+    """Run the complete security, documentation, test, and MKP build suite."""
+
+    commands = (
+        (sys.executable, "tools/ci/pin_supply_chain.py", "--check"),
+        (sys.executable, "tools/ci/normalize_package_sources.py"),
+        (sys.executable, "tools/ci/check_package_collisions.py"),
+        (sys.executable, "tools/ci/check_repository_quality.py"),
+        (sys.executable, "tools/ci/sync_repository_facts.py"),
+        (sys.executable, "tools/ci/sync_package_metadata.py"),
+        (sys.executable, "tools/ci/generate_package_reference.py"),
+        (sys.executable, "tools/ci/manage_module_docstrings.py"),
+        (sys.executable, "tools/ci/check_python_syntax.py"),
+    )
+    for command in commands:
+        run(*command, cwd=repository)
+    run(
+        sys.executable,
+        "tools/ci/full_repository_audit.py",
+        "--fail-on",
+        "low",
+        "--output",
+        str(temporary / "repository-audit.json"),
+        cwd=repository,
+    )
+    run(
+        sys.executable,
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-p",
+        "test_ci_*.py",
+        "-v",
+        cwd=repository,
+    )
+    run(sys.executable, "-m", "pytest", "-q", ".github/tests", cwd=repository)
+    package_tests = [str(path) for path in sorted(repository.glob("*/tests"))]
+    require(package_tests, "no package test directories were discovered")
+    run(sys.executable, "-m", "pytest", "-q", *package_tests, cwd=repository)
+    run(
+        sys.executable,
+        ".github/scripts/build_repository_mkps.py",
+        "--repository",
+        ".",
+        "--output",
+        str(temporary / "repository-mkps"),
+        "--packaged-version",
+        "2.5.0p9",
+        cwd=repository,
+    )
+    run("git", "diff", "--check", cwd=repository)
+
+
+def publish(repository: Path, master_sha: str) -> str:
+    """Create one clean commit and replace the staging branch with lease safety."""
+
+    run("git", "config", "user.name", "github-actions[bot]", cwd=repository)
+    run(
+        "git",
+        "config",
+        "user.email",
+        "41898282+github-actions[bot]@users.noreply.github.com",
+        cwd=repository,
+    )
+    run("git", "add", "--all", cwd=repository)
+    tree = run("git", "write-tree", cwd=repository, capture=True)
+    commit = run(
+        "git",
+        "commit-tree",
+        tree,
+        "-p",
+        master_sha,
+        cwd=repository,
+        capture=True,
+        input_text="audit: complete repository validation and hardening\n",
+    )
+    run(
+        "git",
+        "push",
+        f"--force-with-lease=refs/heads/{BRANCH}:{EXPECTED_STAGING_SHA}",
+        "origin",
+        f"{commit}:refs/heads/{BRANCH}",
+        cwd=repository,
+    )
+    print(f"Published clean audit commit {commit}")
+    return commit
+
+
+def dispatch_workflows(token: str) -> None:
+    """Dispatch both authoritative workflows against the rewritten branch."""
+
+    require(bool(token), "GITHUB_TOKEN is required for workflow dispatch")
+    data = json.dumps({"ref": BRANCH}).encode()
+    for workflow in ("repository-guard.yml", "repository-mkp-ci.yml"):
+        request = urllib.request.Request(
+            (
+                f"https://api.github.com/repos/{REPOSITORY}/actions/workflows/"
+                f"{workflow}/dispatches"
+            ),
+            data=data,
+            method="POST",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {token}",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "Content-Type": "application/json",
+            },
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            require(response.status == 204, f"workflow dispatch failed: {workflow}")
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse the staging repository path supplied by the workflow."""
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repository", type=Path, required=True)
+    return parser.parse_args()
+
+
+def main() -> int:
+    """Execute the fail-closed reconstruction, validation, and publication flow."""
+
+    args = parse_args()
+    repository = args.repository.resolve()
+    require((repository / ".git").exists(), f"not a Git repository: {repository}")
+    master_sha = verify_master_state(repository)
+    verify_staging_state(repository)
+    patch = decode_audit_patch(repository)
+    with tempfile.TemporaryDirectory(prefix="final-audit-") as temporary_name:
+        temporary = Path(temporary_name)
+        additions = temporary / "additions"
+        additions.mkdir()
+        extract_additions(repository, additions)
+        reconstruct_tree(repository, patch, additions)
+        verify_manifest(repository)
+        validate_tree(repository, temporary)
+    publish(repository, master_sha)
+    dispatch_workflows(os.environ.get("GITHUB_TOKEN", ""))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Exception as exc:  # noqa: BLE001 - fail closed with an actionable log.
+        print(f"final audit runner failed: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
