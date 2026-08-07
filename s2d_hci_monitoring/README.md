@@ -104,36 +104,38 @@ This package retains the [PolyForm Internal Use License 1.0.0](LICENSE).
 <!-- code-derived-reference:start -->
 ## Code-derived operational reference
 
-This section is generated from the canonical manifest and current source tree. Edit code or `src/info` first; generated repository tooling must be synchronized before merge.
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
 
 ### Installation
 
-- Canonical package: `s2d_hci_monitoring` version `1.1.0`; minimum Checkmk version `2.5.0`; maximum asserted version: `2.5.99`.
+- Canonical package: `s2d_hci_monitoring` version `1.1.0`; minimum Checkmk version `2.5.0`; maximum asserted version: 2.5.99.
 - Canonical manifest: `s2d_hci_monitoring/src/info`; it declares 21 packaged files.
-- Source under `src/` is authoritative; release artifacts must be generated from that tree.
+- No committed MKP artifact is present; build and validate the package from `src/` before installation.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
 
 ### Configuration and components
 
-- **Agent-based checks:** collector health, cluster/quorum/node/network/resource state, CSV/storage objects/jobs/health, and optional Hyper-V host/workload/service/replication/checkpoint/NIC/disk state.
-- **Rulesets:** Agent Bakery deployment, operational-state policy, CSV/volume capacity thresholds, VM CPU/memory thresholds, and checkpoint-age thresholds.
-- **Graphing:** capacity, storage-job, VM CPU/memory, and checkpoint-age metrics.
-- **Windows agent source:** shared protocol module, five collectors, bounded JSON configuration, and fail-safe virtualization spool wrapper.
-- **Bakery server plug-in:** `src/lib/python3/cmk/base/cee/plugins/bakery/s2d_hci.py`.
+- **Agent-based checks:** `src/s2d_hci/agent_based/s2d_hci_collector_health.py`, `src/s2d_hci/agent_based/s2d_hci_fast.py`, `src/s2d_hci/agent_based/s2d_hci_health.py`, `src/s2d_hci/agent_based/s2d_hci_jobs.py`, `src/s2d_hci/agent_based/s2d_hci_protocol.py`, `src/s2d_hci/agent_based/s2d_hci_storage.py`, `src/s2d_hci/agent_based/s2d_hci_virtualization.py`.
+- **Rulesets:** `src/s2d_hci/rulesets/bakery.py`, `src/s2d_hci/rulesets/ruleset_s2d_hci.py`, `src/s2d_hci/rulesets/ruleset_s2d_hci_workloads.py`.
+- **Graphing:** `src/s2d_hci/graphing/graphing_s2d_hci.py`.
+- **Bakery:** `src/lib/python3/cmk/base/cee/plugins/bakery/s2d_hci.py`.
+- **Check manuals:** `src/s2d_hci/checkman/s2d_hci`.
+- **Other packaged source:** `src/agents/bin/s2d_hci_common.psm1`, `src/agents/config/s2d_hci.json`, `src/agents/plugins/s2d_hci_fast.ps1`, `src/agents/plugins/s2d_hci_health.ps1`, `src/agents/plugins/s2d_hci_jobs.ps1`, `src/agents/plugins/s2d_hci_storage.ps1`, `src/agents/plugins/s2d_hci_virtualization.ps1`, `src/agents/scripts/s2d_hci_virtualization_spool.ps1`.
+- Registered check plug-in names: `s2d_hci_cluster_groups`, `s2d_hci_cluster_resources`, `s2d_hci_cluster_summary`, `s2d_hci_collector_health`, `s2d_hci_csv`, `s2d_hci_network_interfaces`, `s2d_hci_networks`, `s2d_hci_nodes`, `s2d_hci_physical_disks`, `s2d_hci_quorum`, `s2d_hci_s2d_state`, `s2d_hci_storage_health_report`, `s2d_hci_storage_jobs`, `s2d_hci_storage_pools`, `s2d_hci_storage_subsystems`, `s2d_hci_virtual_disks`, `s2d_hci_virtualization_checkpoints`, `s2d_hci_virtualization_hard_disks`, `s2d_hci_virtualization_host`, `s2d_hci_virtualization_network_adapters`, `s2d_hci_virtualization_replication`, `s2d_hci_virtualization_services`, `s2d_hci_virtualization_workloads`, `s2d_hci_volumes`.
 
 ### Validation
 
-- Package tests enforce protocol handling, duplicate visibility, collector-health behavior, manifest ownership, removed performance-history code, PowerShell safety contracts, Bakery contracts, and function-level documentation.
-- Any behavior change must update focused tests and documentation before generated repository facts are refreshed.
+- Package-specific tests: `tests/test_bakery_contracts.py`, `tests/test_code_documentation.py`, `tests/test_collector_health.py`, `tests/test_graphing_contracts.py`, `tests/test_manifest_integrity.py`, `tests/test_powershell_contracts.py`, `tests/test_protocol.py`, `tests/test_s2d_hci_checks.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
 
 ### Security
 
-- No password or secret is accepted by the package configuration.
-- Sensitive addresses, paths, serials, IDs, and locations are minimized by default.
-- gMSA spool publication is fail-safe and path-confined.
+- No Checkmk password or secret form was detected in the current package source.
+- Static analysis did not identify a supported direct remote-network client. This is not proof of network isolation; review extensionless and non-Python executables before deployment.
 
 ### Troubleshooting
 
-- Start with `S2D/HCI collector <collector>` services on physical nodes.
-- Cluster-wide services are expected on `s2d-cluster-*` piggyback hosts.
-- Custom VM services are expected on `s2d-vm-<guid>` piggyback hosts only when explicitly enabled.
+- Emitted Checkmk sections detected in source: `s2d_hci_collector_health`.
+- Verify deployment path, permissions, registration name, and the exact input/output contract represented by the source files above.
 <!-- code-derived-reference:end -->
