@@ -99,10 +99,12 @@ def _install_cmk_stub() -> None:
     sys.modules["cmk.agent_based.v2"] = v2
 
 
-def pytest_sessionstart(session) -> None:
-    """Prepare namespace import paths and Checkmk stubs before test collection."""
-
-    del session
-    package_root = Path(__file__).resolve().parents[1]
-    sys.path.insert(0, str(package_root / "src"))
-    _install_cmk_stub()
+# Pytest discovers nested conftest files during collection, after the global
+# pytest_sessionstart hook has already fired. Prepare the S2D namespace and API
+# stub immediately at conftest import time so the full repository test suite
+# cannot depend on which other package's Checkmk stub was imported first.
+_package_root = Path(__file__).resolve().parents[1]
+_package_src = str(_package_root / "src")
+if _package_src not in sys.path:
+    sys.path.insert(0, _package_src)
+_install_cmk_stub()
