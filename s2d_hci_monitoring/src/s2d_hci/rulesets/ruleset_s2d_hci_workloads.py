@@ -29,7 +29,7 @@ def _upper_levels(title: str, warn: float, crit: float) -> SimpleLevels:
 
 
 def _severity_choice(title: str, default: str) -> SingleChoice:
-    """Return a Checkmk state selector shared by VM workload state-policy fields."""
+    """Return a Checkmk state selector shared by VM operational-state policy fields."""
 
     return SingleChoice(
         title=Title(title),
@@ -44,14 +44,29 @@ def _severity_choice(title: str, default: str) -> SingleChoice:
 
 
 def _workload_state_elements() -> dict[str, DictElement]:
-    """Return configurable VM operational-state mappings matching check defaults."""
+    """Return every operational-state mapping consumed by virtualization checks."""
 
     return {
-        "degraded_state": DictElement(parameter_form=_severity_choice("Degraded or warning state", "warn"), required=True),
-        "paused_state": DictElement(parameter_form=_severity_choice("Paused or suspended state", "warn"), required=True),
-        "draining_state": DictElement(parameter_form=_severity_choice("Draining or resynchronizing state", "warn"), required=True),
-        "offline_state": DictElement(parameter_form=_severity_choice("Offline, failed, or critical state", "crit"), required=True),
-        "unknown_state": DictElement(parameter_form=_severity_choice("Unknown or unrecognized state", "unknown"), required=True),
+        "degraded_state": DictElement(
+            parameter_form=_severity_choice("Degraded or warning state", "warn"),
+            required=True,
+        ),
+        "paused_state": DictElement(
+            parameter_form=_severity_choice("Paused or suspended state", "warn"),
+            required=True,
+        ),
+        "draining_state": DictElement(
+            parameter_form=_severity_choice("Draining or resynchronizing state", "warn"),
+            required=True,
+        ),
+        "offline_state": DictElement(
+            parameter_form=_severity_choice("Offline, failed, or critical state", "crit"),
+            required=True,
+        ),
+        "unknown_state": DictElement(
+            parameter_form=_severity_choice("Unknown or unrecognized state", "unknown"),
+            required=True,
+        ),
     }
 
 
@@ -61,28 +76,41 @@ def _workload_form() -> Dictionary:
     elements = _workload_state_elements()
     elements.update(
         {
-            "levels_upper_cpu": DictElement(parameter_form=_upper_levels("CPU usage", 80.0, 95.0), required=True),
-            "levels_upper_memory_pressure": DictElement(parameter_form=_upper_levels("Memory pressure", 100.0, 120.0), required=True),
+            "levels_upper_cpu": DictElement(
+                parameter_form=_upper_levels("CPU usage", 80.0, 95.0),
+                required=True,
+            ),
+            "levels_upper_memory_pressure": DictElement(
+                parameter_form=_upper_levels("Memory pressure", 100.0, 120.0),
+                required=True,
+            ),
         }
     )
     return Dictionary(
         title=Title("S2D/HCI virtualization workload thresholds"),
-        help_text=Help("Applied only when custom Hyper-V workload monitoring is explicitly enabled."),
+        help_text=Help(
+            "Applied only when custom Hyper-V workload monitoring is explicitly enabled. "
+            "The state controls match every state-policy default consumed by the check."
+        ),
         elements=elements,
     )
 
 
 def _checkpoint_form() -> Dictionary:
-    """Return retained checkpoint age thresholds in hours."""
+    """Return retained checkpoint age plus the full operational-state policy."""
 
+    elements = _workload_state_elements()
+    elements["levels_upper_age_hours"] = DictElement(
+        parameter_form=_upper_levels("Checkpoint age in hours", 24.0, 72.0),
+        required=True,
+    )
     return Dictionary(
         title=Title("S2D/HCI checkpoint age thresholds"),
-        elements={
-            "levels_upper_age_hours": DictElement(
-                parameter_form=_upper_levels("Checkpoint age in hours", 24.0, 72.0),
-                required=True,
-            )
-        },
+        help_text=Help(
+            "Configure retained checkpoint age and every operational-state mapping "
+            "accepted by the checkpoint check defaults."
+        ),
+        elements=elements,
     )
 
 
