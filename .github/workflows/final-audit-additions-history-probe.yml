@@ -1,0 +1,142 @@
+name: Final audit additions history probe
+
+on:
+  push:
+    branches:
+      - agent/probe-final-audit-additions-history
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact staging history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: a63b0b2b0b495d316eb506c47cd514f627e746e2
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Probe historical additions and legacy payloads
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import base64
+          import binascii
+          import gzip
+          import hashlib
+          import io
+          import lzma
+          from pathlib import PurePosixPath
+          import subprocess
+          import tarfile
+
+          STAGING = "a63b0b2b0b495d316eb506c47cd514f627e746e2"
+          ADDITIONS = ".github/final-audit-additions/additions.b64"
+
+          def git(*args: str) -> bytes:
+              return subprocess.run(
+                  ["git", *args], check=True, stdout=subprocess.PIPE
+              ).stdout
+
+          def sha(data: bytes) -> str:
+              return hashlib.sha256(data).hexdigest()
+
+          def decode_variants(data: bytes):
+              canonical = b"".join(data.split())
+              variants = []
+              try:
+                  variants.append(("strict", base64.b64decode(canonical, validate=True)))
+              except (binascii.Error, ValueError):
+                  pass
+              try:
+                  tolerant = base64.b64decode(canonical, validate=False)
+                  if not variants or tolerant != variants[0][1]:
+                      variants.append(("tolerant", tolerant))
+              except (binascii.Error, ValueError):
+                  pass
+              return variants
+
+          def classify(label: str, data: bytes) -> None:
+              print(f"CANDIDATE {label}: bytes={len(data)} sha256={sha(data)} magic={data[:12].hex()}")
+              try:
+                  plain = gzip.decompress(data)
+                  print(f"  gzip: OK bytes={len(plain)} sha256={sha(plain)}")
+              except Exception as exc:
+                  print(f"  gzip: no ({type(exc).__name__})")
+              try:
+                  plain = lzma.decompress(data, format=lzma.FORMAT_XZ)
+                  print(f"  xz: OK bytes={len(plain)} sha256={sha(plain)}")
+              except Exception as exc:
+                  print(f"  xz: no ({type(exc).__name__})")
+              try:
+                  with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as archive:
+                      members = archive.getmembers()
+                  names = [member.name for member in members]
+                  safe = all(
+                      not PurePosixPath(name).is_absolute()
+                      and ".." not in PurePosixPath(name).parts
+                      for name in names
+                  )
+                  print(
+                      "  tar: OK "
+                      f"members={len(names)} safe={safe} first={names[:12]}"
+                  )
+              except Exception as exc:
+                  print(f"  tar: no ({type(exc).__name__}: {exc})")
+
+          print("== additions history ==")
+          commits = git(
+              "log", "--format=%H", STAGING, "--", ADDITIONS
+          ).decode().splitlines()
+          print(f"historical commits: {len(commits)}")
+          for commit in commits:
+              try:
+                  blob = git("rev-parse", f"{commit}:{ADDITIONS}").decode().strip()
+                  encoded = git("show", f"{commit}:{ADDITIONS}")
+              except subprocess.CalledProcessError:
+                  continue
+              print(
+                  f"HISTORY commit={commit} blob={blob} encoded_bytes={len(encoded)} "
+                  f"encoded_sha256={sha(encoded)}"
+              )
+              variants = decode_variants(encoded)
+              if not variants:
+                  print("  base64: no decodable variant")
+              for mode, decoded in variants:
+                  classify(f"{commit}:{mode}", decoded)
+
+          print("== legacy payload at staging ==")
+          payload_files = [
+              line
+              for line in git(
+                  "ls-tree", "-r", "--name-only", STAGING, ".github/final-audit-payload"
+              ).decode().splitlines()
+              if line.endswith(".b64")
+          ]
+          print(f"payload files: {payload_files}")
+          contents = [git("show", f"{STAGING}:{path}") for path in payload_files]
+          combined = b"".join(contents)
+          for mode, decoded in decode_variants(combined):
+              classify(f"payload-combined:{mode}", decoded)
+          fragment_decoded = []
+          fragment_ok = True
+          for path, raw in zip(payload_files, contents):
+              variants = decode_variants(raw)
+              if not variants:
+                  print(f"PAYLOAD fragment={path}: undecodable")
+                  fragment_ok = False
+                  break
+              selected_mode, selected = variants[0]
+              print(
+                  f"PAYLOAD fragment={path} mode={selected_mode} decoded_bytes={len(selected)} "
+                  f"sha256={sha(selected)} magic={selected[:12].hex()}"
+              )
+              fragment_decoded.append(selected)
+          if fragment_ok and fragment_decoded:
+              classify("payload-fragmented", b"".join(fragment_decoded))
+          PY
