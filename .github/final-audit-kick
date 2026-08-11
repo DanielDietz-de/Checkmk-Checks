@@ -3,3 +3,4 @@ retry after transport canonicalization fix
 retry after exact patch-content authentication
 retry after authenticated additions recovery
 retry after truncated XZ prefix recovery
+retry after restoring pinned staging transport
