@@ -20,7 +20,7 @@ class Result:
     """Capture Checkmk result state and text for unit assertions."""
 
     def __init__(self, state, summary, details=None):
-        """Store the supplied Checkmk result fields."""
+        """Store result state, summary, and optional details exactly as emitted so unit tests can assert check behavior."""
 
         self.state = state
         self.summary = summary
@@ -28,39 +28,39 @@ class Result:
 
 
 class Service:
-    """Capture a discovered service item."""
+    """Represent the minimal Checkmk service object needed to assert discovered item identities in isolated unit tests."""
 
     def __init__(self, item=None):
-        """Store the optional service item."""
+        """Store the optional service item exactly as the production discovery function supplied it for later assertions."""
 
         self.item = item
 
 
 class Metric:
-    """Capture a metric name and numeric value."""
+    """Represent the minimal Checkmk metric object required to validate emitted metric names and values in package tests."""
 
     def __init__(self, name, value):
-        """Store metric fields."""
+        """Store the metric name and numeric value without applying any Checkmk rendering or unit conversion."""
 
         self.name = name
         self.value = value
 
 
 class AgentSection:
-    """Capture AgentSection registration arguments."""
+    """Represent the AgentSection registration fields required to exercise parser registrations without importing a full Checkmk site."""
 
     def __init__(self, name, parse_function):
-        """Store section registration fields."""
+        """Store the section name and parser callable exactly as supplied by the production AgentSection registration."""
 
         self.name = name
         self.parse_function = parse_function
 
 
 class CheckPlugin:
-    """Capture CheckPlugin keyword arguments."""
+    """Represent a CheckPlugin registration by retaining its keyword arguments for focused contract assertions in tests."""
 
     def __init__(self, **kwargs):
-        """Store the complete registration dictionary."""
+        """Store the complete CheckPlugin keyword-argument mapping so tests can inspect defaults, rulesets, and callbacks."""
 
         self.kwargs = kwargs
 

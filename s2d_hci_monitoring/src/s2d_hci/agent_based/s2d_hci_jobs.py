@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Monitor bounded Storage Spaces Direct background-job progress."""
+"""Monitor bounded Storage Spaces Direct background jobs, preserving protocol failures and finite progress metrics for Checkmk services."""
 
 from __future__ import annotations
 

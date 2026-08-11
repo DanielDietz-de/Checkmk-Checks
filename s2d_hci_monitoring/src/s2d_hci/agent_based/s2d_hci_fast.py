@@ -188,7 +188,7 @@ agent_section_s2d_hci_nodes = AgentSection(name="s2d_hci_nodes", parse_function=
 
 
 def discover_s2d_hci_nodes(section: Section):
-    """Discover cluster nodes and synthetic input-error services."""
+    """Discover one service per cluster node and retain synthetic protocol-error records for operator visibility."""
 
     yield from discover_items(section)
 
@@ -240,7 +240,7 @@ def _check_named_state(item: str, params: Mapping[str, object], section: Section
 
 
 def parse_s2d_hci_networks(string_table: Sequence[Sequence[str]]) -> Section:
-    """Parse cluster network state."""
+    """Parse cluster network records through the shared versioned protocol and preserve malformed or duplicate input as visible errors."""
 
     return _parse_named_state(string_table, "Cluster network")
 
@@ -249,13 +249,13 @@ agent_section_s2d_hci_networks = AgentSection(name="s2d_hci_networks", parse_fun
 
 
 def discover_s2d_hci_networks(section: Section):
-    """Discover cluster network services."""
+    """Discover one service for every normalized cluster network record, including synthetic parser or collector failures."""
 
     yield from discover_items(section)
 
 
 def check_s2d_hci_networks(item: str, params: Mapping[str, object], section: Section):
-    """Evaluate cluster network operational state."""
+    """Evaluate a cluster network through the shared state policy and surface missing or failed collection as UNKNOWN."""
 
     yield from _check_named_state(item, params, section, "Network")
 
@@ -283,13 +283,13 @@ agent_section_s2d_hci_network_interfaces = AgentSection(
 
 
 def discover_s2d_hci_network_interfaces(section: Section):
-    """Discover cluster network-interface services."""
+    """Discover one service for each stable cluster network-interface identity and any synthetic protocol-error record."""
 
     yield from discover_items(section)
 
 
 def check_s2d_hci_network_interfaces(item: str, params: Mapping[str, object], section: Section):
-    """Evaluate cluster network-interface state."""
+    """Evaluate network-interface state with the configured operational policy while preserving collection failures as UNKNOWN."""
 
     yield from _check_named_state(item, params, section, "Network interface")
 
@@ -305,7 +305,7 @@ check_plugin_s2d_hci_network_interfaces = CheckPlugin(
 
 
 def parse_s2d_hci_cluster_groups(string_table: Sequence[Sequence[str]]) -> Section:
-    """Parse clustered role/group state."""
+    """Parse clustered role or group records using stable collector identities and the common protocol-validation path."""
 
     return _parse_named_state(string_table, "Cluster group")
 
@@ -317,13 +317,13 @@ agent_section_s2d_hci_cluster_groups = AgentSection(
 
 
 def discover_s2d_hci_cluster_groups(section: Section):
-    """Discover cluster group services."""
+    """Discover services for clustered roles or groups and retain synthetic parser or collector-error records."""
 
     yield from discover_items(section)
 
 
 def check_s2d_hci_cluster_groups(item: str, params: Mapping[str, object], section: Section):
-    """Evaluate clustered role/group state."""
+    """Evaluate clustered role or group state through the shared conservative policy and common error handling."""
 
     yield from _check_named_state(item, params, section, "Cluster group")
 
@@ -339,7 +339,7 @@ check_plugin_s2d_hci_cluster_groups = CheckPlugin(
 
 
 def parse_s2d_hci_cluster_resources(string_table: Sequence[Sequence[str]]) -> Section:
-    """Parse clustered resource state."""
+    """Parse clustered resource records with stable identities, protocol validation, and duplicate detection before discovery."""
 
     return _parse_named_state(string_table, "Cluster resource")
 
@@ -351,13 +351,13 @@ agent_section_s2d_hci_cluster_resources = AgentSection(
 
 
 def discover_s2d_hci_cluster_resources(section: Section):
-    """Discover clustered resource services."""
+    """Discover one service for each normalized clustered resource and each synthetic input-error record."""
 
     yield from discover_items(section)
 
 
 def check_s2d_hci_cluster_resources(item: str, params: Mapping[str, object], section: Section):
-    """Evaluate clustered resource state."""
+    """Evaluate clustered resource state with the configured policy while keeping missing or failed telemetry visible."""
 
     yield from _check_named_state(item, params, section, "Cluster resource")
 

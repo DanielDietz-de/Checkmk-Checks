@@ -19,7 +19,14 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Test-S2DHciPathUnderRoot {
-    <# Return true only when a normalized path is strictly below the supplied root. #>
+    <#
+    .SYNOPSIS
+        Verify that a normalized path remains strictly below a trusted root.
+    .DESCRIPTION
+        Resolves both paths to absolute form and performs an ordinal-ignore-case
+        prefix check with a directory separator boundary. The function prevents
+        configured spool or collector paths from escaping the intended agent tree.
+    #>
     param(
         [Parameter(Mandatory)] [string]$Path,
         [Parameter(Mandatory)] [string]$Root
@@ -31,7 +38,14 @@ function Test-S2DHciPathUnderRoot {
 }
 
 function Assert-S2DHciNoReparsePoint {
-    <# Reject existing reparse points between the trusted root and target path. #>
+    <#
+    .SYNOPSIS
+        Reject reparse points along a trusted collector or spool path.
+    .DESCRIPTION
+        Confirms root confinement, then walks each existing path component and
+        fails closed when a junction, symlink, or other reparse point is found.
+        This prevents path redirection after configuration validation.
+    #>
     param(
         [Parameter(Mandatory)] [string]$Path,
         [Parameter(Mandatory)] [string]$Root
@@ -57,7 +71,14 @@ function Assert-S2DHciNoReparsePoint {
 }
 
 function Read-S2DHciSpoolConfig {
-    <# Load the non-secret spool paths and enforce a minimal explicit schema. #>
+    <#
+    .SYNOPSIS
+        Load and validate the non-secret virtualization spool configuration.
+    .DESCRIPTION
+        Reads the JSON file and requires explicit collector_path and spool_file
+        values. Missing or blank fields terminate the run before any collector is
+        launched, preserving the previously valid spool file.
+    #>
     param([Parameter(Mandatory)] [string]$Path)
 
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
@@ -73,7 +94,14 @@ function Read-S2DHciSpoolConfig {
 }
 
 function Test-S2DHciCollectorOutput {
-    <# Validate one complete virtualization collector output before publication. #>
+    <#
+    .SYNOPSIS
+        Validate a complete virtualization collector run before spool publication.
+    .DESCRIPTION
+        Enforces the output-size bound, JSON framing, protocol version, single run
+        identifier, exactly one matching collector-health envelope, and successful
+        completion. Any violation throws so the existing live spool is preserved.
+    #>
     param(
         [Parameter(Mandatory)] [string[]]$Lines,
         [Parameter(Mandatory)] [int]$MaximumBytes

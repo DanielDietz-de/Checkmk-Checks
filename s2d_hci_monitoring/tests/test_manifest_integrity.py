@@ -1,4 +1,4 @@
-"""Canonical package manifest and source-ownership tests."""
+"""Validate canonical package manifest ownership, version metadata, removed legacy collectors, and the exact runtime source-file inventory."""
 
 from __future__ import annotations
 

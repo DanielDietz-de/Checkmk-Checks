@@ -27,6 +27,7 @@ WORKLOAD_DEFAULTS: Mapping[str, object] = {
 }
 CHECKPOINT_DEFAULTS: Mapping[str, object] = {
     "levels_upper_age_hours": ("fixed", (24.0, 72.0)),
+    **STATE_DEFAULTS,
 }
 
 
@@ -61,7 +62,7 @@ def _entry_or_unknown(item: str, section: Section, label: str):
 
 
 def parse_s2d_hci_virtualization_host(string_table: Sequence[Sequence[str]]) -> Section:
-    """Parse local Hyper-V host state."""
+    """Parse local Hyper-V host service and module state through the common protocol validator before discovery."""
 
     return _parse_virtualization(string_table, identity_fields=("identity", "name", "section"), fallback_name="Hyper-V host")
 
@@ -73,7 +74,7 @@ agent_section_s2d_hci_virtualization_host = AgentSection(
 
 
 def discover_s2d_hci_virtualization_host(section: Section):
-    """Discover Hyper-V host and synthetic error services."""
+    """Discover the Hyper-V host service plus synthetic parser or collector failures that require operator attention."""
 
     yield from discover_items(section)
 
@@ -117,7 +118,7 @@ agent_section_s2d_hci_virtualization_workloads = AgentSection(
 
 
 def discover_s2d_hci_virtualization_workloads(section: Section):
-    """Discover VM workload services."""
+    """Discover VM workload services on stable VM-GUID piggyback hosts and retain protocol-error records."""
 
     yield from discover_items(section)
 
@@ -175,7 +176,7 @@ agent_section_s2d_hci_virtualization_services = AgentSection(
 
 
 def discover_s2d_hci_virtualization_services(section: Section):
-    """Discover Hyper-V integration-service checks."""
+    """Discover one service for each Hyper-V integration component emitted for the current stable VM identity."""
 
     yield from discover_items(section)
 
@@ -210,7 +211,7 @@ check_plugin_s2d_hci_virtualization_services = CheckPlugin(
 
 
 def parse_s2d_hci_virtualization_replication(string_table: Sequence[Sequence[str]]) -> Section:
-    """Parse optional VM replication state."""
+    """Parse optional VM replication telemetry and preserve explicit unavailable or failed collection records for UNKNOWN reporting."""
 
     return _parse_virtualization(string_table, identity_fields=("identity", "name", "section"), fallback_name="VM replication")
 
@@ -222,7 +223,7 @@ agent_section_s2d_hci_virtualization_replication = AgentSection(
 
 
 def discover_s2d_hci_virtualization_replication(section: Section):
-    """Discover VM replication checks."""
+    """Discover VM replication services, including synthetic failures, without assuming replication support is present."""
 
     yield from discover_items(section)
 
@@ -253,7 +254,7 @@ check_plugin_s2d_hci_virtualization_replication = CheckPlugin(
 
 
 def parse_s2d_hci_virtualization_checkpoints(string_table: Sequence[Sequence[str]]) -> Section:
-    """Parse VM checkpoints using stable checkpoint identifiers."""
+    """Parse retained VM checkpoints with stable checkpoint identities so age thresholds remain consistent across collector runs."""
 
     return _parse_virtualization(string_table, identity_fields=("identity", "name", "section"), fallback_name="VM checkpoint")
 
@@ -265,7 +266,7 @@ agent_section_s2d_hci_virtualization_checkpoints = AgentSection(
 
 
 def discover_s2d_hci_virtualization_checkpoints(section: Section):
-    """Discover retained VM checkpoint services."""
+    """Discover retained checkpoint services on the stable VM piggyback host and preserve protocol-validation failures."""
 
     yield from discover_items(section)
 
@@ -327,13 +328,13 @@ agent_section_s2d_hci_virtualization_network_adapters = AgentSection(
 
 
 def discover_s2d_hci_virtualization_network_adapters(section: Section):
-    """Discover VM virtual-NIC services."""
+    """Discover VM virtual-NIC services using stable adapter identities and retain synthetic collector or parser errors."""
 
     yield from discover_items(section)
 
 
 def check_s2d_hci_virtualization_network_adapters(item: str, params: Mapping[str, object], section: Section):
-    """Evaluate virtual-NIC connectivity and switch attachment."""
+    """Evaluate virtual-NIC connectivity and virtual-switch attachment, mapping ambiguous telemetry conservatively through the state policy."""
 
     entry, error_result = _entry_or_unknown(item, section, "Network adapter")
     if error_result:
@@ -374,7 +375,7 @@ agent_section_s2d_hci_virtualization_hard_disks = AgentSection(
 
 
 def discover_s2d_hci_virtualization_hard_disks(section: Section):
-    """Discover VM hard-disk services."""
+    """Discover VM hard-disk services by stable controller identity and keep protocol-validation failures operationally visible."""
 
     yield from discover_items(section)
 

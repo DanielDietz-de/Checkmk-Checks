@@ -26,7 +26,7 @@ def _integer_setting(title: str, default: int, minimum: int, maximum: int) -> In
 
 
 def _s2d_hci_bakery_form() -> Dictionary:
-    """Return deployment, safety-limit, and data-minimization settings."""
+    """Build the Agent Bakery form that controls collector deployment mode, hard safety limits, and privacy-minimizing field inclusion."""
 
     return Dictionary(
         title=Title("S2D/HCI monitoring collectors"),

@@ -1,4 +1,4 @@
-"""Collector-health service behavior tests."""
+"""Validate collector-health parsing and service-state behavior for successful, incomplete, failed, malformed, and duplicate run envelopes."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def _health(**overrides: object) -> list[list[str]]:
 
 
 def test_failed_collector_is_critical() -> None:
-    """Failed/incomplete collection must remain operationally visible."""
+    """Verify that a failed or incomplete collector envelope becomes a CRIT service instead of disappearing as empty monitoring."""
 
     section = parse_s2d_hci_collector_health(_health(success=False, complete=False, errors=["boom"]))
     result = list(check_s2d_hci_collector_health("fast", section))[0]

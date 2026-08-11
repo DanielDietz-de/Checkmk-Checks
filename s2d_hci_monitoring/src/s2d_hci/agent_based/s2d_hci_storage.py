@@ -70,13 +70,13 @@ agent_section_s2d_hci_csv = AgentSection(name="s2d_hci_csv", parse_function=pars
 
 
 def discover_s2d_hci_csv(section: Section):
-    """Discover CSV services and synthetic protocol-error services."""
+    """Discover Cluster Shared Volume services and preserve synthetic protocol errors as separate operator-visible services."""
 
     yield from discover_items(section)
 
 
 def check_s2d_hci_csv(item: str, params: Mapping[str, object], section: Section):
-    """Evaluate CSV state and lower free-space thresholds."""
+    """Evaluate Cluster Shared Volume health and apply configurable lower free-space thresholds when a finite metric is available."""
 
     entry, health_result = _storage_result(item, params, section, "CSV")
     if entry is None or collector_error(entry):
@@ -115,7 +115,7 @@ agent_section_s2d_hci_storage_pools = AgentSection(name="s2d_hci_storage_pools",
 
 
 def discover_s2d_hci_storage_pools(section: Section):
-    """Discover storage pool services."""
+    """Discover one service for every stable storage-pool identity and any synthetic protocol-validation failure."""
 
     yield from discover_items(section)
 
@@ -153,7 +153,7 @@ agent_section_s2d_hci_virtual_disks = AgentSection(name="s2d_hci_virtual_disks",
 
 
 def discover_s2d_hci_virtual_disks(section: Section):
-    """Discover virtual-disk services."""
+    """Discover Storage Spaces virtual-disk services without discarding malformed, duplicate, or failed collector records."""
 
     yield from discover_items(section)
 
@@ -201,7 +201,7 @@ def discover_s2d_hci_volumes(section: Section):
 
 
 def check_s2d_hci_volumes(item: str, params: Mapping[str, object], section: Section):
-    """Evaluate volume health and free-space thresholds."""
+    """Evaluate volume health and apply lower free-space thresholds while preserving duplicate-safe collector identities."""
 
     entry, result = _storage_result(item, params, section, "Volume")
     if entry is None or collector_error(entry):
@@ -231,7 +231,7 @@ check_plugin_s2d_hci_volumes = CheckPlugin(
 
 
 def parse_s2d_hci_physical_disks(string_table: Sequence[Sequence[str]]) -> Section:
-    """Parse physical disks using privacy-preserving stable identities."""
+    """Parse physical-disk records using privacy-preserving stable identities so raw serials or unique IDs need not become service keys."""
 
     return _parse_storage(string_table, display_fields=("friendly_name", "name"), fallback_name="Physical disk")
 
@@ -240,13 +240,13 @@ agent_section_s2d_hci_physical_disks = AgentSection(name="s2d_hci_physical_disks
 
 
 def discover_s2d_hci_physical_disks(section: Section):
-    """Discover physical-disk services."""
+    """Discover one service for each privacy-preserving physical-disk identity and each synthetic protocol-error record."""
 
     yield from discover_items(section)
 
 
 def check_s2d_hci_physical_disks(item: str, params: Mapping[str, object], section: Section):
-    """Evaluate physical-disk health and usage state."""
+    """Evaluate physical-disk health and operational usage through the configured conservative state policy."""
 
     _entry, result = _storage_result(item, params, section, "Physical disk")
     yield result

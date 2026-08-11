@@ -19,7 +19,14 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Remove-S2DHciFileIfPresent {
-    <# Remove one explicitly supplied generated file when it exists. #>
+    <#
+    .SYNOPSIS
+        Remove one explicitly selected generated collector state file when present.
+    .DESCRIPTION
+        Performs an idempotent literal-path check and removes only the file passed
+        by the caller. Normal task removal leaves generated state untouched unless
+        the operator explicitly requests the RemoveGeneratedState lifecycle step.
+    #>
     param([Parameter(Mandatory)] [string]$Path)
 
     if (Test-Path -LiteralPath $Path -PathType Leaf) { Remove-Item -LiteralPath $Path -Force }

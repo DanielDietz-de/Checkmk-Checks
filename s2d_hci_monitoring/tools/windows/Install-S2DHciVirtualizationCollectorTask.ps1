@@ -27,7 +27,14 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Resolve-S2DHciDefaultPath {
-    <# Return an explicit path or its canonical fallback when omitted. #>
+    <#
+    .SYNOPSIS
+        Resolve an optional installer path to an explicit or canonical value.
+    .DESCRIPTION
+        Returns the caller-provided path when non-empty and otherwise returns the
+        package default. Subsequent confinement checks validate the resolved path
+        before files, ACLs, or scheduled-task settings are changed.
+    #>
     param(
         [AllowEmptyString()] [string]$Candidate,
         [Parameter(Mandatory)] [string]$Fallback
@@ -38,7 +45,14 @@ function Resolve-S2DHciDefaultPath {
 }
 
 function Test-S2DHciPathUnderRoot {
-    <# Return true only when a normalized path remains below a trusted root. #>
+    <#
+    .SYNOPSIS
+        Verify that an installer path remains strictly below a trusted root.
+    .DESCRIPTION
+        Normalizes both paths and checks a separator-bounded prefix using
+        case-insensitive Windows semantics. The installer uses this before writing
+        configuration, granting ACLs, or registering the scheduled task.
+    #>
     param(
         [Parameter(Mandatory)] [string]$Path,
         [Parameter(Mandatory)] [string]$Root
@@ -50,7 +64,14 @@ function Test-S2DHciPathUnderRoot {
 }
 
 function Assert-S2DHciGmsaUsable {
-    <# Require the ActiveDirectory validation cmdlet and a locally usable gMSA. #>
+    <#
+    .SYNOPSIS
+        Require a locally installed and usable group Managed Service Account.
+    .DESCRIPTION
+        Requires Test-ADServiceAccount, extracts the gMSA SAM account name, and
+        fails task installation unless Windows confirms the account can be used on
+        this host. No password is requested, retrieved, or stored.
+    #>
     param([Parameter(Mandatory)] [string]$Identity)
 
     $command = Get-Command -Name 'Test-ADServiceAccount' -ErrorAction SilentlyContinue
@@ -60,7 +81,14 @@ function Assert-S2DHciGmsaUsable {
 }
 
 function Grant-S2DHciAcl {
-    <# Grant one explicit NTFS permission and fail when icacls cannot apply it. #>
+    <#
+    .SYNOPSIS
+        Grant one scoped NTFS permission to the configured gMSA identity.
+    .DESCRIPTION
+        Uses icacls with replacement semantics for the named identity and checks
+        the native exit code. Any ACL application failure terminates installation
+        before the scheduled task is registered.
+    #>
     param(
         [Parameter(Mandatory)] [string]$Path,
         [Parameter(Mandatory)] [string]$Identity,
@@ -72,7 +100,14 @@ function Grant-S2DHciAcl {
 }
 
 function Assert-S2DHciAclPresent {
-    <# Verify that the resulting ACL text contains the configured gMSA identity. #>
+    <#
+    .SYNOPSIS
+        Verify that the expected gMSA identity is present on a resulting ACL.
+    .DESCRIPTION
+        Reads the effective icacls text for the target path and fails when either
+        the command fails or the configured identity is absent. This verifies that
+        the installer did not silently proceed after an ACL change failure.
+    #>
     param(
         [Parameter(Mandatory)] [string]$Path,
         [Parameter(Mandatory)] [string]$Identity

@@ -66,7 +66,7 @@ agent_section_s2d_hci_s2d_state = AgentSection(name="s2d_hci_s2d_state", parse_f
 
 
 def discover_s2d_hci_s2d_state(section: Section):
-    """Discover S2D state and synthetic error services."""
+    """Discover normalized S2D state services together with synthetic records that expose parser or collector failures."""
 
     yield from discover_items(section)
 
@@ -100,13 +100,13 @@ agent_section_s2d_hci_storage_subsystems = AgentSection(
 
 
 def discover_s2d_hci_storage_subsystems(section: Section):
-    """Discover storage subsystem services."""
+    """Discover one service per storage subsystem identity and retain synthetic protocol errors instead of dropping them."""
 
     yield from discover_items(section)
 
 
 def check_s2d_hci_storage_subsystems(item: str, params: Mapping[str, object], section: Section):
-    """Evaluate storage subsystem health and operational status."""
+    """Evaluate storage subsystem health plus operational status using the shared policy and fail-visible collection handling."""
 
     yield from _check_health(item, params, section, "Storage subsystem")
 
@@ -134,7 +134,7 @@ agent_section_s2d_hci_storage_health_report = AgentSection(
 
 
 def discover_s2d_hci_storage_health_report(section: Section):
-    """Discover storage-health report services."""
+    """Discover storage-health report services and synthetic failures so unsupported or malformed telemetry remains visible."""
 
     yield from discover_items(section)
 

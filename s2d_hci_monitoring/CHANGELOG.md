@@ -12,6 +12,9 @@
 - Added privacy-minimizing defaults for paths, addresses, serials, IDs, and physical locations.
 - Added operational-state policy rules and Agent Bakery deployment.
 - Added API-contract, protocol, PowerShell safety, manifest, and documentation tests.
+- Strengthened code-level documentation so every Python module/function/class and every PowerShell file/function has meaningful human-readable documentation enforced by tests.
+- Fixed Checkmk 2.5 checkpoint ruleset/default compatibility by including the complete shared operational-state policy in checkpoint defaults.
+- Added a code-layout map and corrected gMSA Bakery documentation to use the mutually exclusive `virtualization_mode` setting.
 - Expanded architecture, protocol, installation, operations, security, release, validation, and production-acceptance documentation.
 
 ## 1.0.0 — 2026-08-06

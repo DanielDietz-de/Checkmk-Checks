@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Register S2D/HCI free-space and operational-state policy rules."""
+"""Register S2D/HCI free-space thresholds and the shared operational-state policy consumed by storage and cluster checks."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _severity_choice(title: str, default: str) -> SingleChoice:
-    """Return the common OK/WARN/CRIT/UNKNOWN severity selector."""
+    """Build the common OK/WARN/CRIT/UNKNOWN selector used by every configurable S2D/HCI operational-state mapping."""
 
     return SingleChoice(
         title=Title(title),
@@ -72,13 +72,13 @@ def _free_space_form(title: str) -> Dictionary:
 
 
 def _csv_parameter_form() -> Dictionary:
-    """Return CSV free-space and state-policy parameters."""
+    """Build Cluster Shared Volume free-space thresholds together with the complete shared operational-state policy."""
 
     return _free_space_form("S2D/HCI CSV thresholds")
 
 
 def _volume_parameter_form() -> Dictionary:
-    """Return volume free-space and state-policy parameters."""
+    """Build volume free-space thresholds together with every required operational-state mapping consumed by the check."""
 
     return _free_space_form("S2D/HCI volume thresholds")
 

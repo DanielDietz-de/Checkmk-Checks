@@ -16,21 +16,42 @@ $config = Get-S2DHciConfig -AgentRoot $agentRoot
 $context = New-S2DHciRunContext -Collector 'virtualization' -Config $config
 
 function Test-S2DHciCommandAvailable {
-    <# Return whether a named Hyper-V command is available. #>
+    <#
+    .SYNOPSIS
+        Test whether an optional Hyper-V command is available on the host.
+    .DESCRIPTION
+        Performs a non-throwing command lookup and returns a Boolean so optional
+        features such as replication can be reported as unavailable rather than
+        terminating the complete virtualization collector.
+    #>
     param([Parameter(Mandatory)] [string]$Name)
 
     return $null -ne (Get-Command -Name $Name -ErrorAction SilentlyContinue)
 }
 
 function Get-S2DHciVmPiggybackHost {
-    <# Return the stable piggyback host name derived from a VM GUID. #>
+    <#
+    .SYNOPSIS
+        Derive the stable Checkmk piggyback host name for one virtual machine.
+    .DESCRIPTION
+        Prefixes the immutable VM GUID with the package namespace and applies
+        conservative hostname normalization. The resulting identity remains the
+        same when the VM live-migrates between Hyper-V cluster nodes.
+    #>
     param([Parameter(Mandatory)] [guid]$VmId)
 
     return ConvertTo-S2DHciHostName -Value ("s2d-vm-" + $VmId.Guid)
 }
 
 function Write-S2DHciVmSections {
-    <# Emit all bounded sections for one VM inside its stable piggyback block. #>
+    <#
+    .SYNOPSIS
+        Emit all enabled monitoring sections for one VM on its stable piggyback host.
+    .DESCRIPTION
+        Opens the VM-GUID piggyback block, emits workload, integration, replication,
+        checkpoint, NIC, and disk data through bounded section writers, respects
+        privacy settings, and always closes the piggyback block in a finally path.
+    #>
     param(
         [Parameter(Mandatory)] [object]$Vm,
         [Parameter(Mandatory)] [object]$RunContext,

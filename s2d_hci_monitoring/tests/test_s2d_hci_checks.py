@@ -24,19 +24,17 @@ def _compat_check_levels(value, levels_upper=None, levels_lower=None, metric_nam
         yield Result(state, f"{label}: {value}")
 
 
-# Full-repository collection loads many package-local conftest stubs into the
-# same interpreter. Guarantee the one API helper needed by the S2D modules is
-# present immediately before importing those production modules.
 if not hasattr(cmk_v2, "check_levels"):
     cmk_v2.check_levels = _compat_check_levels
 
 from s2d_hci.agent_based import s2d_hci_fast as fast
 from s2d_hci.agent_based import s2d_hci_jobs as jobs
 from s2d_hci.agent_based import s2d_hci_storage as storage
+from s2d_hci.agent_based import s2d_hci_virtualization as virtualization
 
 
 def _row(**values: object) -> list[str]:
-    """Return one JSON string-table row."""
+    """Serialize one mapping into the single-row Checkmk string-table representation consumed by package parsers."""
 
     return [json.dumps(values)]
 
@@ -73,3 +71,13 @@ def test_non_finite_storage_job_progress_emits_no_metric() -> None:
     )
     output = list(jobs.check_s2d_hci_storage_jobs("job-a", jobs.STATE_DEFAULTS, section))
     assert not any(isinstance(value, Metric) for value in output)
+
+
+def test_checkpoint_defaults_include_complete_state_policy() -> None:
+    """Verify checkpoint defaults contain every required state-policy key so Checkmk 2.5 can validate the referenced ruleset."""
+
+    assert set(virtualization.STATE_DEFAULTS) <= set(virtualization.CHECKPOINT_DEFAULTS)
+    assert virtualization.CHECKPOINT_DEFAULTS["levels_upper_age_hours"] == (
+        "fixed",
+        (24.0, 72.0),
+    )

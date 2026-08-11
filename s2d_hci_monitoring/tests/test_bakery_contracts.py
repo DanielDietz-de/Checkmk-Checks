@@ -1,4 +1,4 @@
-"""Static Agent Bakery deployment contract tests."""
+"""Validate static Agent Bakery deployment contracts, opt-in virtualization modes, bounded settings, and package-owned Windows artifacts."""
 
 from __future__ import annotations
 

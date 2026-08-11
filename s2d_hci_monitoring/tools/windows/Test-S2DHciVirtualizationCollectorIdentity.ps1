@@ -17,7 +17,14 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Test-S2DHciAclIdentity {
-    <# Return whether icacls reports the requested identity on a path. #>
+    <#
+    .SYNOPSIS
+        Test whether a path ACL contains the expected collector service identity.
+    .DESCRIPTION
+        Returns false for a missing path or failed icacls query and otherwise
+        searches the ACL text using case-insensitive Windows identity semantics.
+        The result is diagnostic evidence only and never changes permissions.
+    #>
     param(
         [Parameter(Mandatory)] [string]$Path,
         [Parameter(Mandatory)] [string]$Identity

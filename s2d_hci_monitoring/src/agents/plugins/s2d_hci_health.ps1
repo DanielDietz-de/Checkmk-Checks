@@ -16,14 +16,28 @@ $context = New-S2DHciRunContext -Collector 'health' -Config $config
 $piggybackOpen = $false
 
 function Test-S2DHciCommandAvailable {
-    <# Return whether a named PowerShell command is available in this session. #>
+    <#
+    .SYNOPSIS
+        Test whether a required or optional PowerShell command is available.
+    .DESCRIPTION
+        Looks up the command without throwing and returns a Boolean. Collectors
+        use this helper to distinguish unsupported Windows features from runtime
+        command failures so unsupported telemetry can be reported as UNKNOWN.
+    #>
     param([Parameter(Mandatory)] [string]$Name)
 
     return $null -ne (Get-Command -Name $Name -ErrorAction SilentlyContinue)
 }
 
 function Get-S2DHciPropertyValue {
-    <# Return the first non-null property value from a list of candidate names. #>
+    <#
+    .SYNOPSIS
+        Read the first available property from vendor objects with varying schemas.
+    .DESCRIPTION
+        Checks candidate property names in order and returns the first non-null
+        value. This keeps S2D normalization compatible with Windows cmdlet output
+        that varies by Server release without silently inventing a value.
+    #>
     param(
         [Parameter(Mandatory)] [object]$InputObject,
         [Parameter(Mandatory)] [string[]]$Names
@@ -37,7 +51,14 @@ function Get-S2DHciPropertyValue {
 }
 
 function ConvertTo-S2DHciStateRecord {
-    <# Normalize native S2D command output into the stable protocol schema. #>
+    <#
+    .SYNOPSIS
+        Normalize native S2D cmdlet output into the package protocol schema.
+    .DESCRIPTION
+        Extracts state, health, operational status, and cache information from
+        version-dependent Microsoft objects and emits stable lower-case fields.
+        Missing fields remain explicit instead of causing a false healthy state.
+    #>
     param(
         [Parameter(Mandatory)] [object]$InputObject,
         [Parameter(Mandatory)] [string]$SourceCommand

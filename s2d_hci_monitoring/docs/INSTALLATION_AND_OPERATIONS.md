@@ -22,7 +22,9 @@ When a collector approaches configured limits, investigate object counts and cmd
 
 ## Hyper-V
 
-Custom Hyper-V monitoring is opt-in because Checkmk may already monitor VMs through other mechanisms. Choose either direct Bakery deployment or gMSA spool mode. Never run both for the same node because duplicate sections are ambiguous.
+Custom Hyper-V monitoring is opt-in because Checkmk may already monitor VMs through other mechanisms. The Bakery field `virtualization_mode` has three explicit values: `disabled` (default), `direct`, and `gmsa_spool`. Choose exactly one mode. Never run direct and spool collection for the same node because duplicate sections are ambiguous.
+
+`direct` deploys the virtualization collector as a normal Checkmk Windows agent plug-in. `gmsa_spool` deploys the collector and wrapper as support binaries and sets `virtualization_enabled=true`; the operator must then register the host-specific scheduled task with `tools/windows/Install-S2DHciVirtualizationCollectorTask.ps1`.
 
 ## Upgrade
 

@@ -33,7 +33,15 @@ The former unbounded performance-history collector is intentionally **not packag
 
 ## Agent Bakery deployment
 
-Use **Setup > Agents > Windows, Linux, Solaris, AIX > Agent rules > S2D/HCI monitoring collectors** and apply the rule only to intended Windows cluster nodes. The rule can independently deploy the four cluster/storage collectors, opt into custom Hyper-V collection, deploy gMSA spool support binaries, configure hard record/output/runtime limits, and opt into sensitive fields.
+Use **Setup > Agents > Windows, Linux, Solaris, AIX > Agent rules > S2D/HCI monitoring collectors** and apply the rule only to intended Windows cluster nodes. The four cluster/storage collectors can be enabled independently. `virtualization_mode` is deliberately a mutually exclusive choice so the same node cannot receive both direct and spool-based custom Hyper-V collection:
+
+| `virtualization_mode` | Behavior |
+| --- | --- |
+| `disabled` | Default. Do not deploy the custom Hyper-V collector. |
+| `direct` | Deploy `s2d_hci_virtualization.ps1` as a normal bounded Checkmk Windows agent plug-in. |
+| `gmsa_spool` | Deploy the virtualization collector and fail-safe spool wrapper as support binaries for a separately registered gMSA scheduled task. |
+
+The gMSA mode does **not** register a Windows Scheduled Task automatically because the service-account identity is host/environment specific. After baking the support files, use `tools/windows/Install-S2DHciVirtualizationCollectorTask.ps1` and validate the account/ACLs with `tools/windows/Test-S2DHciVirtualizationCollectorIdentity.ps1`.
 
 Safe defaults are:
 
@@ -86,6 +94,7 @@ See [Validation](docs/VALIDATION.md) and [Production acceptance](docs/PRODUCTION
 ## Documentation index
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Code layout and implementation map](docs/CODE_LAYOUT.md)
 - [Collector protocol](docs/PROTOCOL.md)
 - [Installation and operations](docs/INSTALLATION_AND_OPERATIONS.md)
 - [gMSA spool collector](docs/GMSA_SPOOL_COLLECTOR.md)

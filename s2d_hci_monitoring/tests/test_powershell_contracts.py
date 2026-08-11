@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _read(relative: str) -> str:
-    """Read one package file as normalized UTF-8 text."""
+    """Read one package file as UTF-8 text with normalized line endings so static PowerShell assertions remain platform independent."""
 
     return (ROOT / relative).read_text(encoding="utf-8")
 
