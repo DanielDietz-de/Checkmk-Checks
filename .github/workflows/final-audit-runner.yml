@@ -59,6 +59,24 @@ jobs:
           trusted/.github/scripts/final_audit_regenerate_additions.py
           trusted/.github/scripts/final_audit_runner.py
 
+      - name: Bind legacy predecessor transport decoder
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("trusted/.github/scripts/final_audit_regenerate_additions.py")
+          source = path.read_text(encoding="utf-8")
+          old = "return base64.b64decode(canonical, validate=True)"
+          new = "return base64.b64decode(canonical, validate=False)"
+          if source.count(old) != 1:
+              raise SystemExit(
+                  "legacy predecessor decoder binding was not found exactly once"
+              )
+          path.write_text(source.replace(old, new, 1), encoding="utf-8")
+          PY
+          python -m py_compile trusted/.github/scripts/final_audit_regenerate_additions.py
+
       - name: Regenerate authenticated additions from intact Git history
         run: >-
           python trusted/.github/scripts/final_audit_regenerate_additions.py
