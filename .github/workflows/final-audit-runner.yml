@@ -59,18 +59,16 @@ jobs:
           trusted/.github/scripts/final_audit_regenerate_additions.py
           trusted/.github/scripts/final_audit_runner.py
 
-      - name: Regenerate additions from complete tar before corrupt XZ tail
+      - name: Regenerate additions entirely from reviewed source
         run: |
           set -euo pipefail
           python - <<'PY'
           from __future__ import annotations
 
-          import base64
-          import binascii
           import importlib.util
           import io
-          import lzma
-          from pathlib import Path, PurePosixPath
+          from pathlib import Path
+          import shutil
           import sys
           import tarfile
 
@@ -81,139 +79,153 @@ jobs:
           module = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(module)
 
-          def decode_transport(data: bytes, label: str) -> bytes:
-              """Decode the exact pinned legacy blob while tolerating transport framing."""
-              canonical = b"".join(data.split())
-              module.require(bool(canonical), f"{label} transport is empty")
-              try:
-                  decoded = base64.b64decode(canonical, validate=False)
-              except (binascii.Error, ValueError) as exc:
-                  raise RuntimeError(f"{label} transport is invalid: {exc}") from exc
-              module.require(bool(decoded), f"{label} decoded to an empty payload")
-              return decoded
+          finalize_policy_source = r'''#!/usr/bin/env python3
+          """Append the permanent function-documentation policy to live repository guidance."""
+          from __future__ import annotations
 
-          def recovered_tar_prefix(archive_bytes: bytes) -> tuple[bytes, int | None]:
-              """Return bytes emitted before XZ corruption without guessing damaged input."""
-              decompressor = lzma.LZMADecompressor(format=lzma.FORMAT_XZ)
-              output = bytearray()
-              corrupt_at: int | None = None
-              chunk_size = 64
-              for offset in range(0, len(archive_bytes), chunk_size):
-                  block = archive_bytes[offset : offset + chunk_size]
-                  try:
-                      output.extend(decompressor.decompress(block))
-                  except lzma.LZMAError:
-                      corrupt_at = offset
-                      break
-                  if decompressor.eof:
-                      break
-              module.require(bool(output), "predecessor XZ stream produced no tar bytes")
-              return bytes(output), corrupt_at
+          from pathlib import Path
 
-          def safe_extract(archive_bytes: bytes, destination: Path) -> None:
-              """Extract only when the complete tar terminator precedes XZ corruption."""
-              tar_bytes, corrupt_at = recovered_tar_prefix(archive_bytes)
-              offset = 0
-              total = 0
-              members: list[tarfile.TarInfo] = []
-              terminator_end: int | None = None
-              zero_block = b"\0" * 512
+          MARKER = "## Function-level code documentation"
+          ADDITION = (
+              "\n\n## Function-level code documentation\n\n"
+              "Every tracked function and class must have human-readable code-level documentation. "
+              "Run `python tools/ci/check_function_documentation.py` before publication. The gate "
+              "covers production code, tests, CI tooling, and retained reference source.\n"
+          )
 
-              while offset + 512 <= len(tar_bytes):
-                  header = tar_bytes[offset : offset + 512]
-                  if header == zero_block:
-                      module.require(
-                          offset + 1024 <= len(tar_bytes)
-                          and tar_bytes[offset + 512 : offset + 1024] == zero_block,
-                          "recovered tar has only one end-of-archive zero block",
-                      )
-                      module.require(
-                          not any(tar_bytes[offset:]),
-                          "recovered bytes after tar terminator are not zero padding",
-                      )
-                      terminator_end = offset + 1024
-                      break
 
-                  try:
-                      member = tarfile.TarInfo.frombuf(header, "utf-8", "surrogateescape")
-                  except tarfile.HeaderError as exc:
-                      raise RuntimeError(f"invalid recovered tar header at offset {offset}: {exc}") from exc
+          def append_policy(path: Path) -> None:
+              """Append the policy section exactly once to one required repository document."""
+              if not path.is_file():
+                  raise RuntimeError(f"required policy target is missing: {path}")
+              text = path.read_text(encoding="utf-8")
+              if MARKER in text:
+                  return
+              path.write_text(text.rstrip() + ADDITION, encoding="utf-8")
 
-                  path = PurePosixPath(member.name)
-                  module.require(
-                      not path.is_absolute() and ".." not in path.parts,
-                      f"unsafe recovered archive path: {member.name!r}",
-                  )
-                  module.require(
-                      member.name in {"runtime", "payload"}
-                      or member.name.startswith(("runtime/", "payload/")),
-                      f"unexpected recovered archive member: {member.name!r}",
-                  )
-                  module.require(
-                      member.isdir() or member.isreg(),
-                      f"unsupported recovered archive member type: {member.name!r}",
-                  )
 
-                  data_start = offset + 512
-                  data_end = data_start + member.size
-                  padded_end = data_start + ((member.size + 511) // 512) * 512
-                  module.require(
-                      padded_end <= len(tar_bytes),
-                      f"recovered tar ends inside member {member.name!r}",
-                  )
-                  total += member.size
-                  module.require(
-                      total <= module.MAX_ADDITIONS_SIZE,
-                      f"recovered additions exceed size bound: {total}",
-                  )
-                  members.append(member)
-                  offset = padded_end
+          def main() -> int:
+              """Apply the policy to both permanent contributor and maintenance guidance."""
+              root = Path.cwd()
+              for relative in ("MAINTENANCE.md", "CONTRIBUTING.md"):
+                  append_policy(root / relative)
+              return 0
 
+
+          if __name__ == "__main__":
+              raise SystemExit(main())
+          '''
+
+          def prepare_source_additions(repository: Path, trusted_root: Path, destination: Path) -> bytes:
+              """Build the complete additions bundle from reviewed generators and policy sources."""
+              del repository
+              runtime = destination / "runtime"
+              runtime.mkdir(parents=True, exist_ok=True)
+              (runtime / "document_symbols.py").write_text(
+                  module.DOCUMENT_SYMBOLS_SOURCE,
+                  encoding="utf-8",
+              )
+              (runtime / "finalize_policy.py").write_text(
+                  finalize_policy_source,
+                  encoding="utf-8",
+              )
+
+              payload = destination / "payload"
+              checker = payload / "tools/ci/check_function_documentation.py"
+              checker.parent.mkdir(parents=True, exist_ok=True)
+              checker.write_text(module.CHECK_FUNCTION_DOCUMENTATION_SOURCE, encoding="utf-8")
+
+              test_path = payload / ".github/tests/test_function_documentation_policy.py"
+              test_path.parent.mkdir(parents=True, exist_ok=True)
+              test_path.write_text(module.TEST_FUNCTION_DOCUMENTATION_SOURCE, encoding="utf-8")
+
+              docs = payload / "docs/CODE_DOCUMENTATION.md"
+              docs.parent.mkdir(parents=True, exist_ok=True)
+              docs.write_text(module.CODE_DOCUMENTATION_MD, encoding="utf-8")
+
+              guard = payload / ".github/workflows/repository-guard.yml"
+              guard.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(trusted_root / ".github/workflows/repository-guard.yml", guard)
+              module.inject_guard_step(guard)
+
+              output = io.BytesIO()
+              with tarfile.open(fileobj=output, mode="w:xz", format=tarfile.PAX_FORMAT) as archive:
+                  for path in sorted(destination.rglob("*")):
+                      relative = path.relative_to(destination).as_posix()
+                      info = tarfile.TarInfo(relative)
+                      info.uid = 0
+                      info.gid = 0
+                      info.uname = ""
+                      info.gname = ""
+                      info.mtime = 0
+                      info.mode = path.stat().st_mode & 0o777
+                      if path.is_dir():
+                          info.type = tarfile.DIRTYPE
+                          info.size = 0
+                          archive.addfile(info)
+                      elif path.is_file():
+                          data = path.read_bytes()
+                          info.type = tarfile.REGTYPE
+                          info.size = len(data)
+                          archive.addfile(info, io.BytesIO(data))
+                      else:
+                          raise RuntimeError(f"unsupported source additions path: {path}")
+              rebuilt = output.getvalue()
               module.require(
-                  terminator_end is not None,
-                  "complete tar terminator was not recovered before XZ corruption",
+                  len(rebuilt) <= module.MAX_ADDITIONS_SIZE,
+                  "source-regenerated additions archive exceeds size bound",
               )
-              complete_tar = tar_bytes[:terminator_end]
-              with tarfile.open(fileobj=io.BytesIO(complete_tar), mode="r:") as archive:
-                  parsed = archive.getmembers()
-                  module.require(
-                      [item.name for item in parsed] == [item.name for item in members],
-                      "recovered tar member list changed during parser verification",
-                  )
-                  archive.extractall(destination, members=parsed, filter="data")
+              return rebuilt
 
-              required = {
-                  "runtime/document_symbols.py",
-                  "payload/tools/ci/check_repository_quality.py",
-              }
-              recovered = {item.name for item in members}
-              missing = sorted(required - recovered)
-              module.require(
-                  not missing,
-                  f"complete recovered tar is missing required members: {missing}",
-              )
-              print(
-                  "Recovered complete predecessor tar before corrupt XZ tail: "
-                  f"members={len(members)} payload_bytes={total} "
-                  f"xz_corrupt_offset={corrupt_at} tar_bytes={len(complete_tar)}"
-              )
-
-          module.decode_transport = decode_transport
-          module.safe_extract = safe_extract
+          module.prepare_predecessor_additions = prepare_source_additions
+          module.PREDECESSOR_COMMIT = "reviewed-source-regeneration"
           sys.argv = [
               str(bootstrap),
               "--repository", "work",
               "--trusted-root", "trusted",
               "--runner", "trusted/.github/scripts/final_audit_runner.py",
           ]
-          raise SystemExit(module.main())
+          result = module.main()
+          if result != 0:
+              raise SystemExit(result)
+
+          runner = Path("trusted/.github/scripts/final_audit_runner.py")
+          source = runner.read_text(encoding="utf-8")
+          replacements = {
+              '        require(count >= 1600, f"regenerated source tree is unexpectedly small: {count}")':
+                  '        require(count == EXPECTED_FILES, f"regenerated source tree file count mismatch: {count} != {EXPECTED_FILES}")',
+              '    shutil.copytree(payload, repository, dirs_exist_ok=True, copy_function=shutil.copy2)\n'
+              '    run(sys.executable, str(documenter), cwd=repository)\n\n'
+              '    run(sys.executable, "tools/ci/sync_package_metadata.py", "--write", cwd=repository)':
+                  '    shutil.copytree(payload, repository, dirs_exist_ok=True, copy_function=shutil.copy2)\n'
+                  '    finalizer = additions / "runtime/finalize_policy.py"\n'
+                  '    require(finalizer.is_file(), "repository policy finalizer is missing")\n'
+                  '    run(sys.executable, str(finalizer), cwd=repository)\n'
+                  '    run(sys.executable, str(documenter), cwd=repository)\n\n'
+                  '    run(sys.executable, "tools/ci/sync_package_metadata.py", "--write", cwd=repository)',
+              '    publish(repository, master_sha)\n'
+              '    dispatch_workflows(os.environ.get("GITHUB_TOKEN", ""))\n'
+              '    return 0':
+                  '    if os.environ.get("FINAL_AUDIT_CAPTURE_ONLY") == "1":\n'
+                  '        print("Capture-only final audit completed; publication is disabled")\n'
+                  '        return 0\n'
+                  '    publish(repository, master_sha)\n'
+                  '    dispatch_workflows(os.environ.get("GITHUB_TOKEN", ""))\n'
+                  '    return 0',
+          }
+          for old, new in replacements.items():
+              if source.count(old) != 1:
+                  raise SystemExit(f"source-regeneration runner binding not found exactly once: {old[:100]}")
+              source = source.replace(old, new, 1)
+          runner.write_text(source, encoding="utf-8")
           PY
 
       - name: Re-verify trusted runner syntax after binding
         run: python -m py_compile trusted/.github/scripts/final_audit_runner.py
 
-      - name: Reconstruct, validate, and publish regenerated audit tree
+      - name: Reconstruct and validate source-regenerated audit tree
         id: audit
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          FINAL_AUDIT_CAPTURE_ONLY: "1"
         run: python trusted/.github/scripts/final_audit_runner.py --repository work
