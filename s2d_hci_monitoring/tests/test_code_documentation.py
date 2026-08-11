@@ -66,10 +66,25 @@ def test_every_python_module_function_and_class_is_human_readable() -> None:
     assert not problems, "Insufficient Python documentation: " + ", ".join(problems)
 
 
-def _extract_powershell_help(lines: list[str], function_index: int) -> tuple[str, str] | None:
-    """Extract the leading SYNOPSIS and DESCRIPTION bodies from the comment-based help immediately inside a PowerShell function."""
+FUNCTION_DECLARATION_RE = re.compile(
+    r"(?im)^[ \t]*function[ \t]+(?P<name>[A-Za-z0-9_:-]+)[ \t]*(?:\r?\n[ \t]*)?\{"
+)
 
-    following = "\n".join(lines[function_index + 1 : function_index + 40]).lstrip()
+
+def _powershell_function_declarations(text: str) -> list[tuple[str, int, int]]:
+    """Return PowerShell function names, source lines, and body offsets for same-line or next-line opening braces."""
+
+    declarations: list[tuple[str, int, int]] = []
+    for match in FUNCTION_DECLARATION_RE.finditer(text):
+        line_number = text.count("\n", 0, match.start()) + 1
+        declarations.append((match.group("name"), line_number, match.end()))
+    return declarations
+
+
+def _extract_powershell_help(text: str, body_offset: int) -> tuple[str, str] | None:
+    """Extract SYNOPSIS and DESCRIPTION help immediately after a detected PowerShell function opening brace."""
+
+    following = text[body_offset : body_offset + 8000].lstrip()
     if not following.startswith("<#"):
         return None
     block_match = re.match(r"<#(?P<body>.*?)#>", following, re.DOTALL)
@@ -90,36 +105,48 @@ def _extract_powershell_help(lines: list[str], function_index: int) -> tuple[str
     return synopsis, description
 
 
+def _powershell_documentation_problems(path: Path, text: str) -> list[str]:
+    """Return file- and function-level PowerShell documentation problems using multiline-safe function discovery."""
+
+    problems: list[str] = []
+    header = text[:2000]
+    if not re.search(r"(?is)<#.*?\.SYNOPSIS\s+.+?\.DESCRIPTION\s+.+?#>", header):
+        problems.append(f"{path.relative_to(ROOT)}:file:missing script help")
+
+    for name, line_number, body_offset in _powershell_function_declarations(text):
+        help_parts = _extract_powershell_help(text, body_offset)
+        location = f"{path.relative_to(ROOT)}:{line_number}:{name}"
+        if help_parts is None:
+            problems.append(f"{location}:missing .SYNOPSIS/.DESCRIPTION")
+            continue
+        synopsis, description = help_parts
+        if len(synopsis.split()) < MIN_PS_SYNOPSIS_WORDS:
+            problems.append(
+                f"{location}:synopsis has fewer than {MIN_PS_SYNOPSIS_WORDS} words"
+            )
+        if len(description.split()) < MIN_PS_DESCRIPTION_WORDS:
+            problems.append(
+                f"{location}:description has fewer than {MIN_PS_DESCRIPTION_WORDS} words"
+            )
+        combined = f"{synopsis} {description}".lower()
+        if any(marker in combined for marker in PLACEHOLDERS):
+            problems.append(f"{location}:contains placeholder text")
+    return problems
+
+
 def test_every_powershell_file_and_function_has_human_readable_help() -> None:
     """Require script-level and per-function SYNOPSIS/DESCRIPTION help with enough detail to explain behavior and failure semantics."""
 
     problems: list[str] = []
     for path in _powershell_paths():
         text = path.read_text(encoding="utf-8")
-        header = text[:2000]
-        if not re.search(r"(?is)<#.*?\.SYNOPSIS\s+.+?\.DESCRIPTION\s+.+?#>", header):
-            problems.append(f"{path.relative_to(ROOT)}:file:missing script help")
-
-        lines = text.splitlines()
-        for index, line in enumerate(lines):
-            match = re.match(r"\s*function\s+([A-Za-z0-9_-]+)\s*\{", line, re.IGNORECASE)
-            if not match:
-                continue
-            help_parts = _extract_powershell_help(lines, index)
-            location = f"{path.relative_to(ROOT)}:{index + 1}:{match.group(1)}"
-            if help_parts is None:
-                problems.append(f"{location}:missing .SYNOPSIS/.DESCRIPTION")
-                continue
-            synopsis, description = help_parts
-            if len(synopsis.split()) < MIN_PS_SYNOPSIS_WORDS:
-                problems.append(
-                    f"{location}:synopsis has fewer than {MIN_PS_SYNOPSIS_WORDS} words"
-                )
-            if len(description.split()) < MIN_PS_DESCRIPTION_WORDS:
-                problems.append(
-                    f"{location}:description has fewer than {MIN_PS_DESCRIPTION_WORDS} words"
-                )
-            combined = f"{synopsis} {description}".lower()
-            if any(marker in combined for marker in PLACEHOLDERS):
-                problems.append(f"{location}:contains placeholder text")
+        problems.extend(_powershell_documentation_problems(path, text))
     assert not problems, "Insufficient PowerShell documentation: " + ", ".join(problems)
+
+
+def test_powershell_function_discovery_handles_next_line_opening_brace() -> None:
+    """Ensure the documentation gate discovers Allman-style PowerShell functions whose opening brace appears on the following line."""
+
+    sample = "function Invoke-Undocumented\n{\n    param()\n}\n"
+    declarations = _powershell_function_declarations(sample)
+    assert declarations == [("Invoke-Undocumented", 1, sample.index("{") + 1)]

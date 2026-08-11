@@ -14,6 +14,9 @@
 - Added API-contract, protocol, PowerShell safety, manifest, and documentation tests.
 - Strengthened code-level documentation so every Python module/function/class and every PowerShell file/function has meaningful human-readable documentation enforced by tests.
 - Fixed Checkmk 2.5 checkpoint ruleset/default compatibility by including the complete shared operational-state policy in checkpoint defaults.
+- Fixed Microsoft storage health evaluation by classifying health and operational states independently, selecting the worst state, and mapping `Unhealthy` through the critical/offline policy.
+- Preserved differencing-disk warnings with a non-sensitive `has_parent` flag and redacted VHD path details from default failure telemetry.
+- Hardened the PowerShell documentation gate to discover functions whose opening brace appears on the following line.
 - Added a code-layout map and corrected gMSA Bakery documentation to use the mutually exclusive `virtualization_mode` setting.
 - Expanded architecture, protocol, installation, operations, security, release, validation, and production-acceptance documentation.
 

@@ -391,7 +391,8 @@ def check_s2d_hci_virtualization_hard_disks(item: str, params: Mapping[str, obje
     if entry.details.get("vhd_error"):
         yield Result(state=State.WARN, summary=f"VHD metadata unavailable: {entry.details.get('vhd_error')}", details=str(entry.details))
         return
-    if entry.details.get("parent_path"):
+    has_parent = as_bool(entry.details.get("has_parent"))
+    if has_parent is True or entry.details.get("parent_path"):
         yield Result(state=State.WARN, summary="Differencing disk has a parent VHD", details=str(entry.details))
         return
     yield Result(state=State.OK, summary=f"Disk: {entry.name}, type: {entry.details.get('vhd_type', 'n/a')}", details=str(entry.details))

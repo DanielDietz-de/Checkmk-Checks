@@ -28,6 +28,7 @@ if not hasattr(cmk_v2, "check_levels"):
     cmk_v2.check_levels = _compat_check_levels
 
 from s2d_hci.agent_based import s2d_hci_fast as fast
+from s2d_hci.agent_based import s2d_hci_health as health
 from s2d_hci.agent_based import s2d_hci_jobs as jobs
 from s2d_hci.agent_based import s2d_hci_storage as storage
 from s2d_hci.agent_based import s2d_hci_virtualization as virtualization
@@ -81,3 +82,40 @@ def test_checkpoint_defaults_include_complete_state_policy() -> None:
         "fixed",
         (24.0, 72.0),
     )
+
+
+def test_healthy_storage_with_ok_operational_state_is_ok() -> None:
+    """Healthy plus OK must remain an OK storage state instead of becoming UNKNOWN when the two vendor fields are evaluated together."""
+
+    section = storage.parse_s2d_hci_storage_pools(
+        [_row(protocol_version=1, run_id="r", identity="pool-a", friendly_name="Pool A", health_status="Healthy", operational_status="OK")]
+    )
+    result = list(storage.check_s2d_hci_storage_pools("pool-a", storage.STATE_DEFAULTS, section))[-1]
+    assert result.state == State.OK
+
+
+def test_storage_health_uses_worst_independent_component_state() -> None:
+    """A healthy object with degraded operational status must report WARN while a genuinely unhealthy object must report CRIT."""
+
+    degraded = storage.parse_s2d_hci_storage_pools(
+        [_row(protocol_version=1, run_id="r", identity="pool-a", friendly_name="Pool A", health_status="Healthy", operational_status="Degraded")]
+    )
+    degraded_result = list(storage.check_s2d_hci_storage_pools("pool-a", storage.STATE_DEFAULTS, degraded))[-1]
+    assert degraded_result.state == State.WARN
+
+    unhealthy = health.parse_s2d_hci_storage_subsystems(
+        [_row(protocol_version=1, run_id="r", identity="sub-a", friendly_name="Subsystem A", health_status="Unhealthy", operational_status="OK")]
+    )
+    unhealthy_result = list(health.check_s2d_hci_storage_subsystems("sub-a", health.STATE_DEFAULTS, unhealthy))[0]
+    assert unhealthy_result.state == State.CRIT
+
+
+def test_differencing_disk_warns_without_parent_path() -> None:
+    """The non-sensitive has_parent flag must preserve differencing-disk warnings when path collection remains disabled."""
+
+    section = virtualization.parse_s2d_hci_virtualization_hard_disks(
+        [_row(protocol_version=1, run_id="r", identity="SCSI0:0", name="SCSI0:0", has_parent=True, vhd_type="Differencing")]
+    )
+    result = list(virtualization.check_s2d_hci_virtualization_hard_disks("SCSI0:0", virtualization.STATE_DEFAULTS, section))[0]
+    assert result.state == State.WARN
+    assert "parent" in result.summary.lower()

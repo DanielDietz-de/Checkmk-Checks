@@ -210,6 +210,15 @@ def state_from_severity(value: object, default: State = State.UNKNOWN) -> State:
     }.get(normalized, default)
 
 
+def worst_state(*states: State) -> State:
+    """Return the most severe Checkmk state, preferring CRIT, UNKNOWN, WARN, then OK."""
+
+    for candidate in (State.CRIT, State.UNKNOWN, State.WARN, State.OK):
+        if candidate in states:
+            return candidate
+    return State.UNKNOWN
+
+
 def state_from_text(value: object, params: Mapping[str, object] | None = None) -> State:
     """Map Microsoft state text through the configurable conservative state policy."""
 
@@ -241,6 +250,6 @@ def state_from_text(value: object, params: Mapping[str, object] | None = None) -
         return state_from_severity(policy["paused_state"])
     if any(token in normalized for token in ("warn", "degraded", "incomplete", "stressed", "blocked")):
         return state_from_severity(policy["degraded_state"])
-    if any(token in normalized for token in ("off", "down", "failed", "error", "critical", "detached", "lost", "notfound", "false", "stopped")):
+    if any(token in normalized for token in ("unhealthy", "off", "down", "failed", "error", "critical", "detached", "lost", "notfound", "false", "stopped")):
         return state_from_severity(policy["offline_state"])
     return state_from_severity(policy["unknown_state"])

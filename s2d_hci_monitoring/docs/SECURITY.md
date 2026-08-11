@@ -15,7 +15,7 @@ The default configuration excludes:
 - physical disk serial numbers and unique IDs;
 - physical hardware locations.
 
-Stable service identity does not require enabling these fields. Sensitive raw identifiers are hashed where necessary. Enable optional fields only for a documented operational need and restrict Checkmk access accordingly.
+Stable service identity does not require enabling these fields. Sensitive raw identifiers are hashed where necessary. VHD query failures also use a path-free error message while path collection is disabled; enabling paths permits a bounded vendor error message for troubleshooting. A non-sensitive `has_parent` Boolean preserves differencing-disk alerting without exposing the parent VHD path. Enable optional fields only for a documented operational need and restrict Checkmk access accordingly.
 
 ## Bounds and denial-of-service resistance
 

@@ -66,3 +66,13 @@ def test_cluster_and_vm_piggyback_contracts_exist() -> None:
     assert "Start-S2DHciPiggyback" in fast
     assert '"s2d-vm-" + $VmId.Guid' in virt
     assert "virtualization_enabled" in virt
+
+
+def test_virtualization_vhd_errors_respect_path_privacy_and_preserve_parent_state() -> None:
+    """Hyper-V VHD failures must redact path-bearing exception text by default while emitting a non-sensitive differencing-disk flag."""
+
+    text = _read("src/agents/plugins/s2d_hci_virtualization.ps1")
+    assert "$record.has_parent" in text
+    assert "VHD metadata query failed; path details are redacted by policy." in text
+    assert "if ($CollectorConfig.include_paths)" in text
+    assert "$record.vhd_error = $_.Exception.Message" not in text

@@ -161,10 +161,18 @@ function Write-S2DHciVmSections {
                         $record.size = $vhd.Size
                         $record.file_size = $vhd.FileSize
                         $record.minimum_size = $vhd.MinimumSize
+                        $record.has_parent = -not [string]::IsNullOrWhiteSpace([string]$vhd.ParentPath)
                         if ($CollectorConfig.include_paths) { $record.parent_path = [string]$vhd.ParentPath }
                     }
                     catch {
-                        $record.vhd_error = $_.Exception.Message
+                        if ($CollectorConfig.include_paths) {
+                            $errorMessage = [string]$_.Exception.Message
+                            if ($errorMessage.Length -gt 512) { $errorMessage = $errorMessage.Substring(0, 512) + ' [truncated]' }
+                            $record.vhd_error = $errorMessage
+                        }
+                        else {
+                            $record.vhd_error = 'VHD metadata query failed; path details are redacted by policy.'
+                        }
                     }
                 }
                 if ($CollectorConfig.include_paths) { $record.path = [string]$drive.Path }

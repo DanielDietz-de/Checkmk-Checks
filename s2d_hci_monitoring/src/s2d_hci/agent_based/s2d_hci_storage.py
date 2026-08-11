@@ -15,6 +15,7 @@ from .s2d_hci_protocol import (
     discover_items,
     parse_protocol_objects,
     state_from_text,
+    worst_state,
 )
 
 STATE_DEFAULTS = dict(DEFAULT_STATE_POLICY)
@@ -51,10 +52,12 @@ def _storage_result(item: str, params: Mapping[str, object], section: Section, l
     error = collector_error(entry)
     if error:
         return entry, Result(state=State.UNKNOWN, summary=f"{label} collection failed: {error}", details=str(entry.details))
-    operational = str(entry.details.get("operational_status") or "")
-    combined = f"{entry.state} {operational}".strip()
+    operational = str(entry.details.get("operational_status") or "").strip()
+    component_states = [state_from_text(entry.state, params)]
+    if operational:
+        component_states.append(state_from_text(operational, params))
     return entry, Result(
-        state=state_from_text(combined, params),
+        state=worst_state(*component_states),
         summary=f"{label}: {entry.name}, health: {entry.state}, operational: {operational or 'n/a'}",
         details=str(entry.details),
     )

@@ -56,3 +56,9 @@ def test_unknown_state_defaults_unknown() -> None:
     """Unrecognized Microsoft states must not be classified as healthy."""
 
     assert state_from_text("new-vendor-state") == State.UNKNOWN
+
+
+def test_unhealthy_state_uses_offline_policy() -> None:
+    """Microsoft Unhealthy health status must map through the offline policy instead of degrading to an ambiguous UNKNOWN state."""
+
+    assert state_from_text("Unhealthy") == State.CRIT

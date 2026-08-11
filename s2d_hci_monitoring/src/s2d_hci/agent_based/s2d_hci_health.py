@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 
 from cmk.agent_based.v2 import AgentSection, CheckPlugin, Result, State
 
-from .s2d_hci_protocol import DEFAULT_STATE_POLICY, Section, collector_error, discover_items, parse_protocol_objects, state_from_text
+from .s2d_hci_protocol import DEFAULT_STATE_POLICY, Section, collector_error, discover_items, parse_protocol_objects, state_from_text, worst_state
 
 STATE_DEFAULTS = dict(DEFAULT_STATE_POLICY)
 
@@ -47,10 +47,12 @@ def _check_health(item: str, params: Mapping[str, object], section: Section, lab
             details=str(entry.details),
         )
         return
-    operational = str(entry.details.get("operational_status") or "")
-    combined = f"{entry.state} {operational}".strip()
+    operational = str(entry.details.get("operational_status") or "").strip()
+    component_states = [state_from_text(entry.state, params)]
+    if operational:
+        component_states.append(state_from_text(operational, params))
     yield Result(
-        state=state_from_text(combined, params),
+        state=worst_state(*component_states),
         summary=f"{label}: {entry.name}, state: {entry.state}, operational: {operational or 'n/a'}",
         details=str(entry.details),
     )
