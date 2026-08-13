@@ -61,7 +61,8 @@ function Write-S2DHciVmSections {
     $vmHost = Get-S2DHciVmPiggybackHost -VmId $Vm.VMId
     Start-S2DHciPiggyback -HostName $vmHost
     try {
-        Write-S2DHciSection -Name 's2d_hci_virtualization_workloads' -Context $RunContext -ScriptBlock {
+        $sectionName = 's2d_hci_virtualization_workloads'
+        try {
             $record = [ordered]@{
                 name = [string]$Vm.Name
                 vm_id = $Vm.VMId.Guid
@@ -79,7 +80,10 @@ function Write-S2DHciVmSections {
                 configuration_version = $Vm.ConfigurationVersion.ToString()
             }
             if ($CollectorConfig.include_paths) { $record.path = [string]$Vm.Path }
-            [pscustomobject]$record
+            [pscustomobject]$record | Write-S2DHciSection -Name $sectionName -Context $RunContext
+        }
+        catch {
+            Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_
         }
 
         Write-S2DHciSection -Name 's2d_hci_virtualization_services' -Context $RunContext -ScriptBlock {
