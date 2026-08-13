@@ -24,7 +24,8 @@ try {
         Start-S2DHciPiggyback -HostName $clusterContext.LogicalHost
         $piggybackOpen = $true
 
-        Write-S2DHciSection -Name 's2d_hci_cluster_summary' -Context $context -ScriptBlock {
+        $sectionName = 's2d_hci_cluster_summary'
+        try {
             Get-Cluster -ErrorAction Stop | ForEach-Object {
                 [pscustomobject]@{
                     name = [string]$_.Name
@@ -32,20 +33,24 @@ try {
                     owner_node = [string]$_.OwnerNode.Name
                     dynamic_quorum = $_.DynamicQuorum
                 }
-            }
+            } | Write-S2DHciSection -Name $sectionName -Context $context
         }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_ }
 
-        Write-S2DHciSection -Name 's2d_hci_quorum' -Context $context -ScriptBlock {
+        $sectionName = 's2d_hci_quorum'
+        try {
             Get-ClusterQuorum -ErrorAction Stop | ForEach-Object {
                 [pscustomobject]@{
                     quorum_type = $_.QuorumType.ToString()
                     quorum_resource = if ($_.QuorumResource) { [string]$_.QuorumResource.Name } else { $null }
                     quorum_resource_state = if ($_.QuorumResource) { $_.QuorumResource.State.ToString() } else { $null }
                 }
-            }
+            } | Write-S2DHciSection -Name $sectionName -Context $context
         }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_ }
 
-        Write-S2DHciSection -Name 's2d_hci_nodes' -Context $context -ScriptBlock {
+        $sectionName = 's2d_hci_nodes'
+        try {
             Get-ClusterNode -ErrorAction Stop | Sort-Object Id | ForEach-Object {
                 [pscustomobject]@{
                     name = [string]$_.Name
@@ -55,10 +60,12 @@ try {
                     dynamic_weight = $_.DynamicWeight
                     drain_status = $_.DrainStatus.ToString()
                 }
-            }
+            } | Write-S2DHciSection -Name $sectionName -Context $context
         }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_ }
 
-        Write-S2DHciSection -Name 's2d_hci_networks' -Context $context -ScriptBlock {
+        $sectionName = 's2d_hci_networks'
+        try {
             Get-ClusterNetwork -ErrorAction Stop | Sort-Object Name | ForEach-Object {
                 $record = [ordered]@{
                     name = [string]$_.Name
@@ -69,10 +76,12 @@ try {
                 }
                 if ($config.include_addresses) { $record.address = [string]$_.Address }
                 [pscustomobject]$record
-            }
+            } | Write-S2DHciSection -Name $sectionName -Context $context
         }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_ }
 
-        Write-S2DHciSection -Name 's2d_hci_network_interfaces' -Context $context -ScriptBlock {
+        $sectionName = 's2d_hci_network_interfaces'
+        try {
             Get-ClusterNetworkInterface -ErrorAction Stop | Sort-Object Node, Name | ForEach-Object {
                 $node = [string]$_.Node
                 $name = [string]$_.Name
@@ -86,10 +95,12 @@ try {
                 }
                 if ($config.include_addresses) { $record.address = [string]$_.Address }
                 [pscustomobject]$record
-            }
+            } | Write-S2DHciSection -Name $sectionName -Context $context
         }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_ }
 
-        Write-S2DHciSection -Name 's2d_hci_cluster_groups' -Context $context -ScriptBlock {
+        $sectionName = 's2d_hci_cluster_groups'
+        try {
             Get-ClusterGroup -ErrorAction Stop | Sort-Object Name | ForEach-Object {
                 [pscustomobject]@{
                     name = [string]$_.Name
@@ -98,10 +109,12 @@ try {
                     state = $_.State.ToString()
                     priority = $_.Priority
                 }
-            }
+            } | Write-S2DHciSection -Name $sectionName -Context $context
         }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_ }
 
-        Write-S2DHciSection -Name 's2d_hci_cluster_resources' -Context $context -ScriptBlock {
+        $sectionName = 's2d_hci_cluster_resources'
+        try {
             Get-ClusterResource -ErrorAction Stop | Sort-Object OwnerGroup, Name | ForEach-Object {
                 [pscustomobject]@{
                     name = [string]$_.Name
@@ -110,8 +123,9 @@ try {
                     owner_node = [string]$_.OwnerNode.Name
                     state = $_.State.ToString()
                 }
-            }
+            } | Write-S2DHciSection -Name $sectionName -Context $context
         }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_ }
     }
 }
 catch {
