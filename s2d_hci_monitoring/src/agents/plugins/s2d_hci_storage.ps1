@@ -23,7 +23,8 @@ try {
         Start-S2DHciPiggyback -HostName $clusterContext.LogicalHost
         $piggybackOpen = $true
 
-        Write-S2DHciSection -Name 's2d_hci_csv' -Context $context -ScriptBlock {
+        $sectionName = 's2d_hci_csv'
+        try {
             Get-ClusterSharedVolume -ErrorAction Stop | Sort-Object Name | ForEach-Object {
                 $csv = $_
                 foreach ($info in $csv.SharedVolumeInfo) {
@@ -42,10 +43,12 @@ try {
                     if ($config.include_paths) { $record.friendly_volume_name = [string]$info.FriendlyVolumeName }
                     [pscustomobject]$record
                 }
-            }
+            } | Write-S2DHciSection -Name $sectionName -Context $context
         }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_ }
 
-        Write-S2DHciSection -Name 's2d_hci_storage_pools' -Context $context -ScriptBlock {
+        $sectionName = 's2d_hci_storage_pools'
+        try {
             Get-StoragePool -ErrorAction Stop | Where-Object { -not $_.IsPrimordial } | Sort-Object FriendlyName | ForEach-Object {
                 $source = if ($_.UniqueId) { [string]$_.UniqueId } elseif ($_.ObjectId) { [string]$_.ObjectId } else { [string]$_.FriendlyName }
                 [pscustomobject]@{
@@ -59,10 +62,12 @@ try {
                     is_read_only = $_.IsReadOnly
                     is_clustered = $_.IsClustered
                 }
-            }
+            } | Write-S2DHciSection -Name $sectionName -Context $context
         }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_ }
 
-        Write-S2DHciSection -Name 's2d_hci_virtual_disks' -Context $context -ScriptBlock {
+        $sectionName = 's2d_hci_virtual_disks'
+        try {
             Get-VirtualDisk -ErrorAction Stop | Sort-Object FriendlyName | ForEach-Object {
                 $source = if ($_.UniqueId) { [string]$_.UniqueId } elseif ($_.ObjectId) { [string]$_.ObjectId } else { [string]$_.FriendlyName }
                 [pscustomobject]@{
@@ -78,10 +83,12 @@ try {
                     provisioning_type = $_.ProvisioningType.ToString()
                     physical_disk_redundancy = $_.PhysicalDiskRedundancy
                 }
-            }
+            } | Write-S2DHciSection -Name $sectionName -Context $context
         }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_ }
 
-        Write-S2DHciSection -Name 's2d_hci_volumes' -Context $context -ScriptBlock {
+        $sectionName = 's2d_hci_volumes'
+        try {
             Get-Volume -ErrorAction Stop | Sort-Object FileSystemLabel, DriveLetter | ForEach-Object {
                 $drive = if ($_.DriveLetter) { "$($_.DriveLetter):" } else { $null }
                 $stableSource = if ($drive) { $drive } elseif ($_.UniqueId) { [string]$_.UniqueId } else { [string]$_.ObjectId }
@@ -100,10 +107,12 @@ try {
                 }
                 if ($config.include_paths) { $record.path = [string]$_.Path }
                 [pscustomobject]$record
-            }
+            } | Write-S2DHciSection -Name $sectionName -Context $context
         }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_ }
 
-        Write-S2DHciSection -Name 's2d_hci_physical_disks' -Context $context -ScriptBlock {
+        $sectionName = 's2d_hci_physical_disks'
+        try {
             Get-PhysicalDisk -ErrorAction Stop | Sort-Object FriendlyName, DeviceId | ForEach-Object {
                 $stableSource = if ($_.UniqueId) { [string]$_.UniqueId } elseif ($_.SerialNumber) { [string]$_.SerialNumber } else { "$($_.FriendlyName)|$($_.DeviceId)" }
                 $record = [ordered]@{
@@ -127,8 +136,9 @@ try {
                 }
                 if ($config.include_locations) { $record.physical_location = [string]$_.PhysicalLocation }
                 [pscustomobject]$record
-            }
+            } | Write-S2DHciSection -Name $sectionName -Context $context
         }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_ }
     }
 }
 catch {
