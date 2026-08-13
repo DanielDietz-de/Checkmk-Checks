@@ -11,7 +11,37 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $agentRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 Import-Module (Join-Path $agentRoot 'bin\s2d_hci_common.psm1') -Force -ErrorAction Stop
-$config = Get-S2DHciConfig -AgentRoot $agentRoot
+try {
+    $config = Get-S2DHciConfig -AgentRoot $agentRoot
+}
+catch {
+    $message = "Configuration validation failed: $($_.Exception.Message)"
+    if ($message.Length -gt 512) { $message = $message.Substring(0, 512) + ' [truncated]' }
+    $now = [DateTime]::UtcNow.ToString('o')
+    Write-Output '<<<s2d_hci_collector_health>>>'
+    [ordered]@{
+        protocol_version = 1
+        run_id = [guid]::NewGuid().Guid
+        collector = 'jobs'
+        success = $false
+        complete = $false
+        truncated = $false
+        record_count = 0
+        output_bytes = 0
+        max_records = 2000
+        max_output_bytes = 1048576
+        max_runtime_seconds = 120
+        elapsed_ms = 0
+        role = 'local'
+        cluster_name = $null
+        logical_host = $null
+        source_host = $env:COMPUTERNAME
+        errors = @($message)
+        started_at = $now
+        finished_at = $now
+    } | ConvertTo-Json -Compress -Depth 6
+    return
+}
 $context = New-S2DHciRunContext -Collector 'jobs' -Config $config
 $piggybackOpen = $false
 
