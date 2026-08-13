@@ -22,7 +22,8 @@ try {
     if ($clusterContext.IsLeader) {
         Start-S2DHciPiggyback -HostName $clusterContext.LogicalHost
         $piggybackOpen = $true
-        Write-S2DHciSection -Name 's2d_hci_storage_jobs' -Context $context -ScriptBlock {
+        $sectionName = 's2d_hci_storage_jobs'
+        try {
             Get-StorageJob -ErrorAction Stop | Sort-Object Name | ForEach-Object {
                 [pscustomobject]@{
                     identity = "job-$(Get-S2DHciStableHash -Value ([string]$_.Name))"
@@ -35,8 +36,9 @@ try {
                     elapsed_seconds = [int64]$_.ElapsedTime.TotalSeconds
                     recovery_action = [string]$_.RecoveryAction
                 }
-            }
+            } | Write-S2DHciSection -Name $sectionName -Context $context
         }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_ }
     }
 }
 catch {
