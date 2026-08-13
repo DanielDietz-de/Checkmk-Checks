@@ -90,23 +90,33 @@ try {
         Start-S2DHciPiggyback -HostName $clusterContext.LogicalHost
         $piggybackOpen = $true
 
-        Write-S2DHciSection -Name 's2d_hci_s2d_state' -Context $context -ScriptBlock {
+        $sectionName = 's2d_hci_s2d_state'
+        try {
             if (Test-S2DHciCommandAvailable -Name 'Get-ClusterStorageSpacesDirect') {
                 Get-ClusterStorageSpacesDirect -ErrorAction Stop | ForEach-Object {
                     ConvertTo-S2DHciStateRecord -InputObject $_ -SourceCommand 'Get-ClusterStorageSpacesDirect'
-                }
+                } | Write-S2DHciSection -Name $sectionName -Context $context
             }
             elseif (Test-S2DHciCommandAvailable -Name 'Get-ClusterS2D') {
                 Get-ClusterS2D -ErrorAction Stop | ForEach-Object {
                     ConvertTo-S2DHciStateRecord -InputObject $_ -SourceCommand 'Get-ClusterS2D'
-                }
+                } | Write-S2DHciSection -Name $sectionName -Context $context
             }
             else {
-                [pscustomobject]@{ name = 'Storage Spaces Direct'; available = $false; reason = 'No supported S2D state command is available.' }
+                $unavailable = [pscustomobject]@{
+                    name = 'Storage Spaces Direct'
+                    available = $false
+                    reason = 'No supported S2D state command is available.'
+                }
+                $unavailable | Write-S2DHciSection -Name $sectionName -Context $context
             }
         }
+        catch {
+            Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_
+        }
 
-        Write-S2DHciSection -Name 's2d_hci_storage_subsystems' -Context $context -ScriptBlock {
+        $sectionName = 's2d_hci_storage_subsystems'
+        try {
             Get-StorageSubSystem -ErrorAction Stop | Sort-Object FriendlyName | ForEach-Object {
                 $source = if ($_.UniqueId) { [string]$_.UniqueId } elseif ($_.ObjectId) { [string]$_.ObjectId } else { [string]$_.FriendlyName }
                 [pscustomobject]@{
@@ -117,30 +127,47 @@ try {
                     model = [string]$_.Model
                     manufacturer = [string]$_.Manufacturer
                 }
-            }
+            } | Write-S2DHciSection -Name $sectionName -Context $context
+        }
+        catch {
+            Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_
         }
 
-        Write-S2DHciSection -Name 's2d_hci_storage_health_report' -Context $context -ScriptBlock {
+        $sectionName = 's2d_hci_storage_health_report'
+        try {
             if (-not (Test-S2DHciCommandAvailable -Name 'Get-StorageHealthReport')) {
-                [pscustomobject]@{ name = 'Storage health report'; available = $false; reason = 'Get-StorageHealthReport is not available.' }
-                return
+                $unavailable = [pscustomobject]@{
+                    name = 'Storage health report'
+                    available = $false
+                    reason = 'Get-StorageHealthReport is not available.'
+                }
+                $unavailable | Write-S2DHciSection -Name $sectionName -Context $context
             }
-            Get-StorageSubSystem -ErrorAction Stop | ForEach-Object {
-                $subsystem = $_
-                try {
-                    $report = $subsystem | Get-StorageHealthReport -ErrorAction Stop
-                    [pscustomobject]@{
-                        identity = "health-$(Get-S2DHciStableHash -Value ([string]$subsystem.FriendlyName))"
-                        subsystem = [string]$subsystem.FriendlyName
-                        health_status = [string](Get-S2DHciPropertyValue -InputObject $report -Names @('HealthStatus', 'HealthState', 'State'))
-                        operational_status = [string]((Get-S2DHciPropertyValue -InputObject $report -Names @('OperationalStatus', 'OperationalState')) -join ',')
-                        severity = [string](Get-S2DHciPropertyValue -InputObject $report -Names @('Severity'))
+            else {
+                Get-StorageSubSystem -ErrorAction Stop | ForEach-Object {
+                    $subsystem = $_
+                    try {
+                        $report = $subsystem | Get-StorageHealthReport -ErrorAction Stop
+                        [pscustomobject]@{
+                            identity = "health-$(Get-S2DHciStableHash -Value ([string]$subsystem.FriendlyName))"
+                            subsystem = [string]$subsystem.FriendlyName
+                            health_status = [string](Get-S2DHciPropertyValue -InputObject $report -Names @('HealthStatus', 'HealthState', 'State'))
+                            operational_status = [string]((Get-S2DHciPropertyValue -InputObject $report -Names @('OperationalStatus', 'OperationalState')) -join ',')
+                            severity = [string](Get-S2DHciPropertyValue -InputObject $report -Names @('Severity'))
+                        }
                     }
-                }
-                catch {
-                    [pscustomobject]@{ subsystem = [string]$subsystem.FriendlyName; success = $false; error = $_.Exception.Message }
-                }
+                    catch {
+                        [pscustomobject]@{
+                            subsystem = [string]$subsystem.FriendlyName
+                            success = $false
+                            error = $_.Exception.Message
+                        }
+                    }
+                } | Write-S2DHciSection -Name $sectionName -Context $context
             }
+        }
+        catch {
+            Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_
         }
     }
 }
