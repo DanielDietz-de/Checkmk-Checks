@@ -98,7 +98,7 @@ function Write-S2DHciVmSections {
                 [pscustomobject]@{ name = 'replication'; available = $false; reason = 'Get-VMReplication is unavailable.' }
                 return
             }
-            Get-VMReplication -VMName $Vm.Name -ErrorAction SilentlyContinue | ForEach-Object {
+            Get-VMReplication -VMName $Vm.Name -ErrorAction Stop | ForEach-Object {
                 $record = [ordered]@{
                     name = 'replication'
                     state = $_.State.ToString()
