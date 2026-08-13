@@ -220,7 +220,7 @@ def worst_state(*states: State) -> State:
 
 
 def state_from_text(value: object, params: Mapping[str, object] | None = None) -> State:
-    """Map Microsoft state text through the configurable conservative state policy."""
+    """Map Microsoft state text, including comma-joined arrays, through the configured conservative policy."""
 
     policy = dict(DEFAULT_STATE_POLICY)
     if params:
@@ -228,7 +228,12 @@ def state_from_text(value: object, params: Mapping[str, object] | None = None) -
             if key in params:
                 policy[key] = str(params[key])
 
-    normalized = str(value or "").strip().lower()
+    raw = str(value or "").strip()
+    components = [component.strip() for component in raw.split(",") if component.strip()]
+    if len(components) > 1:
+        return worst_state(*(state_from_text(component, params) for component in components))
+
+    normalized = raw.lower()
     if normalized in {
         "ok",
         "online",
