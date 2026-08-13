@@ -246,40 +246,56 @@ function Write-S2DHciJsonLine {
 function Write-S2DHciSection {
     <#
     .SYNOPSIS
-        Execute one independent collector section with structured failure data.
+        Stream already-produced collector records through bounded JSON emission.
     .DESCRIPTION
-        Emits the Checkmk section header, executes the provided script block,
-        writes each returned object through the bounded protocol serializer,
-        and converts section failures into explicit JSON telemetry.
+        Emits one Checkmk section header and accepts records from the PowerShell
+        pipeline. Records are serialized as they arrive, so record, byte, and
+        elapsed-time bounds are enforced without buffering an entire cmdlet result.
+        The Windows agent process timeout remains the hard deadline for a blocked
+        upstream vendor cmdlet that produces no pipeline records.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]$Name,
+        [Parameter(Mandatory)] [object]$Context,
+        [Parameter(ValueFromPipeline = $true)] [AllowNull()] [object]$InputObject
+    )
+
+    begin {
+        Write-Output "<<<$Name>>>"
+    }
+    process {
+        if ($null -ne $InputObject) {
+            Write-S2DHciJsonLine -InputObject $InputObject -Context $Context
+        }
+    }
+}
+
+function Write-S2DHciSectionError {
+    <#
+    .SYNOPSIS
+        Convert one independently caught section failure into bounded telemetry.
+    .DESCRIPTION
+        Records the failure in collector health and attempts to emit a structured
+        error object in the affected section. If a configured output bound is
+        already exhausted, collector health remains the authoritative failure signal.
     #>
     param(
         [Parameter(Mandatory)] [string]$Name,
-        [Parameter(Mandatory)] [scriptblock]$ScriptBlock,
-        [Parameter(Mandatory)] [object]$Context
+        [Parameter(Mandatory)] [object]$Context,
+        [Parameter(Mandatory)] [System.Management.Automation.ErrorRecord]$ErrorRecord
     )
 
-    Write-Output "<<<$Name>>>"
+    Add-S2DHciCollectorError -Context $Context -Message "${Name}: $($ErrorRecord.Exception.Message)"
     try {
-        @(& $ScriptBlock) | ForEach-Object {
-            if ($null -ne $_) {
-                Write-S2DHciJsonLine -InputObject $_ -Context $Context
-            }
-        }
+        [pscustomobject]@{
+            section = $Name
+            success = $false
+            error = $ErrorRecord.Exception.Message
+        } | Write-S2DHciSection -Name $Name -Context $Context
     }
     catch {
-        Add-S2DHciCollectorError -Context $Context -Message "${Name}: $($_.Exception.Message)"
-        try {
-            Write-S2DHciJsonLine -InputObject ([pscustomobject]@{
-                section = $Name
-                success = $false
-                error = $_.Exception.Message
-            }) -Context $Context
-        }
-        catch {
-            # When the configured output limit itself is exhausted there is no
-            # safe capacity left for another data record. Health output still
-            # reports the truncation after the piggyback block is closed.
-        }
+        # Collector health remains available even when no record capacity remains.
     }
 }
 
@@ -431,6 +447,7 @@ Export-ModuleMember -Function @(
     'Add-S2DHciCollectorError',
     'Write-S2DHciJsonLine',
     'Write-S2DHciSection',
+    'Write-S2DHciSectionError',
     'ConvertTo-S2DHciHostName',
     'Get-S2DHciStableHash',
     'Get-S2DHciClusterContext',
