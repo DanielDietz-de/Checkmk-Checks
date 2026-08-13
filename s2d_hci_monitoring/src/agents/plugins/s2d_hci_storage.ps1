@@ -88,7 +88,7 @@ try {
                 $locator = if ($drive) { $drive } else { "vol-$(Get-S2DHciStableHash -Value $stableSource)" }
                 $label = [string]$_.FileSystemLabel
                 $record = [ordered]@{
-                    identity = if ($label) { "$label [$locator]" } else { $locator }
+                    identity = $locator
                     filesystem_label = $label
                     drive_letter = $drive
                     filesystem = [string]$_.FileSystem
