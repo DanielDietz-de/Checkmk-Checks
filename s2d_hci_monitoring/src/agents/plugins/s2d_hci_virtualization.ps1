@@ -48,9 +48,9 @@ function Write-S2DHciVmSections {
     .SYNOPSIS
         Emit all enabled monitoring sections for one VM on its stable piggyback host.
     .DESCRIPTION
-        Opens the VM-GUID piggyback block, emits workload, integration, replication,
-        checkpoint, NIC, and disk data through bounded section writers, respects
-        privacy settings, and always closes the piggyback block in a finally path.
+        Opens the VM-GUID piggyback block, streams workload, integration,
+        replication, checkpoint, NIC, and disk records through bounded section
+        writers, and converts independent query failures into explicit telemetry.
     #>
     param(
         [Parameter(Mandatory)] [object]$Vm,
@@ -148,7 +148,8 @@ function Write-S2DHciVmSections {
             Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_
         }
 
-        Write-S2DHciSection -Name 's2d_hci_virtualization_network_adapters' -Context $RunContext -ScriptBlock {
+        $sectionName = 's2d_hci_virtualization_network_adapters'
+        try {
             Get-VMNetworkAdapter -VM $Vm -ErrorAction Stop | Sort-Object Name | ForEach-Object {
                 $record = [ordered]@{
                     identity = "nic-$($_.Id)"
@@ -162,10 +163,14 @@ function Write-S2DHciVmSections {
                     $record.ip_addresses = ($_.IPAddresses -join ',')
                 }
                 [pscustomobject]$record
-            }
+            } | Write-S2DHciSection -Name $sectionName -Context $RunContext
+        }
+        catch {
+            Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_
         }
 
-        Write-S2DHciSection -Name 's2d_hci_virtualization_hard_disks' -Context $RunContext -ScriptBlock {
+        $sectionName = 's2d_hci_virtualization_hard_disks'
+        try {
             Get-VMHardDiskDrive -VM $Vm -ErrorAction Stop | Sort-Object ControllerType, ControllerNumber, ControllerLocation | ForEach-Object {
                 $drive = $_
                 $record = [ordered]@{
@@ -199,7 +204,10 @@ function Write-S2DHciVmSections {
                 }
                 if ($CollectorConfig.include_paths) { $record.path = [string]$drive.Path }
                 [pscustomobject]$record
-            }
+            } | Write-S2DHciSection -Name $sectionName -Context $RunContext
+        }
+        catch {
+            Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_
         }
     }
     finally {
@@ -213,14 +221,18 @@ try {
     }
     else {
         Import-Module Hyper-V -ErrorAction Stop
-        Write-S2DHciSection -Name 's2d_hci_virtualization_host' -Context $context -ScriptBlock {
-            $service = Get-Service -Name 'vmms' -ErrorAction SilentlyContinue
+        $sectionName = 's2d_hci_virtualization_host'
+        try {
+            $service = Get-Service -Name 'vmms' -ErrorAction Stop
             [pscustomobject]@{
                 name = $env:COMPUTERNAME
-                service_status = if ($service) { $service.Status.ToString() } else { 'NotFound' }
-                service_start_type = if ($service) { $service.StartType.ToString() } else { $null }
+                service_status = $service.Status.ToString()
+                service_start_type = $service.StartType.ToString()
                 module_available = $true
-            }
+            } | Write-S2DHciSection -Name $sectionName -Context $context
+        }
+        catch {
+            Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_
         }
 
         Get-VM -ErrorAction Stop | Sort-Object VMId | ForEach-Object {
