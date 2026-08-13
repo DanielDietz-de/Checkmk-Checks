@@ -86,7 +86,8 @@ function Write-S2DHciVmSections {
             Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_
         }
 
-        Write-S2DHciSection -Name 's2d_hci_virtualization_services' -Context $RunContext -ScriptBlock {
+        $sectionName = 's2d_hci_virtualization_services'
+        try {
             Get-VMIntegrationService -VM $Vm -ErrorAction Stop | Sort-Object Name | ForEach-Object {
                 [pscustomobject]@{
                     name = [string]$_.Name
@@ -94,40 +95,57 @@ function Write-S2DHciVmSections {
                     primary_status_description = [string]$_.PrimaryStatusDescription
                     secondary_status_description = [string]$_.SecondaryStatusDescription
                 }
-            }
+            } | Write-S2DHciSection -Name $sectionName -Context $RunContext
+        }
+        catch {
+            Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_
         }
 
-        Write-S2DHciSection -Name 's2d_hci_virtualization_replication' -Context $RunContext -ScriptBlock {
+        $sectionName = 's2d_hci_virtualization_replication'
+        try {
             if (-not (Test-S2DHciCommandAvailable -Name 'Get-VMReplication')) {
-                [pscustomobject]@{ name = 'replication'; available = $false; reason = 'Get-VMReplication is unavailable.' }
-                return
-            }
-            Get-VMReplication -VMName $Vm.Name -ErrorAction Stop | ForEach-Object {
-                $record = [ordered]@{
+                $unavailable = [pscustomobject]@{
                     name = 'replication'
-                    state = $_.State.ToString()
-                    health = $_.Health.ToString()
-                    mode = $_.Mode.ToString()
-                    frequency_sec = $_.FrequencySec
-                    last_replication_time = $_.LastReplicationTime
+                    available = $false
+                    reason = 'Get-VMReplication is unavailable.'
                 }
-                if ($CollectorConfig.include_addresses) {
-                    $record.primary_server = [string]$_.PrimaryServer
-                    $record.replica_server = [string]$_.ReplicaServer
-                }
-                [pscustomobject]$record
+                $unavailable | Write-S2DHciSection -Name $sectionName -Context $RunContext
+            }
+            else {
+                Get-VMReplication -VMName $Vm.Name -ErrorAction Stop | ForEach-Object {
+                    $record = [ordered]@{
+                        name = 'replication'
+                        state = $_.State.ToString()
+                        health = $_.Health.ToString()
+                        mode = $_.Mode.ToString()
+                        frequency_sec = $_.FrequencySec
+                        last_replication_time = $_.LastReplicationTime
+                    }
+                    if ($CollectorConfig.include_addresses) {
+                        $record.primary_server = [string]$_.PrimaryServer
+                        $record.replica_server = [string]$_.ReplicaServer
+                    }
+                    [pscustomobject]$record
+                } | Write-S2DHciSection -Name $sectionName -Context $RunContext
             }
         }
+        catch {
+            Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_
+        }
 
-        Write-S2DHciSection -Name 's2d_hci_virtualization_checkpoints' -Context $RunContext -ScriptBlock {
-            Get-VMSnapshot -VM $Vm -ErrorAction SilentlyContinue | Sort-Object CreationTime | ForEach-Object {
+        $sectionName = 's2d_hci_virtualization_checkpoints'
+        try {
+            Get-VMSnapshot -VM $Vm -ErrorAction Stop | Sort-Object CreationTime | ForEach-Object {
                 [pscustomobject]@{
                     identity = "checkpoint-$($_.Id.Guid)"
                     name = [string]$_.Name
                     checkpoint_type = $_.CheckpointType.ToString()
                     creation_time = $_.CreationTime.ToUniversalTime().ToString('o')
                 }
-            }
+            } | Write-S2DHciSection -Name $sectionName -Context $RunContext
+        }
+        catch {
+            Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_
         }
 
         Write-S2DHciSection -Name 's2d_hci_virtualization_network_adapters' -Context $RunContext -ScriptBlock {
