@@ -10,8 +10,9 @@
     only non-secret path configuration, grants the account read access to every
     runtime dependency and directory traversal required by the collector, grants
     modify access only to the Checkmk spool directory, verifies the resulting NTFS
-    rights, and registers a non-elevated task. Every mutation honors PowerShell
-    ShouldProcess so -WhatIf remains side-effect free.
+    rights, registers the replacement task disabled, and explicitly enables it only
+    after registration succeeds. Every mutation honors PowerShell ShouldProcess so
+    -WhatIf remains side-effect free.
 #>
 
 [CmdletBinding(SupportsShouldProcess = $true)]
@@ -413,8 +414,9 @@ $taskArgument = "-NoProfile -NonInteractive -File `"$WrapperPath`" -ConfigPath `
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $taskArgument
 $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes)
 $principal = New-ScheduledTaskPrincipal -UserId $ServiceAccount -LogonType ServiceAccount -RunLevel Limited
-$settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes ([Math]::Max(2, $IntervalMinutes - 1))) -StartWhenAvailable
-if ($PSCmdlet.ShouldProcess($TaskName, "Register scheduled task as $ServiceAccount")) {
+# Register disabled first so a later enable failure cannot accidentally leave a publisher running.
+$settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes ([Math]::Max(2, $IntervalMinutes - 1))) -StartWhenAvailable -Disable
+if ($PSCmdlet.ShouldProcess($TaskName, "Register disabled scheduled task as $ServiceAccount and enable after successful registration")) {
     Register-ScheduledTask -TaskName $TaskName -TaskPath '\' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
     Enable-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction Stop | Out-Null
 }
