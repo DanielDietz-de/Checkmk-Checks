@@ -91,6 +91,40 @@ def test_extract_fails_closed_on_truncated_ap_section():
         sync._extract_access_points(output)
 
 
+def test_extract_rejects_complete_partial_inventory_against_collector_total():
+    sync = _load()
+    collector = json.dumps(
+        {
+            "schema": 1,
+            "kind": "collector",
+            "collector": {"status": "OK", "ap_total": 2},
+        }
+    )
+    ap = json.dumps(
+        {
+            "schema": 1,
+            "kind": "ap",
+            "ap": {
+                "host_name": "AP-ONLY",
+                "group": "B200",
+                "site": "B200",
+            },
+        }
+    )
+    output = "\n".join(
+        [
+            sync.SECTION,
+            collector,
+            "<<<<AP-ONLY>>>>",
+            sync.SECTION,
+            ap,
+            "<<<<>>>>",
+        ]
+    )
+    with pytest.raises(ValueError, match="collector/piggyback count mismatch"):
+        sync._extract_access_points(output)
+
+
 def test_extract_rejects_payload_host_name_mismatch():
     sync = _load()
     payload = json.dumps(
@@ -344,6 +378,65 @@ def test_folder_and_host_requests_use_checkmk_object_ids():
     assert fake.calls[0][2]["json"]["parent"] == "~"
     assert fake.calls[1][2]["json"]["parent"] == "~campus_bornheim"
     assert fake.calls[2][2]["json"]["folder"] == "~campus_bornheim~accesspoint"
+
+
+def test_existing_folder_is_accepted_only_after_exact_verification():
+    sync = _load()
+    client = sync.CheckmkApi(
+        "https://checkmk.example/site/check_mk/api/v1",
+        "automation",
+        "secret",
+        None,
+        30,
+    )
+    existing = {
+        "id": "~campus_bornheim",
+        "title": "Campus Bornheim",
+        "extensions": {
+            "path": "/campus_bornheim",
+            "attributes": {"meta_data": {"created_by": "automation"}},
+        },
+    }
+    fake = _Session(
+        [
+            _Response(409, text="Folder already exists"),
+            _Response(200, existing),
+        ]
+    )
+    client.session = fake
+    assert (
+        client.create_folder("campus_bornheim", "Campus Bornheim", "~")
+        == "exists-verified"
+    )
+    assert fake.calls[1][0] == "GET"
+    assert fake.calls[1][1].endswith("/objects/folder_config/~campus_bornheim")
+
+
+def test_existing_folder_with_conflicting_configuration_is_rejected():
+    sync = _load()
+    client = sync.CheckmkApi(
+        "https://checkmk.example/site/check_mk/api/v1",
+        "automation",
+        "secret",
+        None,
+        30,
+    )
+    existing = {
+        "id": "~campus_bornheim",
+        "title": "Unrelated folder",
+        "extensions": {
+            "path": "/campus_bornheim",
+            "attributes": {"tag_criticality": "prod"},
+        },
+    }
+    client.session = _Session(
+        [
+            _Response(409, text="Folder already exists"),
+            _Response(200, existing),
+        ]
+    )
+    with pytest.raises(RuntimeError, match="does not match planned configuration"):
+        client.create_folder("campus_bornheim", "Campus Bornheim", "~")
 
 
 def test_existing_host_is_accepted_only_after_exact_configuration_verification():
