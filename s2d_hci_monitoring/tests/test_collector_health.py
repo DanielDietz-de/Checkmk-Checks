@@ -49,6 +49,23 @@ def test_disabled_virtualization_is_explicit_ok() -> None:
     assert "disabled" in result.summary.lower()
 
 
+def test_failed_disabled_virtualization_is_critical() -> None:
+    """A safe-default disabled role must not hide malformed configuration or another failed virtualization run."""
+
+    section = parse_s2d_hci_collector_health(
+        _health(
+            collector="virtualization",
+            role="disabled",
+            success=False,
+            complete=False,
+            errors=["Collector configuration is invalid; safe defaults are active."],
+        )
+    )
+    result = list(check_s2d_hci_collector_health("virtualization", section))[0]
+    assert result.state == State.CRIT
+    assert "configuration" in result.summary.lower()
+
+
 def test_bad_health_json_is_unknown() -> None:
     """Malformed health telemetry must itself produce an UNKNOWN service."""
 
