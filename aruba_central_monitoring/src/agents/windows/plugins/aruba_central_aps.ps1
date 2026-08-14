@@ -419,8 +419,9 @@ function Write-MonitoringOutput {
     }
 }
 
-$config = Read-Configuration -Path $ConfigFile
+$config = Get-DefaultConfig
 try {
+    $config = Read-Configuration -Path $ConfigFile
     $execution = Invoke-Cencli -Config $config
     $accessPoints = Get-AccessPoints -Root $execution.Object
     Assert-UniqueHostNames -AccessPoints $accessPoints
