@@ -1,0 +1,49 @@
+name: S2D HCI Windows validation
+
+on:
+  pull_request:
+    paths:
+      - "s2d_hci_monitoring/**"
+      - ".github/workflows/s2d-hci-windows-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-powershell-51:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Parse all package PowerShell with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = Get-ChildItem s2d_hci_monitoring -Recurse -File | Where-Object { $_.Extension -in '.ps1', '.psm1' }
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$($file.FullName): $($_.Message)" }
+              throw "Windows PowerShell parser rejected $($file.FullName)"
+            }
+          }
+          Write-Host "Windows PowerShell 5.1 parsed $($files.Count) files successfully."
+
+      - name: Run pinned PSScriptAnalyzer
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
+          $findings = Invoke-ScriptAnalyzer -Path s2d_hci_monitoring -Recurse -Severity Error
+          if ($findings) {
+            $findings | Format-Table -AutoSize | Out-String | Write-Error
+            throw "PSScriptAnalyzer reported error-severity findings."
+          }
