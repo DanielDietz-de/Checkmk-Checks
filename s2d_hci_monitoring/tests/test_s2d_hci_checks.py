@@ -107,6 +107,48 @@ def test_storage_health_uses_worst_independent_component_state() -> None:
     assert unhealthy_result.state == State.CRIT
 
 
+def test_virtual_disk_none_detached_reason_is_not_critical() -> None:
+    """The normal Storage Spaces DetachedReason=None sentinel must not create a false CRIT service."""
+
+    for detached_reason in ("None", "0", 0, None):
+        section = storage.parse_s2d_hci_virtual_disks(
+            [
+                _row(
+                    protocol_version=1,
+                    run_id="r",
+                    identity="vdisk-a",
+                    friendly_name="Virtual Disk A",
+                    health_status="Healthy",
+                    operational_status="OK",
+                    detached_reason=detached_reason,
+                )
+            ]
+        )
+        result = list(storage.check_s2d_hci_virtual_disks("vdisk-a", storage.STATE_DEFAULTS, section))[-1]
+        assert result.state == State.OK
+
+
+def test_virtual_disk_real_detached_reason_is_critical() -> None:
+    """A real Storage Spaces detach reason must remain a CRIT condition."""
+
+    section = storage.parse_s2d_hci_virtual_disks(
+        [
+            _row(
+                protocol_version=1,
+                run_id="r",
+                identity="vdisk-a",
+                friendly_name="Virtual Disk A",
+                health_status="Healthy",
+                operational_status="OK",
+                detached_reason="Insufficient Redundancy",
+            )
+        ]
+    )
+    result = list(storage.check_s2d_hci_virtual_disks("vdisk-a", storage.STATE_DEFAULTS, section))[0]
+    assert result.state == State.CRIT
+    assert "insufficient redundancy" in result.summary.lower()
+
+
 def test_differencing_disk_warns_without_parent_path() -> None:
     """The non-sensitive has_parent flag must preserve differencing-disk warnings when path collection remains disabled."""
 
