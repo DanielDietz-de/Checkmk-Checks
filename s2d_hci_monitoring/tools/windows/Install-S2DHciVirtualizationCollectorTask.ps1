@@ -7,7 +7,8 @@
     grants the account read access to every runtime dependency and directory
     traversal required by the collector, grants modify access only to the
     Checkmk spool directory, verifies the resulting NTFS rights, and registers
-    a non-elevated task.
+    a non-elevated task. Every mutation honors PowerShell ShouldProcess so
+    -WhatIf remains side-effect free.
 #>
 
 [CmdletBinding(SupportsShouldProcess = $true)]
@@ -88,8 +89,9 @@ function Grant-S2DHciAcl {
         Grant one scoped NTFS permission to the configured gMSA identity.
     .DESCRIPTION
         Uses icacls with replacement semantics for the named identity and checks
-        the native exit code. Any ACL application failure terminates installation
-        before the scheduled task is registered.
+        the native exit code. The caller must gate this mutating helper through
+        ShouldProcess. Any ACL application failure terminates installation before
+        the scheduled task is registered.
     #>
     param(
         [Parameter(Mandatory)] [string]$Path,
@@ -154,7 +156,9 @@ if ($DryRun) {
 
 Assert-S2DHciGmsaUsable -Identity $ServiceAccount
 foreach ($directory in @($configRoot, $spoolRoot)) {
-    if (-not (Test-Path -LiteralPath $directory -PathType Container) -and $PSCmdlet.ShouldProcess($directory, 'Create directory')) { New-Item -ItemType Directory -Path $directory -Force | Out-Null }
+    if (-not (Test-Path -LiteralPath $directory -PathType Container) -and $PSCmdlet.ShouldProcess($directory, 'Create directory')) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
 }
 foreach ($file in @($CollectorPath, $WrapperPath, $commonModulePath, $collectorConfigPath)) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Required file not found: $file" }
@@ -166,26 +170,23 @@ if ($PSCmdlet.ShouldProcess($ConfigPath, 'Write non-secret spool configuration')
 }
 
 # Explicit traversal is required when inheritance on the agent tree is hardened.
-foreach ($directory in @($AgentRoot, $binRoot, $configRoot)) {
-    Grant-S2DHciAcl -Path $directory -Identity $ServiceAccount -Permission '(RX)'
+$aclTargets = @(
+    [pscustomobject]@{ Path=$AgentRoot; Permission='(RX)'; RequiredRights=[System.Security.AccessControl.FileSystemRights]::ReadAndExecute },
+    [pscustomobject]@{ Path=$binRoot; Permission='(RX)'; RequiredRights=[System.Security.AccessControl.FileSystemRights]::ReadAndExecute },
+    [pscustomobject]@{ Path=$configRoot; Permission='(RX)'; RequiredRights=[System.Security.AccessControl.FileSystemRights]::ReadAndExecute },
+    [pscustomobject]@{ Path=$CollectorPath; Permission='(RX)'; RequiredRights=[System.Security.AccessControl.FileSystemRights]::ReadAndExecute },
+    [pscustomobject]@{ Path=$WrapperPath; Permission='(RX)'; RequiredRights=[System.Security.AccessControl.FileSystemRights]::ReadAndExecute },
+    [pscustomobject]@{ Path=$commonModulePath; Permission='(RX)'; RequiredRights=[System.Security.AccessControl.FileSystemRights]::ReadAndExecute },
+    [pscustomobject]@{ Path=$collectorConfigPath; Permission='(R)'; RequiredRights=[System.Security.AccessControl.FileSystemRights]::Read },
+    [pscustomobject]@{ Path=$ConfigPath; Permission='(R)'; RequiredRights=[System.Security.AccessControl.FileSystemRights]::Read },
+    [pscustomobject]@{ Path=$spoolRoot; Permission='(OI)(CI)(M)'; RequiredRights=[System.Security.AccessControl.FileSystemRights]::Modify }
+)
+foreach ($target in $aclTargets) {
+    if ($PSCmdlet.ShouldProcess($target.Path, "Grant $($target.Permission) NTFS rights to $ServiceAccount")) {
+        Grant-S2DHciAcl -Path $target.Path -Identity $ServiceAccount -Permission $target.Permission
+        Assert-S2DHciAclPresent -Path $target.Path -Identity $ServiceAccount -RequiredRights $target.RequiredRights
+    }
 }
-Grant-S2DHciAcl -Path $CollectorPath -Identity $ServiceAccount -Permission '(RX)'
-Grant-S2DHciAcl -Path $WrapperPath -Identity $ServiceAccount -Permission '(RX)'
-Grant-S2DHciAcl -Path $commonModulePath -Identity $ServiceAccount -Permission '(RX)'
-Grant-S2DHciAcl -Path $collectorConfigPath -Identity $ServiceAccount -Permission '(R)'
-Grant-S2DHciAcl -Path $ConfigPath -Identity $ServiceAccount -Permission '(R)'
-Grant-S2DHciAcl -Path $spoolRoot -Identity $ServiceAccount -Permission '(OI)(CI)(M)'
-
-foreach ($directory in @($AgentRoot, $binRoot, $configRoot)) {
-    Assert-S2DHciAclPresent -Path $directory -Identity $ServiceAccount -RequiredRights ([System.Security.AccessControl.FileSystemRights]::ReadAndExecute)
-}
-foreach ($file in @($CollectorPath, $WrapperPath, $commonModulePath)) {
-    Assert-S2DHciAclPresent -Path $file -Identity $ServiceAccount -RequiredRights ([System.Security.AccessControl.FileSystemRights]::ReadAndExecute)
-}
-foreach ($file in @($collectorConfigPath, $ConfigPath)) {
-    Assert-S2DHciAclPresent -Path $file -Identity $ServiceAccount -RequiredRights ([System.Security.AccessControl.FileSystemRights]::Read)
-}
-Assert-S2DHciAclPresent -Path $spoolRoot -Identity $ServiceAccount -RequiredRights ([System.Security.AccessControl.FileSystemRights]::Modify)
 
 $taskArgument = "-NoProfile -NonInteractive -File `"$WrapperPath`" -ConfigPath `"$ConfigPath`" -AgentRoot `"$AgentRoot`""
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $taskArgument
@@ -196,4 +197,5 @@ if ($PSCmdlet.ShouldProcess($TaskName, "Register scheduled task as $ServiceAccou
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 }
 
-[pscustomobject]@{ TaskName=$TaskName; ServiceAccount=$ServiceAccount; Status='InstalledOrUpdated'; RunLevel='Limited'; ConfigPath=$ConfigPath; SpoolFile=$SpoolFile }
+$status = if ($WhatIfPreference) { 'WhatIf' } else { 'InstalledOrUpdated' }
+[pscustomobject]@{ TaskName=$TaskName; ServiceAccount=$ServiceAccount; Status=$status; RunLevel='Limited'; ConfigPath=$ConfigPath; SpoolFile=$SpoolFile }
