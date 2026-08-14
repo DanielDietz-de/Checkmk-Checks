@@ -107,7 +107,7 @@ def _load_agent_output(
 
 
 def _extract_access_points(agent_output: str) -> list[dict[str, Any]]:
-    """Extract AP records and reconcile them with the authoritative collector count."""
+    """Extract only complete AP records from a successful current collector run."""
 
     lines = agent_output.splitlines()
     access_points: list[dict[str, Any]] = []
@@ -142,6 +142,13 @@ def _extract_access_points(agent_output: str) -> list[dict[str, Any]]:
             collector = payload.get("collector")
             if not isinstance(collector, dict):
                 raise ValueError("Aruba collector section has no collector object")
+            status = str(collector.get("status", "")).strip().upper()
+            stale = collector.get("stale")
+            if status != "OK" or stale is not False:
+                raise ValueError(
+                    "Aruba collector is not a successful current snapshot: "
+                    f"status={status or 'missing'}, stale={stale!r}"
+                )
             try:
                 reported_total = int(collector.get("ap_total"))
             except (TypeError, ValueError) as exc:
@@ -552,7 +559,7 @@ class CheckmkApi:
         return bool(changes), etag
 
     def activate(self, site: str) -> str:
-        """Activate pending changes using the current pending-changes ETag."""
+        """Activate pending changes and wait for the run to finish successfully."""
 
         has_changes, etag = self._pending_changes_etag()
         if not has_changes:
@@ -568,11 +575,26 @@ class CheckmkApi:
                 "force_foreign_changes": False,
             },
         )
-        if response.status_code in {200, 201, 202}:
-            return "submitted"
-        raise RuntimeError(
-            f"activation failed ({response.status_code}): {response.text[:500]}"
+        if response.status_code not in {200, 201, 202}:
+            raise RuntimeError(
+                f"activation failed ({response.status_code}): {response.text[:500]}"
+            )
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise RuntimeError("activation response is not valid JSON") from exc
+        activation_id = body.get("id") if isinstance(body, dict) else None
+        if not isinstance(activation_id, str) or not activation_id:
+            raise RuntimeError("activation response has no activation ID")
+        wait = self._request(
+            "GET",
+            f"/objects/activation_run/{quote(activation_id, safe='')}/actions/wait-for-completion/invoke",
         )
+        if wait.status_code not in {200, 204}:
+            raise RuntimeError(
+                f"activation wait failed ({wait.status_code}): {wait.text[:500]}"
+            )
+        return "completed"
 
 
 def _print_plan(planned: list[PlannedHost]) -> None:
