@@ -21,6 +21,8 @@ A section-level failure is represented as a JSON object with `success=false`, `s
 
 `output_bytes` counts compact JSON data records only, using the same one-byte line accounting enforced by `Write-S2DHciJsonLine`; Checkmk section headers, piggyback markers, and the final collector-health row are protocol framing rather than data-record bytes. The gMSA spool wrapper recomputes the data-record count and bytes and requires them to match the health envelope, while independently bounding framing and collector-health size. This avoids both under-counting unbounded framing and rejecting valid high-record runs with a fixed overhead allowance.
 
+In direct Hyper-V mode, a record, byte, or runtime truncation is also a framing stop condition. After the first bounded writer marks the run truncated, the current VM closes its already-open piggyback block and no later section headers or VM piggyback blocks are emitted. This keeps uncounted protocol framing bounded even when the host has many additional VMs after the data limit is reached.
+
 A failed/incomplete/truncated run is CRIT. Invalid/malformed health envelopes are UNKNOWN. An intentionally disabled virtualization collector is OK only when the health envelope confirms a successful, complete, non-truncated invocation.
 
 ## Parser invariants
@@ -38,4 +40,6 @@ Server-side parsing is fail-visible and treats each section as one coherent coll
 
 The first valid `run_id` establishes the section snapshot. Rows from another collector invocation are never merged into that snapshot, which prevents direct/spool overlap, stale piggyback data, or overlapping runs from being interpreted as one coherent state.
 
-These invariants prevent malformed, partial, mixed-run, duplicate, or failed collection from being interpreted as healthy empty monitoring.
+Storage state checks normalize Microsoft sentinel values rather than relying on string truthiness. In particular, virtual-disk `DetachedReason=None`/zero means attached normally; only a substantive detach reason produces a detached-disk CRIT.
+
+These invariants prevent malformed, partial, mixed-run, duplicate, failed, or sentinel-only collection data from being interpreted incorrectly.
