@@ -1,0 +1,44 @@
+title: S2D/HCI production monitoring
+agents: windows
+catalog: storage/hci
+license: PolyForm Internal Use 1.0.0
+distribution: check_mk
+
+description:
+ Production-hardened read-only monitoring for Windows Failover Clustering,
+ Storage Spaces Direct, HCI storage, and optional Hyper-V workloads. Collector
+ protocol version 1 provides explicit run IDs and collector-health records.
+ Cluster-wide data is emitted by one deterministically elected node to a stable
+ logical cluster piggyback host. Optional VM data is emitted to stable VM-GUID
+ piggyback hosts so live migration does not churn service identity.
+
+item:
+ Storage and cluster services use stable collector identities. Human-readable
+ object names are retained in service summaries. Parser errors, duplicate
+ identities, protocol mismatches, and structured command failures become visible
+ UNKNOWN services instead of silently disappearing.
+
+inventory:
+ Services are discovered from the s2d_hci_* data sections and from
+ <<<s2d_hci_collector_health>>>. Hyper-V workload sections are disabled by
+ default and must be explicitly enabled through the Agent Bakery configuration
+ or the bounded JSON configuration.
+
+perfdata:
+ Metrics are provided for CSV/volume free percentage, storage-pool allocated
+ bytes, storage-job progress, VM CPU usage, VM memory pressure, and checkpoint
+ age. The removed performance-history collector is intentionally not packaged.
+
+parameters:
+ Rules configure CSV and volume free-space thresholds, VM CPU/memory and
+ checkpoint-age thresholds, and the operational-state severity policy used for
+ degraded, paused, draining, offline, and unknown Microsoft states.
+
+troubleshooting:
+ First inspect the S2D/HCI collector-health services on physical cluster nodes.
+ A failed, incomplete, or truncated collector run is explicitly visible there.
+ Inspect raw agent output for protocol_version=1 and a consistent run_id. Cluster
+ data appears on the logical s2d-cluster-* piggyback host. Custom VM data appears
+ on s2d-vm-<guid> piggyback hosts only when virtualization collection is enabled.
+ Verify required FailoverClusters, Storage, ActiveDirectory, and Hyper-V modules
+ for the selected deployment mode.

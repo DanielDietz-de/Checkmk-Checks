@@ -69,14 +69,18 @@ def run(root: Path, *, write: bool) -> list[str]:
         and _is_python_source(path)
     ]
     for path in candidates:
-        text = path.read_text(encoding="utf-8")
+        rel = path.relative_to(root)
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            stale.append(f"{rel}: invalid UTF-8 source ({exc})")
+            continue
         try:
             tree = ast.parse(text, filename=str(path))
         except SyntaxError:
             continue
         if ast.get_docstring(tree, clean=False) is not None:
             continue
-        rel = path.relative_to(root)
         if not write:
             stale.append(f"{rel}: missing module docstring")
             continue
