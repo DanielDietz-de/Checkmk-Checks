@@ -12,7 +12,9 @@ description:
  checked against configurable upper thresholds, defaulting to 75 and 90
  percent. Transmit power and utilization are recorded as metrics when present.
 item:
- A sanitized stable representation of {radio_name}, for example
- {Radio_5_GHz}.
+ A sanitized stable representation of {radio_name} suffixed with the emitted
+ radio index, for example {Radio_5_GHz_0}. If malformed source data would make
+ two item keys collide, a deterministic additional numeric discriminator is
+ appended until the item is unique.
 discovery:
  One service is discovered for each radio in the AP piggyback document.
