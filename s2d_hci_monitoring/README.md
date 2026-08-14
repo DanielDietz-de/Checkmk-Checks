@@ -135,7 +135,7 @@ This section is generated from the canonical manifest and current source tree. E
 
 ### Validation
 
-- Package-specific tests: `tests/test_bakery_contracts.py`, `tests/test_code_documentation.py`, `tests/test_collector_health.py`, `tests/test_graphing_contracts.py`, `tests/test_manifest_integrity.py`, `tests/test_powershell_contracts.py`, `tests/test_protocol.py`, `tests/test_s2d_hci_checks.py`.
+- Package-specific tests: `tests/test_bakery_contracts.py`, `tests/test_code_documentation.py`, `tests/test_collector_health.py`, `tests/test_graphing_contracts.py`, `tests/test_manifest_integrity.py`, `tests/test_powershell_contracts.py`, `tests/test_protocol.py`, `tests/test_s2d_hci_checks.py`, `tests/test_storage_scope_contracts.py`.
 - Any behavior change must update or add focused tests before the generated documentation is refreshed.
 
 ### Security
