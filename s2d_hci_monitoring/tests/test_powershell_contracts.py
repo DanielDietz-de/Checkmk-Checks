@@ -117,11 +117,17 @@ def test_gmsa_task_retires_previous_and_removes_derived_spool_state() -> None:
 
     installer = _read("tools/windows/Install-S2DHciVirtualizationCollectorTask.ps1")
     for token in (
+        "function Get-S2DHciRegisteredConfigPath",
+        "Get-ScheduledTask -TaskName $TaskName -TaskPath '\\'",
+        "$registeredConfigPath = Get-S2DHciRegisteredConfigPath",
+        "Existing scheduled task '$TaskName' uses ConfigPath",
+        "$previousConfigPath = if ($null -ne $registeredConfigPath)",
         "function Read-S2DHciPreviousSpoolFile",
-        "$previousSpoolFile = Read-S2DHciPreviousSpoolFile",
+        "$previousSpoolFile = Read-S2DHciPreviousSpoolFile -Path $previousConfigPath",
         "Retire previously configured virtualization spool snapshot",
         "Remove stale target virtualization spool snapshot before reconfiguration",
         "Remove-S2DHciGeneratedFileIfPresent",
+        "RegisteredConfigPath=$registeredConfigPath",
         "PreviousSpoolFile=$previousSpoolFile",
     ):
         assert token in installer
