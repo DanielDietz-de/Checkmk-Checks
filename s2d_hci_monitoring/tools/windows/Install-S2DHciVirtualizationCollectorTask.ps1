@@ -231,12 +231,17 @@ $CollectorPath = Resolve-S2DHciDefaultPath -Candidate $CollectorPath -Fallback (
 $WrapperPath = Resolve-S2DHciDefaultPath -Candidate $WrapperPath -Fallback (Join-Path $binRoot 's2d_hci_virtualization_spool.ps1')
 $ConfigPath = Resolve-S2DHciDefaultPath -Candidate $ConfigPath -Fallback (Join-Path $configRoot 's2d_hci_virtualization_spool.json')
 $SpoolFile = Resolve-S2DHciDefaultPath -Candidate $SpoolFile -Fallback (Join-Path $spoolRoot ("{0}_s2d_hci_virtualization.txt" -f $spoolLifetimeSeconds))
+$CollectorPath = [System.IO.Path]::GetFullPath($CollectorPath)
+$WrapperPath = [System.IO.Path]::GetFullPath($WrapperPath)
+$ConfigPath = [System.IO.Path]::GetFullPath($ConfigPath)
+$SpoolFile = [System.IO.Path]::GetFullPath($SpoolFile)
 
 foreach ($path in @($CollectorPath, $WrapperPath, $ConfigPath, $SpoolFile, $commonModulePath, $collectorConfigPath)) {
     if (-not (Test-S2DHciPathUnderRoot -Path $path -Root $AgentRoot)) { throw "Path must remain below '$AgentRoot': $path" }
 }
 if (-not (Test-S2DHciPathUnderRoot -Path $CollectorPath -Root $binRoot)) { throw 'Collector must be deployed below the Checkmk bin directory.' }
 if (-not (Test-S2DHciPathUnderRoot -Path $WrapperPath -Root $binRoot)) { throw 'Wrapper must be deployed below the Checkmk bin directory.' }
+if (-not (Test-S2DHciPathUnderRoot -Path $ConfigPath -Root $configRoot)) { throw 'Spool configuration must be deployed below the Checkmk config directory.' }
 if (-not (Test-S2DHciPathUnderRoot -Path $SpoolFile -Root $spoolRoot)) { throw 'Spool file must remain below the Checkmk spool directory.' }
 $spoolLifetimeSeconds = Assert-S2DHciSpoolLifetime -Path $SpoolFile -IntervalMinutes $IntervalMinutes
 $previousSpoolFile = Read-S2DHciPreviousSpoolFile -Path $ConfigPath -SpoolRoot $spoolRoot
