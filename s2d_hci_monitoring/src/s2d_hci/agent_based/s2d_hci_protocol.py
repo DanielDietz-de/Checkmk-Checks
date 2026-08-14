@@ -95,9 +95,10 @@ def parse_protocol_objects(
     ),
     fallback_name: str = "S2D/HCI object",
 ) -> Section:
-    """Parse versioned JSON rows without silently dropping malformed or duplicate data."""
+    """Parse one coherent versioned collector run without silently dropping malformed, mixed-run, or duplicate data."""
 
     parsed: dict[str, ProtocolObject] = {}
+    expected_run_id: str | None = None
     for index, row in enumerate(string_table, start=1):
         if not row:
             continue
@@ -122,6 +123,18 @@ def parse_protocol_objects(
             continue
         if not isinstance(run_id, str) or not run_id.strip():
             issue = _issue_object(index, "Missing run_id in collector record", raw)
+            parsed[issue.identity] = issue
+            continue
+
+        normalized_run_id = run_id.strip()
+        if expected_run_id is None:
+            expected_run_id = normalized_run_id
+        elif normalized_run_id != expected_run_id:
+            issue = _issue_object(
+                index,
+                f"Mixed collector run_id values: expected {expected_run_id!r}, got {normalized_run_id!r}",
+                raw,
+            )
             parsed[issue.identity] = issue
             continue
 
