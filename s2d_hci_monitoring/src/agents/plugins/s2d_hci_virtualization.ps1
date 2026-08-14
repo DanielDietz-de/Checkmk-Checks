@@ -5,7 +5,8 @@
 .DESCRIPTION
     Emits host state locally and per-VM telemetry to stable VM-GUID piggyback
     hosts. Sensitive addresses and paths are omitted unless explicitly enabled.
-    The collector is read-only and disabled by default.
+    The collector is read-only and disabled by default. Once a configured data
+    bound truncates a run, no additional VM framing is emitted.
 #>
 
 Set-StrictMode -Version Latest
@@ -51,12 +52,16 @@ function Write-S2DHciVmSections {
         Opens the VM-GUID piggyback block, streams workload, integration,
         replication, checkpoint, NIC, and disk records through bounded section
         writers, and converts independent query failures into explicit telemetry.
+        If a record or byte bound truncates the run, the function stops before
+        emitting any further section or VM framing.
     #>
     param(
         [Parameter(Mandatory)] [object]$Vm,
         [Parameter(Mandatory)] [object]$RunContext,
         [Parameter(Mandatory)] [object]$CollectorConfig
     )
+
+    if ($RunContext.Truncated) { return }
 
     $vmHost = Get-S2DHciVmPiggybackHost -VmId $Vm.VMId
     Start-S2DHciPiggyback -HostName $vmHost
@@ -83,6 +88,7 @@ function Write-S2DHciVmSections {
             [pscustomobject]$record | Write-S2DHciSection -Name $sectionName -Context $RunContext
         }
         catch { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
+        if ($RunContext.Truncated) { return }
 
         $sectionName = 's2d_hci_virtualization_services'
         try {
@@ -96,6 +102,7 @@ function Write-S2DHciVmSections {
             } | Write-S2DHciSection -Name $sectionName -Context $RunContext
         }
         catch { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
+        if ($RunContext.Truncated) { return }
 
         $sectionName = 's2d_hci_virtualization_replication'
         try {
@@ -122,6 +129,7 @@ function Write-S2DHciVmSections {
             }
         }
         catch { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
+        if ($RunContext.Truncated) { return }
 
         $sectionName = 's2d_hci_virtualization_checkpoints'
         try {
@@ -135,6 +143,7 @@ function Write-S2DHciVmSections {
             } | Write-S2DHciSection -Name $sectionName -Context $RunContext
         }
         catch { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
+        if ($RunContext.Truncated) { return }
 
         $sectionName = 's2d_hci_virtualization_network_adapters'
         try {
@@ -154,6 +163,7 @@ function Write-S2DHciVmSections {
             } | Write-S2DHciSection -Name $sectionName -Context $RunContext
         }
         catch { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
+        if ($RunContext.Truncated) { return }
 
         $sectionName = 's2d_hci_virtualization_hard_disks'
         try {
@@ -223,7 +233,9 @@ try {
         catch { Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_ }
 
         Get-VM -ErrorAction Stop | Sort-Object VMId | ForEach-Object {
-            Write-S2DHciVmSections -Vm $_ -RunContext $context -CollectorConfig $config
+            if (-not $context.Truncated) {
+                Write-S2DHciVmSections -Vm $_ -RunContext $context -CollectorConfig $config
+            }
         }
     }
 }
