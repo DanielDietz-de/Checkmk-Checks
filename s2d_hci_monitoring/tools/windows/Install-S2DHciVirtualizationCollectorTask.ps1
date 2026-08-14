@@ -4,13 +4,14 @@
     Install or update the least-privilege gMSA virtualization spool task.
 .DESCRIPTION
     Validates the gMSA locally, derives a spool lifetime that safely covers the
-    configured task interval, retires any previously configured spool snapshot
-    when its path changes, writes only non-secret path configuration, grants the
-    account read access to every runtime dependency and directory traversal
-    required by the collector, grants modify access only to the Checkmk spool
-    directory, verifies the resulting NTFS rights, and registers a non-elevated
-    task. Every mutation honors PowerShell ShouldProcess so -WhatIf remains
-    side-effect free.
+    configured task interval, recovers the configuration path registered on an
+    existing task before updating state, retires any previously configured spool
+    snapshot when its path changes, writes only non-secret path configuration,
+    grants the account read access to every runtime dependency and directory
+    traversal required by the collector, grants modify access only to the Checkmk
+    spool directory, verifies the resulting NTFS rights, and registers a
+    non-elevated task. Every mutation honors PowerShell ShouldProcess so -WhatIf
+    remains side-effect free.
 #>
 
 [CmdletBinding(SupportsShouldProcess = $true)]
@@ -111,6 +112,52 @@ function Test-S2DHciPathUnderRoot {
     $fullPath = [System.IO.Path]::GetFullPath($Path)
     $fullRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
     return $fullPath.StartsWith($fullRoot, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Get-S2DHciRegisteredConfigPath {
+    <#
+    .SYNOPSIS
+        Recover the spool configuration path from the existing scheduled task.
+    .DESCRIPTION
+        Reads the root Task Scheduler entry with the configured task name and
+        extracts exactly one -ConfigPath argument from its registered action.
+        The recovered path is canonicalized and confined to the trusted Checkmk
+        config directory. An existing task with missing, ambiguous, or untrusted
+        configuration arguments is rejected rather than overwritten blindly.
+    #>
+    param(
+        [Parameter(Mandatory)] [string]$TaskName,
+        [Parameter(Mandatory)] [string]$ConfigRoot
+    )
+
+    $existingTask = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction SilentlyContinue
+    if ($null -eq $existingTask) { return $null }
+    if (@($existingTask).Count -ne 1) {
+        throw "Expected exactly one root scheduled task named '$TaskName'; remove ambiguous task state before reinstalling."
+    }
+
+    $configPaths = [System.Collections.Generic.List[string]]::new()
+    foreach ($taskAction in @($existingTask.Actions)) {
+        $arguments = [string]$taskAction.Arguments
+        if ([string]::IsNullOrWhiteSpace($arguments)) { continue }
+        $match = [regex]::Match($arguments, '(?i)(?:^|\s)-ConfigPath\s+(?:"([^"]+)"|''([^'']+)''|(\S+))')
+        if (-not $match.Success) { continue }
+        $captured = @($match.Groups[1].Value, $match.Groups[2].Value, $match.Groups[3].Value) |
+            Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+            Select-Object -First 1
+        if (-not [string]::IsNullOrWhiteSpace([string]$captured)) {
+            $configPaths.Add([System.IO.Path]::GetFullPath([string]$captured))
+        }
+    }
+
+    if ($configPaths.Count -ne 1) {
+        throw "Existing scheduled task '$TaskName' does not expose exactly one recoverable -ConfigPath; remove and reinstall it explicitly."
+    }
+    $registered = $configPaths[0]
+    if (-not (Test-S2DHciPathUnderRoot -Path $registered -Root $ConfigRoot)) {
+        throw "Existing scheduled task '$TaskName' references a configuration path outside the trusted config directory: $registered"
+    }
+    return $registered
 }
 
 function Read-S2DHciPreviousSpoolFile {
@@ -244,7 +291,17 @@ if (-not (Test-S2DHciPathUnderRoot -Path $WrapperPath -Root $binRoot)) { throw '
 if (-not (Test-S2DHciPathUnderRoot -Path $ConfigPath -Root $configRoot)) { throw 'Spool configuration must be deployed below the Checkmk config directory.' }
 if (-not (Test-S2DHciPathUnderRoot -Path $SpoolFile -Root $spoolRoot)) { throw 'Spool file must remain below the Checkmk spool directory.' }
 $spoolLifetimeSeconds = Assert-S2DHciSpoolLifetime -Path $SpoolFile -IntervalMinutes $IntervalMinutes
-$previousSpoolFile = Read-S2DHciPreviousSpoolFile -Path $ConfigPath -SpoolRoot $spoolRoot
+$registeredConfigPath = Get-S2DHciRegisteredConfigPath -TaskName $TaskName -ConfigRoot $configRoot
+if ($null -ne $registeredConfigPath) {
+    if (-not $registeredConfigPath.Equals($ConfigPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Existing scheduled task '$TaskName' uses ConfigPath '$registeredConfigPath'. Remove the task and generated state before reinstalling with '$ConfigPath'."
+    }
+    if (-not (Test-Path -LiteralPath $registeredConfigPath -PathType Leaf)) {
+        throw "Existing scheduled task '$TaskName' references missing configuration '$registeredConfigPath'; remove and reinstall it before continuing."
+    }
+}
+$previousConfigPath = if ($null -ne $registeredConfigPath) { $registeredConfigPath } else { $ConfigPath }
+$previousSpoolFile = Read-S2DHciPreviousSpoolFile -Path $previousConfigPath -SpoolRoot $spoolRoot
 
 if ($DryRun) {
     [pscustomobject]@{
@@ -255,6 +312,7 @@ if ($DryRun) {
         CommonModulePath=$commonModulePath
         CollectorConfigPath=$collectorConfigPath
         ConfigPath=$ConfigPath
+        RegisteredConfigPath=$registeredConfigPath
         SpoolFile=$SpoolFile
         PreviousSpoolFile=$previousSpoolFile
         SpoolLifetimeSeconds=$spoolLifetimeSeconds
@@ -322,6 +380,7 @@ $status = if ($WhatIfPreference) { 'WhatIf' } else { 'InstalledOrUpdated' }
     Status=$status
     RunLevel='Limited'
     ConfigPath=$ConfigPath
+    RegisteredConfigPath=$registeredConfigPath
     SpoolFile=$SpoolFile
     PreviousSpoolFile=$previousSpoolFile
     SpoolLifetimeSeconds=$spoolLifetimeSeconds
