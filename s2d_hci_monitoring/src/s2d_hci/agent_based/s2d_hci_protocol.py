@@ -2,7 +2,7 @@
 """Shared parser and state-policy helpers for the S2D/HCI Checkmk plug-ins.
 
 Collectors use protocol version 1 and attach a run identifier to every JSON
-record.  This module validates those fields, preserves malformed/duplicate
+record. This module validates those fields, preserves malformed/duplicate
 records as explicit synthetic objects, and provides conservative state mapping
 for all check plug-ins in the package.
 """
@@ -268,6 +268,9 @@ def state_from_text(value: object, params: Mapping[str, object] | None = None) -
         return state_from_severity(policy["paused_state"])
     if any(token in normalized for token in ("warn", "degraded", "incomplete", "stressed", "blocked")):
         return state_from_severity(policy["degraded_state"])
-    if any(token in normalized for token in ("unhealthy", "off", "down", "failed", "error", "critical", "detached", "lost", "notfound", "false", "stopped")):
+    if any(
+        token in normalized
+        for token in ("unhealthy", "disabled", "off", "down", "failed", "error", "critical", "detached", "lost", "notfound", "false", "stopped")
+    ):
         return state_from_severity(policy["offline_state"])
     return state_from_severity(policy["unknown_state"])
