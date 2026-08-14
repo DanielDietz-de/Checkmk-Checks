@@ -82,9 +82,7 @@ function Write-S2DHciVmSections {
             if ($CollectorConfig.include_paths) { $record.path = [string]$Vm.Path }
             [pscustomobject]$record | Write-S2DHciSection -Name $sectionName -Context $RunContext
         }
-        catch {
-            Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_
-        }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
 
         $sectionName = 's2d_hci_virtualization_services'
         try {
@@ -97,19 +95,13 @@ function Write-S2DHciVmSections {
                 }
             } | Write-S2DHciSection -Name $sectionName -Context $RunContext
         }
-        catch {
-            Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_
-        }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
 
         $sectionName = 's2d_hci_virtualization_replication'
         try {
             if (-not (Test-S2DHciCommandAvailable -Name 'Get-VMReplication')) {
-                $unavailable = [pscustomobject]@{
-                    name = 'replication'
-                    available = $false
-                    reason = 'Get-VMReplication is unavailable.'
-                }
-                $unavailable | Write-S2DHciSection -Name $sectionName -Context $RunContext
+                [pscustomobject]@{ name='replication'; available=$false; reason='Get-VMReplication is unavailable.' } |
+                    Write-S2DHciSection -Name $sectionName -Context $RunContext
             }
             else {
                 Get-VMReplication -VMName $Vm.Name -ErrorAction Stop | ForEach-Object {
@@ -129,9 +121,7 @@ function Write-S2DHciVmSections {
                 } | Write-S2DHciSection -Name $sectionName -Context $RunContext
             }
         }
-        catch {
-            Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_
-        }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
 
         $sectionName = 's2d_hci_virtualization_checkpoints'
         try {
@@ -144,9 +134,7 @@ function Write-S2DHciVmSections {
                 }
             } | Write-S2DHciSection -Name $sectionName -Context $RunContext
         }
-        catch {
-            Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_
-        }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
 
         $sectionName = 's2d_hci_virtualization_network_adapters'
         try {
@@ -165,24 +153,26 @@ function Write-S2DHciVmSections {
                 [pscustomobject]$record
             } | Write-S2DHciSection -Name $sectionName -Context $RunContext
         }
-        catch {
-            Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_
-        }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
 
         $sectionName = 's2d_hci_virtualization_hard_disks'
         try {
             Get-VMHardDiskDrive -VM $Vm -ErrorAction Stop | Sort-Object ControllerType, ControllerNumber, ControllerLocation | ForEach-Object {
                 $drive = $_
+                $drivePath = [string]$drive.Path
+                $isPassThrough = [string]::IsNullOrWhiteSpace($drivePath) -and $null -ne $drive.DiskNumber
                 $record = [ordered]@{
                     identity = "$($drive.ControllerType)$($drive.ControllerNumber):$($drive.ControllerLocation)"
                     controller_type = $drive.ControllerType.ToString()
                     controller_number = $drive.ControllerNumber
                     controller_location = $drive.ControllerLocation
                     disk_number = $drive.DiskNumber
+                    attachment_type = if ($isPassThrough) { 'pass_through' } elseif (-not [string]::IsNullOrWhiteSpace($drivePath)) { 'vhd' } else { 'unknown' }
                 }
-                if (Test-S2DHciCommandAvailable -Name 'Get-VHD') {
+
+                if (-not [string]::IsNullOrWhiteSpace($drivePath) -and (Test-S2DHciCommandAvailable -Name 'Get-VHD')) {
                     try {
-                        $vhd = Get-VHD -Path $drive.Path -ErrorAction Stop
+                        $vhd = Get-VHD -Path $drivePath -ErrorAction Stop
                         $record.vhd_type = $vhd.VhdType.ToString()
                         $record.vhd_format = $vhd.VhdFormat.ToString()
                         $record.size = $vhd.Size
@@ -197,28 +187,20 @@ function Write-S2DHciVmSections {
                             if ($errorMessage.Length -gt 512) { $errorMessage = $errorMessage.Substring(0, 512) + ' [truncated]' }
                             $record.vhd_error = $errorMessage
                         }
-                        else {
-                            $record.vhd_error = 'VHD metadata query failed; path details are redacted by policy.'
-                        }
+                        else { $record.vhd_error = 'VHD metadata query failed; path details are redacted by policy.' }
                     }
                 }
-                if ($CollectorConfig.include_paths) { $record.path = [string]$drive.Path }
+                if ($CollectorConfig.include_paths -and -not [string]::IsNullOrWhiteSpace($drivePath)) { $record.path = $drivePath }
                 [pscustomobject]$record
             } | Write-S2DHciSection -Name $sectionName -Context $RunContext
         }
-        catch {
-            Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_
-        }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
     }
-    finally {
-        Stop-S2DHciPiggyback
-    }
+    finally { Stop-S2DHciPiggyback }
 }
 
 try {
-    if (-not $config.virtualization_enabled) {
-        $context.Role = 'disabled'
-    }
+    if (-not $config.virtualization_enabled) { $context.Role = 'disabled' }
     else {
         Import-Module Hyper-V -ErrorAction Stop
         $sectionName = 's2d_hci_virtualization_host'
@@ -231,18 +213,12 @@ try {
                 module_available = $true
             } | Write-S2DHciSection -Name $sectionName -Context $context
         }
-        catch {
-            Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_
-        }
+        catch { Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_ }
 
         Get-VM -ErrorAction Stop | Sort-Object VMId | ForEach-Object {
             Write-S2DHciVmSections -Vm $_ -RunContext $context -CollectorConfig $config
         }
     }
 }
-catch {
-    Add-S2DHciCollectorError -Context $context -Message "virtualization startup: $($_.Exception.Message)"
-}
-finally {
-    Write-S2DHciCollectorHealth -Context $context
-}
+catch { Add-S2DHciCollectorError -Context $context -Message "virtualization startup: $($_.Exception.Message)" }
+finally { Write-S2DHciCollectorHealth -Context $context }
