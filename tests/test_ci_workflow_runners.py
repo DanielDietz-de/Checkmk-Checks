@@ -145,6 +145,22 @@ class WorkflowRunnerPolicyTests(unittest.TestCase):
         )
         self.assertTrue(any("dynamic runs-on expressions" in error for error in errors))
 
+    def test_rejects_quoted_runs_on_key(self) -> None:
+        """Reject a quoted key that GitHub treats as runs-on but the restricted parser cannot inspect."""
+
+        errors = self._validate(
+            'jobs:\n  test:\n    "runs-on": ubuntu-latest\n'
+        )
+        self.assertTrue(any("unsupported runs-on key syntax" in error for error in errors))
+
+    def test_rejects_flow_mapping_runs_on_key(self) -> None:
+        """Reject flow-style workflow syntax that could hide a hosted selector."""
+
+        errors = self._validate(
+            "jobs: {test: {runs-on: ubuntu-latest, steps: []}}\n"
+        )
+        self.assertTrue(any("unsupported runs-on key syntax" in error for error in errors))
+
 
 if __name__ == "__main__":
     unittest.main()
