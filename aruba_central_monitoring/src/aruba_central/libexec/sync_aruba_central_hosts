@@ -66,6 +66,20 @@ def _folder_path(*segments: str) -> str:
     return "/" + "/".join(segments)
 
 
+def _child_folder_id(parent_id: str, name: str) -> str:
+    """Return the deterministic object ID for a named child folder."""
+
+    if parent_id == "~":
+        return f"~{name}"
+    return f"{parent_id.rstrip('~')}~{name}"
+
+
+def _folder_path_from_id(folder_id: str) -> str:
+    """Translate a Checkmk folder object ID into its slash-path representation."""
+
+    return _folder_path(*(segment for segment in folder_id.split("~") if segment))
+
+
 def _load_agent_output(
     source_host: str | None,
     output_file: Path | None,
@@ -93,10 +107,11 @@ def _load_agent_output(
 
 
 def _extract_access_points(agent_output: str) -> list[dict[str, Any]]:
-    """Extract AP records and fail closed on malformed or duplicate sections."""
+    """Extract AP records and reconcile them with the authoritative collector count."""
 
     lines = agent_output.splitlines()
     access_points: list[dict[str, Any]] = []
+    collector_ap_total: int | None = None
     index = 0
     current_host: str | None = None
     while index < len(lines):
@@ -108,6 +123,35 @@ def _extract_access_points(agent_output: str) -> list[dict[str, Any]]:
         if lines[index] == "<<<<>>>>":
             current_host = None
             index += 1
+            continue
+        if current_host is None and lines[index] == SECTION:
+            if index + 1 >= len(lines):
+                raise ValueError("Aruba collector section is truncated")
+            try:
+                payload = json.loads(lines[index + 1])
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"invalid Aruba collector JSON: {exc.msg}"
+                ) from exc
+            if (
+                not isinstance(payload, dict)
+                or payload.get("schema") != 1
+                or payload.get("kind") != "collector"
+            ):
+                raise ValueError("invalid Aruba collector section envelope")
+            collector = payload.get("collector")
+            if not isinstance(collector, dict):
+                raise ValueError("Aruba collector section has no collector object")
+            try:
+                reported_total = int(collector.get("ap_total"))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Aruba collector AP total is invalid") from exc
+            if reported_total < 0:
+                raise ValueError("Aruba collector AP total must not be negative")
+            if collector_ap_total is not None:
+                raise ValueError("multiple Aruba collector sections found")
+            collector_ap_total = reported_total
+            index += 2
             continue
         if current_host and lines[index] == SECTION:
             if index + 1 >= len(lines):
@@ -156,6 +200,13 @@ def _extract_access_points(agent_output: str) -> list[dict[str, Any]]:
         raise ValueError(
             "duplicate Aruba AP piggyback host names: "
             + ", ".join(sorted(duplicate_names, key=str.casefold))
+        )
+    if collector_ap_total is None:
+        raise ValueError("Aruba collector section is missing")
+    if len(unique) != collector_ap_total:
+        raise ValueError(
+            "Aruba collector/piggyback count mismatch: collector reports "
+            f"{collector_ap_total} APs but {len(unique)} complete piggyback APs were found"
         )
     return [
         item[1]
@@ -339,8 +390,55 @@ class CheckmkApi:
             for detail in details
         )
 
+    def _verify_existing_folder(self, folder_id: str, title: str) -> None:
+        """Require an occupied folder ID to match the planned title, path, and attributes."""
+
+        response = self._request(
+            "GET",
+            f"/objects/folder_config/{quote(folder_id, safe='~')}",
+        )
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"existing folder {folder_id!r} could not be verified "
+                f"({response.status_code}): {response.text[:500]}"
+            )
+        try:
+            payload = response.json()
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"existing folder {folder_id!r} returned invalid JSON"
+            ) from exc
+        if not isinstance(payload, dict) or payload.get("id") != folder_id:
+            raise RuntimeError(
+                f"existing folder {folder_id!r} returned an unexpected object identity"
+            )
+        extensions = payload.get("extensions")
+        if not isinstance(extensions, dict):
+            raise RuntimeError(
+                f"existing folder {folder_id!r} has no configuration extensions"
+            )
+        attributes = extensions.get("attributes")
+        if not isinstance(attributes, dict):
+            raise RuntimeError(
+                f"existing folder {folder_id!r} has no explicit attributes"
+            )
+        explicit_attributes = {
+            key: value for key, value in attributes.items() if key != "meta_data"
+        }
+        expected_path = _folder_path_from_id(folder_id)
+        if (
+            payload.get("title") != title
+            or extensions.get("path") != expected_path
+            or explicit_attributes
+        ):
+            raise RuntimeError(
+                f"existing folder {folder_id!r} does not match planned configuration; "
+                f"title={payload.get('title')!r}, path={extensions.get('path')!r}, "
+                f"attributes={explicit_attributes!r}"
+            )
+
     def create_folder(self, name: str, title: str, parent_id: str) -> str:
-        """Create one folder beneath a Checkmk folder object ID."""
+        """Create one folder or verify an exact existing equivalent."""
 
         response = self._request(
             "POST",
@@ -355,7 +453,9 @@ class CheckmkApi:
         if response.status_code in {200, 201}:
             return "created"
         if self._already_exists(response):
-            return "exists"
+            folder_id = _child_folder_id(parent_id, name)
+            self._verify_existing_folder(folder_id, title)
+            return "exists-verified"
         raise RuntimeError(
             f"folder creation failed ({response.status_code}): {response.text[:500]}"
         )
