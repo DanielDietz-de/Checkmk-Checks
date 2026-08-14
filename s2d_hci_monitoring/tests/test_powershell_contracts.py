@@ -78,10 +78,13 @@ def test_gmsa_task_grants_and_verifies_every_runtime_dependency() -> None:
     for token in (
         "$commonModulePath = Join-Path $binRoot 's2d_hci_common.psm1'",
         "$collectorConfigPath = Join-Path $configRoot 's2d_hci.json'",
-        "@($AgentRoot, $binRoot, $configRoot)",
-        "Grant-S2DHciAcl -Path $commonModulePath",
-        "Grant-S2DHciAcl -Path $collectorConfigPath",
-        "Assert-S2DHciAclPresent -Path $spoolRoot",
+        "$aclTargets = @(",
+        "Path=$AgentRoot",
+        "Path=$binRoot",
+        "Path=$configRoot",
+        "Path=$commonModulePath",
+        "Path=$collectorConfigPath",
+        "Path=$spoolRoot",
         "FileSystemRights]::ReadAndExecute",
         "FileSystemRights]::Read",
         "FileSystemRights]::Modify",
@@ -101,6 +104,18 @@ def test_gmsa_task_grants_and_verifies_every_runtime_dependency() -> None:
         "Test-S2DHciAclRights",
     ):
         assert token in validator
+
+
+def test_gmsa_task_honors_should_process_for_acl_mutation() -> None:
+    """WhatIf must skip every ACL mutation and the matching post-change verification."""
+
+    text = _read("tools/windows/Install-S2DHciVirtualizationCollectorTask.ps1")
+    assert "[CmdletBinding(SupportsShouldProcess = $true)]" in text
+    assert "foreach ($target in $aclTargets)" in text
+    assert 'if ($PSCmdlet.ShouldProcess($target.Path, "Grant $($target.Permission) NTFS rights to $ServiceAccount"))' in text
+    assert "Grant-S2DHciAcl -Path $target.Path" in text
+    assert "Assert-S2DHciAclPresent -Path $target.Path" in text
+    assert "$status = if ($WhatIfPreference) { 'WhatIf' } else { 'InstalledOrUpdated' }" in text
 
 
 def test_spool_wrapper_preserves_last_good_output() -> None:
