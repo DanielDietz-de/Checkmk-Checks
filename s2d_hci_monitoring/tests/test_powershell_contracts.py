@@ -81,6 +81,22 @@ def test_gmsa_task_is_non_elevated_and_bounded() -> None:
     assert "ExecutionPolicy Bypass" not in text
 
 
+def test_gmsa_task_derives_spool_lifetime_from_interval() -> None:
+    """The default and custom spool lifetimes must cover at least two scheduled collection intervals."""
+
+    text = _read("tools/windows/Install-S2DHciVirtualizationCollectorTask.ps1")
+    for token in (
+        "function Get-S2DHciSpoolLifetimeSeconds",
+        "[Math]::Max([int64]600, $intervalSeconds * 2)",
+        "function Assert-S2DHciSpoolLifetime",
+        "$minimumSeconds = [int64]$IntervalMinutes * 120",
+        '"{0}_s2d_hci_virtualization.txt" -f $spoolLifetimeSeconds',
+        "SpoolLifetimeSeconds=$spoolLifetimeSeconds",
+    ):
+        assert token in text
+    assert "Join-Path $spoolRoot '600_s2d_hci_virtualization.txt'" not in text
+
+
 def test_gmsa_task_grants_and_verifies_every_runtime_dependency() -> None:
     """The gMSA installer and validator must explicitly cover shared code, configuration, and hardened parent-directory traversal."""
 
@@ -159,6 +175,17 @@ def test_cluster_and_vm_piggyback_contracts_exist() -> None:
     assert "Start-S2DHciPiggyback" in fast
     assert '"s2d-vm-" + $VmId.Guid' in virt
     assert "virtualization_enabled" in virt
+
+
+def test_virtualization_stops_framing_after_truncation() -> None:
+    """Direct-mode truncation must prevent later VM and section framing from bypassing configured data bounds."""
+
+    text = _read("src/agents/plugins/s2d_hci_virtualization.ps1")
+    assert text.count("if ($RunContext.Truncated) { return }") >= 6
+    first_guard = text.index("if ($RunContext.Truncated) { return }")
+    first_piggyback = text.index("Start-S2DHciPiggyback -HostName $vmHost")
+    assert first_guard < first_piggyback
+    assert "if (-not $context.Truncated)" in text
 
 
 def test_virtualization_vhd_errors_respect_path_privacy_and_pass_through_disks() -> None:
