@@ -188,16 +188,6 @@ check_plugin_s2d_hci_virtual_disks = CheckPlugin(
     name="s2d_hci_virtual_disks",
     service_name="S2D/HCI virtual disk %s",
     discovery_function=discover_s2d_hci_virtual_disks,
-    check_default_parameters=STATE_DEFAULTS,
-    check_ruleset_name="s2d_hci_state_policy",
-)
-
-# Checkmk discovers the function from this name supplied above; assignment is kept
-# next to the plugin definition to make the runtime contract explicit and readable.
-check_plugin_s2d_hci_virtual_disks = CheckPlugin(
-    name="s2d_hci_virtual_disks",
-    service_name="S2D/HCI virtual disk %s",
-    discovery_function=discover_s2d_hci_virtual_disks,
     check_function=check_s2d_hci_virtual_disks,
     check_default_parameters=STATE_DEFAULTS,
     check_ruleset_name="s2d_hci_state_policy",
