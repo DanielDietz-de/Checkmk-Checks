@@ -54,6 +54,14 @@ def test_piggyback_host_name_collisions_fail_closed_before_cache_write():
     assert check < cache_write < output
 
 
+def test_configuration_failures_enter_monitoring_failure_handler():
+    default_config = SCRIPT.index("$config = Get-DefaultConfig")
+    try_block = SCRIPT.index("try {", default_config)
+    config_read = SCRIPT.index("$config = Read-Configuration -Path $ConfigFile", try_block)
+    invocation = SCRIPT.index("$execution = Invoke-Cencli -Config $config", config_read)
+    assert default_config < try_block < config_read < invocation
+
+
 def test_last_good_cache_is_not_replaced_in_failure_handler():
     success, failure = SCRIPT.rsplit("\ncatch {", 1)
     assert "Write-AtomicJson" in success
