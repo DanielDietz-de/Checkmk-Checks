@@ -108,9 +108,9 @@ def check_s2d_hci_collector_health(item: str, section: Section):
     errors = details.get("errors")
     error_text = "; ".join(str(value) for value in errors) if isinstance(errors, list) else str(errors or "")
 
-    if role == "disabled":
-        yield Result(state=State.OK, summary="Collector intentionally disabled by configuration", details=str(details))
-        return
+    # Failure/completeness flags describe the collector invocation itself and must
+    # win over a fallback role. In particular, malformed configuration uses safe
+    # defaults that disable virtualization while marking the run failed/incomplete.
     if success is False or complete is False or truncated is True:
         summary = "Collector run failed or incomplete"
         if error_text:
@@ -119,6 +119,9 @@ def check_s2d_hci_collector_health(item: str, section: Section):
         return
     if success is not True or complete is not True or truncated is not False:
         yield Result(state=State.UNKNOWN, summary="Collector health envelope is incomplete", details=str(details))
+        return
+    if role == "disabled":
+        yield Result(state=State.OK, summary="Collector intentionally disabled by configuration", details=str(details))
         return
 
     elapsed_ms = details.get("elapsed_ms")
