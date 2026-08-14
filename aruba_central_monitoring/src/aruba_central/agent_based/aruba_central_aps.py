@@ -33,6 +33,7 @@ class Collector:
 @dataclass(frozen=True)
 class Radio:
     key: str
+    index: int
     name: str
     radio_type: str
     band: str
@@ -130,9 +131,19 @@ def _access_point(raw: Any) -> AccessPoint | None:
         for index, raw_radio in enumerate(raw_radios):
             radio_data = _mapping(raw_radio)
             name = str(radio_data.get("radio_name", f"Radio {index}"))
-            key = re.sub(r"[^A-Za-z0-9_.-]+", "_", name).strip("_") or f"radio_{index}"
+            radio_index = _optional_int(radio_data.get("index"))
+            if radio_index is None:
+                radio_index = index
+            normalized_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", name).strip("_") or "radio"
+            key = f"{normalized_name}_{radio_index}"
+            if key in radios:
+                # Preserve every radio even if the source violates the expected unique
+                # index contract. The enumeration position is deterministic for this
+                # payload and prevents silent dictionary replacement.
+                key = f"{key}_{index}"
             radios[key] = Radio(
                 key=key,
+                index=radio_index,
                 name=name,
                 radio_type=str(radio_data.get("radio_type", "")),
                 band=str(radio_data.get("band", "")),
@@ -354,7 +365,7 @@ def check_radio(item: str, params: Mapping[str, object], section: Section):
         state=state,
         summary=f"Status {radio.status}, channel {radio.channel or 'unknown'}, type {radio.radio_type or 'unknown'}",
         details=(
-            f"Name: {radio.name}\nBand: {radio.band}\nSpatial stream: {radio.spatial_stream}\n"
+            f"Name: {radio.name}\nIndex: {radio.index}\nBand: {radio.band}\nSpatial stream: {radio.spatial_stream}\n"
             f"Radio MAC: {radio.macaddr}\nTX power: {radio.tx_power if radio.tx_power is not None else 'unknown'} dBm"
         ),
     )
