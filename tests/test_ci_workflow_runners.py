@@ -43,7 +43,7 @@ class WorkflowRunnerPolicyTests(unittest.TestCase):
         )
 
     def test_accepts_multiline_self_hosted_runner_labels(self) -> None:
-        """Accept a multiline selector that still includes self-hosted."""
+        """Accept a multiline selector that includes both required labels."""
 
         self.assertEqual(
             self._validate(
@@ -56,18 +56,27 @@ class WorkflowRunnerPolicyTests(unittest.TestCase):
         """Reject hosted Linux runners outside the exact exception inventory."""
 
         errors = self._validate("jobs:\n  test:\n    runs-on: ubuntu-24.04\n")
-        self.assertTrue(any("not an approved exception" in error for error in errors))
+        self.assertTrue(any("not an approved exact exception" in error for error in errors))
 
     def test_rejects_implicit_local_label_without_self_hosted(self) -> None:
         """Reject ambiguous local labels that omit the self-hosted boundary."""
 
-        self.assertEqual(
-            self._validate("jobs:\n  test:\n    runs-on: linux\n"),
-            [
-                ".github/workflows/ci.yml:3: runs-on must explicitly include "
-                "the self-hosted label"
-            ],
+        errors = self._validate("jobs:\n  test:\n    runs-on: linux\n")
+        self.assertTrue(any("missing self-hosted" in error for error in errors))
+
+    def test_rejects_self_hosted_selector_without_linux(self) -> None:
+        """Require the Linux label even when self-hosted is present."""
+
+        errors = self._validate("jobs:\n  test:\n    runs-on: self-hosted\n")
+        self.assertTrue(any("missing linux" in error for error in errors))
+
+    def test_rejects_self_hosted_windows_selector_for_ordinary_job(self) -> None:
+        """Prevent ordinary jobs from selecting a non-Linux self-hosted runner."""
+
+        errors = self._validate(
+            "jobs:\n  test:\n    runs-on: [self-hosted, windows]\n"
         )
+        self.assertTrue(any("missing linux" in error for error in errors))
 
     def test_rejects_mixed_hosted_and_self_hosted_labels(self) -> None:
         """Reject selectors that combine hosted and self-hosted execution."""
@@ -75,7 +84,7 @@ class WorkflowRunnerPolicyTests(unittest.TestCase):
         errors = self._validate(
             "jobs:\n  test:\n    runs-on: [self-hosted, ubuntu-latest]\n"
         )
-        self.assertTrue(any("not an approved exception" in error for error in errors))
+        self.assertTrue(any("not an approved exact exception" in error for error in errors))
         self.assertTrue(any("must not be mixed" in error for error in errors))
 
     def test_accepts_exact_windows_validation_exception(self) -> None:
@@ -107,7 +116,7 @@ class WorkflowRunnerPolicyTests(unittest.TestCase):
             "jobs:\n  test:\n    runs-on: windows-2025\n",
             "unrelated.yml",
         )
-        self.assertTrue(any("not an approved exception" in error for error in errors))
+        self.assertTrue(any("not an approved exact exception" in error for error in errors))
 
     def test_rejects_unapproved_label_for_exception_workflow(self) -> None:
         """Keep an exception pinned to its exact hosted runner image."""
@@ -116,8 +125,25 @@ class WorkflowRunnerPolicyTests(unittest.TestCase):
             "jobs:\n  test:\n    runs-on: windows-latest\n",
             "s2d-hci-windows-ci.yml",
         )
-        self.assertTrue(any("not an approved exception" in error for error in errors))
+        self.assertTrue(any("not an approved exact exception" in error for error in errors))
         self.assertTrue(any("exception was not matched" in error for error in errors))
+
+    def test_rejects_dynamic_selector_with_approved_label_in_comment(self) -> None:
+        """Do not let comments spoof an exact hosted-runner exception."""
+
+        errors = self._validate(
+            "jobs:\n  test:\n    runs-on: ${{ matrix.runner }} # windows-2025\n",
+            "s2d-hci-windows-ci.yml",
+        )
+        self.assertTrue(any("exception was not matched" in error for error in errors))
+
+    def test_rejects_dynamic_ordinary_selector_even_if_expression_mentions_labels(self) -> None:
+        """Keep ordinary runner selection static and reviewable."""
+
+        errors = self._validate(
+            "jobs:\n  test:\n    runs-on: ${{ fromJSON('[\"self-hosted\",\"linux\"]') }}\n"
+        )
+        self.assertTrue(any("dynamic runs-on expressions" in error for error in errors))
 
 
 if __name__ == "__main__":
