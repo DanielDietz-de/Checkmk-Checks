@@ -11,7 +11,11 @@
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$agentRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+$pluginRoot = [System.IO.Path]::GetFullPath($PSScriptRoot)
+$agentRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $pluginRoot))
+if ((Split-Path -Leaf $agentRoot) -ieq 'plugins') {
+    $agentRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $agentRoot))
+}
 Import-Module (Join-Path $agentRoot 'bin\s2d_hci_common.psm1') -Force -ErrorAction Stop
 $config = Get-S2DHciConfig -AgentRoot $agentRoot
 $context = New-S2DHciRunContext -Collector 'virtualization' -Config $config
