@@ -43,11 +43,21 @@ class WorkflowRunnerPolicyTests(unittest.TestCase):
         )
 
     def test_accepts_multiline_self_hosted_runner_labels(self) -> None:
-        """Accept a multiline selector that includes both required labels."""
+        """Accept a mapping selector that includes both required labels."""
 
         self.assertEqual(
             self._validate(
                 "jobs:\n  test:\n    runs-on:\n      labels: [self-hosted, linux]\n"
+            ),
+            [],
+        )
+
+    def test_accepts_group_plus_static_linux_labels(self) -> None:
+        """Accept the documented group-plus-labels object with static routing."""
+
+        self.assertEqual(
+            self._validate(
+                "jobs:\n  test:\n    runs-on:\n      group: private\n      labels: [self-hosted, linux]\n"
             ),
             [],
         )
@@ -73,19 +83,16 @@ class WorkflowRunnerPolicyTests(unittest.TestCase):
     def test_rejects_self_hosted_windows_selector_for_ordinary_job(self) -> None:
         """Prevent ordinary jobs from selecting a non-Linux self-hosted runner."""
 
-        errors = self._validate(
-            "jobs:\n  test:\n    runs-on: [self-hosted, windows]\n"
-        )
+        errors = self._validate("jobs:\n  test:\n    runs-on: [self-hosted, windows]\n")
         self.assertTrue(any("missing linux" in error for error in errors))
 
     def test_rejects_mixed_hosted_and_self_hosted_labels(self) -> None:
-        """Reject selectors that combine hosted and self-hosted execution."""
+        """Reject arrays that combine hosted and self-hosted execution."""
 
         errors = self._validate(
-            "jobs:\n  test:\n    runs-on: [self-hosted, ubuntu-latest]\n"
+            "jobs:\n  test:\n    runs-on: [self-hosted, linux, ubuntu-latest]\n"
         )
         self.assertTrue(any("not an approved exact exception" in error for error in errors))
-        self.assertTrue(any("must not be mixed" in error for error in errors))
 
     def test_accepts_exact_windows_validation_exception(self) -> None:
         """Allow the pinned Windows runner only for the S2D PowerShell workflow."""
@@ -135,9 +142,10 @@ class WorkflowRunnerPolicyTests(unittest.TestCase):
             "jobs:\n  test:\n    runs-on: ${{ matrix.runner }} # windows-2025\n",
             "s2d-hci-windows-ci.yml",
         )
+        self.assertTrue(any("dynamic runs-on expressions" in error for error in errors))
         self.assertTrue(any("exception was not matched" in error for error in errors))
 
-    def test_rejects_dynamic_ordinary_selector_even_if_expression_mentions_labels(self) -> None:
+    def test_rejects_dynamic_ordinary_selector(self) -> None:
         """Keep ordinary runner selection static and reviewable."""
 
         errors = self._validate(
@@ -145,21 +153,45 @@ class WorkflowRunnerPolicyTests(unittest.TestCase):
         )
         self.assertTrue(any("dynamic runs-on expressions" in error for error in errors))
 
-    def test_rejects_quoted_runs_on_key(self) -> None:
-        """Reject a quoted key that GitHub treats as runs-on but the restricted parser cannot inspect."""
+    def test_structurally_parses_quoted_runs_on_key(self) -> None:
+        """Decode a quoted key and still reject its unapproved hosted selector."""
 
-        errors = self._validate(
-            'jobs:\n  test:\n    "runs-on": ubuntu-latest\n'
-        )
-        self.assertTrue(any("unsupported runs-on key syntax" in error for error in errors))
+        errors = self._validate('jobs:\n  test:\n    "runs-on": ubuntu-latest\n')
+        self.assertTrue(any("not an approved exact exception" in error for error in errors))
 
-    def test_rejects_flow_mapping_runs_on_key(self) -> None:
-        """Reject flow-style workflow syntax that could hide a hosted selector."""
+    def test_structurally_parses_unicode_escaped_runs_on_key(self) -> None:
+        """Decode escaped key text before runner-policy evaluation."""
+
+        errors = self._validate('jobs:\n  test:\n    "runs\\u002Don": ubuntu-latest\n')
+        self.assertTrue(any("not an approved exact exception" in error for error in errors))
+
+    def test_structurally_parses_anchored_runs_on_key(self) -> None:
+        """Decode an anchored key instead of relying on raw source spelling."""
+
+        errors = self._validate("jobs:\n  test:\n    &runner_key runs-on: ubuntu-latest\n")
+        self.assertTrue(any("not an approved exact exception" in error for error in errors))
+
+    def test_structurally_parses_explicit_runs_on_key(self) -> None:
+        """Decode YAML explicit-key syntax before evaluating the selector."""
+
+        errors = self._validate("jobs:\n  test:\n    ? runs-on\n    : ubuntu-latest\n")
+        self.assertTrue(any("not an approved exact exception" in error for error in errors))
+
+    def test_structurally_parses_flow_mapping_runs_on_key(self) -> None:
+        """Decode flow-style mappings and enforce hosted-runner policy."""
 
         errors = self._validate(
             "jobs: {test: {runs-on: ubuntu-latest, steps: []}}\n"
         )
-        self.assertTrue(any("unsupported runs-on key syntax" in error for error in errors))
+        self.assertTrue(any("not an approved exact exception" in error for error in errors))
+
+    def test_rejects_dynamic_group_mapping(self) -> None:
+        """Keep runner-group selection static as well as runner labels."""
+
+        errors = self._validate(
+            "jobs:\n  test:\n    runs-on:\n      group: ${{ matrix.group }}\n      labels: [self-hosted, linux]\n"
+        )
+        self.assertTrue(any("runs-on group must be one static" in error for error in errors))
 
 
 if __name__ == "__main__":
