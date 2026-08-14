@@ -426,6 +426,10 @@ try {
     $accessPoints = Get-AccessPoints -Root $execution.Object
     Assert-UniqueHostNames -AccessPoints $accessPoints
     $diagnostics = Get-Diagnostics -Stdout $execution.Stdout -Stderr $execution.Stderr -AccessPoints $accessPoints
+    $normalizedApCount = @($accessPoints).Count
+    if ($diagnostics.counts_stream -ne 'derived' -and [int]$diagnostics.ap_total -ne $normalizedApCount) {
+        throw "cencli AP count mismatch: diagnostic reports $($diagnostics.ap_total) APs but normalized inventory contains $normalizedApCount; refusing partial inventory"
+    }
     $collector = [ordered]@{
         status                   = 'OK'
         message                  = "Counts: ap: $($diagnostics.ap_total) ($($diagnostics.ap_up):$($diagnostics.ap_down)), clients: $($diagnostics.clients_total)"
