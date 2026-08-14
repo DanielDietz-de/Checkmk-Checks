@@ -119,6 +119,8 @@ def test_gmsa_task_retires_previous_and_removes_derived_spool_state() -> None:
     for token in (
         "function Get-S2DHciRegisteredConfigPath",
         "Get-ScheduledTask -TaskName $TaskName -TaskPath '\\'",
+        "[regex]::Matches($arguments",
+        "foreach ($match in $argumentMatches)",
         "$registeredConfigPath = Get-S2DHciRegisteredConfigPath",
         "Existing scheduled task '$TaskName' uses ConfigPath",
         "$previousConfigPath = if ($null -ne $registeredConfigPath)",
@@ -131,17 +133,25 @@ def test_gmsa_task_retires_previous_and_removes_derived_spool_state() -> None:
         "PreviousSpoolFile=$previousSpoolFile",
     ):
         assert token in installer
+    assert "[regex]::Match($arguments" not in installer
 
     remover = _read("tools/windows/Remove-S2DHciVirtualizationCollectorTask.ps1")
     for token in (
+        "function Get-S2DHciRegisteredConfigPath",
+        "[regex]::Matches($arguments",
+        "foreach ($match in $argumentMatches)",
+        "$registeredConfigPath = Get-S2DHciRegisteredConfigPath",
         "function Read-S2DHciConfiguredSpoolFile",
         "$configuredSpoolFile = Read-S2DHciConfiguredSpoolFile",
         "Get-ChildItem -LiteralPath $spoolRoot -File",
         "^\\d+_s2d_hci_virtualization\\.txt$",
         "Remove generated virtualization spool snapshot",
         "Remove generated spool configuration",
+        "Unregister-ScheduledTask -TaskName $TaskName -TaskPath '\\'",
     ):
         assert token in remover
+    assert remover.index("$configuredSpoolFile = Read-S2DHciConfiguredSpoolFile") < remover.index("Unregister-ScheduledTask -TaskName $TaskName")
+    assert "[regex]::Match($arguments" not in remover
     assert "spool\\600_s2d_hci_virtualization.txt" not in remover
 
 
