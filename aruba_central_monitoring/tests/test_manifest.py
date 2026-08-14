@@ -27,3 +27,12 @@ def test_readme_contains_generated_reference_markers():
     assert readme.count("<!-- code-derived-reference:start -->") == 1
     assert readme.count("<!-- code-derived-reference:end -->") == 1
     assert "it declares 11 packaged files" in readme
+
+
+def test_radio_checkman_documents_indexed_service_item():
+    checkman = (
+        PACKAGE / "src/aruba_central/checkman/aruba_central_radio"
+    ).read_text(encoding="utf-8")
+    assert "radio index" in checkman
+    assert "{Radio_5_GHz_0}" in checkman
+    assert "additional numeric discriminator" in checkman
