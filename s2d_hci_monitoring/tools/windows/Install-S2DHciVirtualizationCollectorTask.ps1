@@ -4,8 +4,9 @@
     Install or update the least-privilege gMSA virtualization spool task.
 .DESCRIPTION
     Validates the gMSA locally, derives a spool lifetime that safely covers the
-    configured task interval, writes only non-secret path configuration, grants
-    the account read access to every runtime dependency and directory traversal
+    configured task interval, retires any previously configured spool snapshot
+    when its path changes, writes only non-secret path configuration, grants the
+    account read access to every runtime dependency and directory traversal
     required by the collector, grants modify access only to the Checkmk spool
     directory, verifies the resulting NTFS rights, and registers a non-elevated
     task. Every mutation honors PowerShell ShouldProcess so -WhatIf remains
@@ -100,7 +101,7 @@ function Test-S2DHciPathUnderRoot {
     .DESCRIPTION
         Normalizes both paths and checks a separator-bounded prefix using
         case-insensitive Windows semantics. The installer uses this before writing
-        configuration, granting ACLs, or registering the scheduled task.
+        configuration, removing old state, granting ACLs, or registering the task.
     #>
     param(
         [Parameter(Mandatory)] [string]$Path,
@@ -110,6 +111,48 @@ function Test-S2DHciPathUnderRoot {
     $fullPath = [System.IO.Path]::GetFullPath($Path)
     $fullRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
     return $fullPath.StartsWith($fullRoot, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Read-S2DHciPreviousSpoolFile {
+    <#
+    .SYNOPSIS
+        Read the previously configured spool path before updating configuration.
+    .DESCRIPTION
+        Loads the existing non-secret spool configuration, requires a non-empty
+        spool_file field, normalizes it, and rejects any path outside the trusted
+        Checkmk spool directory. Invalid existing state stops the update rather
+        than risking deletion of an arbitrary path or leaving an unknown snapshot.
+    #>
+    param(
+        [Parameter(Mandatory)] [string]$Path,
+        [Parameter(Mandatory)] [string]$SpoolRoot
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+    try { $existing = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop }
+    catch { throw "Existing spool configuration is invalid; refusing update until it is repaired or removed: $Path" }
+    if (-not ($existing.PSObject.Properties.Name -contains 'spool_file') -or [string]::IsNullOrWhiteSpace([string]$existing.spool_file)) {
+        throw "Existing spool configuration has no valid spool_file; refusing update: $Path"
+    }
+    $previous = [System.IO.Path]::GetFullPath([string]$existing.spool_file)
+    if (-not (Test-S2DHciPathUnderRoot -Path $previous -Root $SpoolRoot)) {
+        throw "Existing spool configuration points outside the trusted spool directory: $previous"
+    }
+    return $previous
+}
+
+function Remove-S2DHciGeneratedFileIfPresent {
+    <#
+    .SYNOPSIS
+        Remove one known package-generated file when it is present.
+    .DESCRIPTION
+        Performs an idempotent literal-path deletion. The caller supplies only a
+        previously validated package-owned path and gates the mutation through
+        ShouldProcess.
+    #>
+    param([Parameter(Mandatory)] [string]$Path)
+
+    if (Test-Path -LiteralPath $Path -PathType Leaf) { Remove-Item -LiteralPath $Path -Force }
 }
 
 function Assert-S2DHciGmsaUsable {
@@ -196,6 +239,7 @@ if (-not (Test-S2DHciPathUnderRoot -Path $CollectorPath -Root $binRoot)) { throw
 if (-not (Test-S2DHciPathUnderRoot -Path $WrapperPath -Root $binRoot)) { throw 'Wrapper must be deployed below the Checkmk bin directory.' }
 if (-not (Test-S2DHciPathUnderRoot -Path $SpoolFile -Root $spoolRoot)) { throw 'Spool file must remain below the Checkmk spool directory.' }
 $spoolLifetimeSeconds = Assert-S2DHciSpoolLifetime -Path $SpoolFile -IntervalMinutes $IntervalMinutes
+$previousSpoolFile = Read-S2DHciPreviousSpoolFile -Path $ConfigPath -SpoolRoot $spoolRoot
 
 if ($DryRun) {
     [pscustomobject]@{
@@ -207,6 +251,7 @@ if ($DryRun) {
         CollectorConfigPath=$collectorConfigPath
         ConfigPath=$ConfigPath
         SpoolFile=$SpoolFile
+        PreviousSpoolFile=$previousSpoolFile
         SpoolLifetimeSeconds=$spoolLifetimeSeconds
         RunLevel='Limited'
     }
@@ -221,6 +266,15 @@ foreach ($directory in @($configRoot, $spoolRoot)) {
 }
 foreach ($file in @($CollectorPath, $WrapperPath, $commonModulePath, $collectorConfigPath)) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Required file not found: $file" }
+}
+
+if ($null -ne $previousSpoolFile -and -not $previousSpoolFile.Equals($SpoolFile, [System.StringComparison]::OrdinalIgnoreCase)) {
+    if ($PSCmdlet.ShouldProcess($previousSpoolFile, 'Retire previously configured virtualization spool snapshot')) {
+        Remove-S2DHciGeneratedFileIfPresent -Path $previousSpoolFile
+    }
+    if ($PSCmdlet.ShouldProcess($SpoolFile, 'Remove stale target virtualization spool snapshot before reconfiguration')) {
+        Remove-S2DHciGeneratedFileIfPresent -Path $SpoolFile
+    }
 }
 
 $plannedConfig = [ordered]@{ collector_path=$CollectorPath; spool_file=$SpoolFile }
@@ -264,5 +318,6 @@ $status = if ($WhatIfPreference) { 'WhatIf' } else { 'InstalledOrUpdated' }
     RunLevel='Limited'
     ConfigPath=$ConfigPath
     SpoolFile=$SpoolFile
+    PreviousSpoolFile=$previousSpoolFile
     SpoolLifetimeSeconds=$spoolLifetimeSeconds
 }
