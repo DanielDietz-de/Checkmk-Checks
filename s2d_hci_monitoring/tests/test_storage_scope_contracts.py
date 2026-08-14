@@ -1,4 +1,4 @@
-"""Regression contracts for cluster-scoped S2D storage collection."""
+"""Regression contracts that keep logical S2D storage monitoring strictly cluster-scoped."""
 
 from __future__ import annotations
 
