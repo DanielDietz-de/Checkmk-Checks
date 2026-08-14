@@ -97,6 +97,33 @@ def test_gmsa_task_derives_spool_lifetime_from_interval() -> None:
     assert "Join-Path $spoolRoot '600_s2d_hci_virtualization.txt'" not in text
 
 
+def test_gmsa_task_retires_previous_and_removes_derived_spool_state() -> None:
+    """Changing lifetime/path and later uninstalling must not leave multiple package spool snapshots active."""
+
+    installer = _read("tools/windows/Install-S2DHciVirtualizationCollectorTask.ps1")
+    for token in (
+        "function Read-S2DHciPreviousSpoolFile",
+        "$previousSpoolFile = Read-S2DHciPreviousSpoolFile",
+        "Retire previously configured virtualization spool snapshot",
+        "Remove stale target virtualization spool snapshot before reconfiguration",
+        "Remove-S2DHciGeneratedFileIfPresent",
+        "PreviousSpoolFile=$previousSpoolFile",
+    ):
+        assert token in installer
+
+    remover = _read("tools/windows/Remove-S2DHciVirtualizationCollectorTask.ps1")
+    for token in (
+        "function Read-S2DHciConfiguredSpoolFile",
+        "$configuredSpoolFile = Read-S2DHciConfiguredSpoolFile",
+        "Get-ChildItem -LiteralPath $spoolRoot -File",
+        "^\\d+_s2d_hci_virtualization\\.txt$",
+        "Remove generated virtualization spool snapshot",
+        "Remove generated spool configuration",
+    ):
+        assert token in remover
+    assert "spool\\600_s2d_hci_virtualization.txt" not in remover
+
+
 def test_gmsa_task_grants_and_verifies_every_runtime_dependency() -> None:
     """The gMSA installer and validator must explicitly cover shared code, configuration, and hardened parent-directory traversal."""
 
@@ -178,13 +205,15 @@ def test_cluster_and_vm_piggyback_contracts_exist() -> None:
 
 
 def test_virtualization_stops_framing_after_truncation() -> None:
-    """Direct-mode truncation must prevent later VM and section framing from bypassing configured data bounds."""
+    """Direct-mode truncation must prevent later VM, section, and error framing from bypassing configured data bounds."""
 
     text = _read("src/agents/plugins/s2d_hci_virtualization.ps1")
     assert text.count("if ($RunContext.Truncated) { return }") >= 6
     first_guard = text.index("if ($RunContext.Truncated) { return }")
     first_piggyback = text.index("Start-S2DHciPiggyback -HostName $vmHost")
     assert first_guard < first_piggyback
+    assert text.count("if (-not $RunContext.Truncated) { Write-S2DHciSectionError") >= 6
+    assert "if (-not $context.Truncated) { Write-S2DHciSectionError" in text
     assert "if (-not $context.Truncated)" in text
 
 
