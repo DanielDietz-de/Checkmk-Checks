@@ -45,6 +45,20 @@ def _planned_host(sync):
     )
 
 
+def _collector_document(ap_total: int, *, status: str = "OK", stale: bool = False) -> str:
+    return json.dumps(
+        {
+            "schema": 1,
+            "kind": "collector",
+            "collector": {
+                "status": status,
+                "stale": stale,
+                "ap_total": ap_total,
+            },
+        }
+    )
+
+
 def test_extract_and_plan_exact_folder_hierarchy():
     sync = _load()
     access_points = sync._extract_access_points(FIXTURE.read_text(encoding="utf-8"))
@@ -93,13 +107,6 @@ def test_extract_fails_closed_on_truncated_ap_section():
 
 def test_extract_rejects_complete_partial_inventory_against_collector_total():
     sync = _load()
-    collector = json.dumps(
-        {
-            "schema": 1,
-            "kind": "collector",
-            "collector": {"status": "OK", "ap_total": 2},
-        }
-    )
     ap = json.dumps(
         {
             "schema": 1,
@@ -114,7 +121,7 @@ def test_extract_rejects_complete_partial_inventory_against_collector_total():
     output = "\n".join(
         [
             sync.SECTION,
-            collector,
+            _collector_document(2),
             "<<<<AP-ONLY>>>>",
             sync.SECTION,
             ap,
@@ -122,6 +129,33 @@ def test_extract_rejects_complete_partial_inventory_against_collector_total():
         ]
     )
     with pytest.raises(ValueError, match="collector/piggyback count mismatch"):
+        sync._extract_access_points(output)
+
+
+def test_extract_rejects_failed_or_stale_collector_snapshot():
+    sync = _load()
+    ap = json.dumps(
+        {
+            "schema": 1,
+            "kind": "ap",
+            "ap": {
+                "host_name": "AP-OLD",
+                "group": "B200",
+                "site": "B200",
+            },
+        }
+    )
+    output = "\n".join(
+        [
+            sync.SECTION,
+            _collector_document(1, status="ERROR", stale=True),
+            "<<<<AP-OLD>>>>",
+            sync.SECTION,
+            ap,
+            "<<<<>>>>",
+        ]
+    )
+    with pytest.raises(ValueError, match="not a successful current snapshot"):
         sync._extract_access_points(output)
 
 
@@ -528,7 +562,7 @@ def test_existing_host_with_extra_or_conflicting_attributes_is_rejected():
         client.create_host(host)
 
 
-def test_activation_reads_pending_etag_and_sends_if_match():
+def test_activation_reads_etag_and_waits_for_completion():
     sync = _load()
     client = sync.CheckmkApi(
         "https://checkmk.example/site/check_mk/api/v1",
@@ -545,15 +579,40 @@ def test_activation_reads_pending_etag_and_sends_if_match():
                 {"ETag": '"etag-value"'},
             ),
             _Response(202, {"id": "activation"}),
+            _Response(204),
         ]
     )
     client.session = fake
-    assert client.activate("site") == "submitted"
+    assert client.activate("site") == "completed"
     assert fake.calls[0][0] == "GET"
     assert fake.calls[0][1].endswith(
         "/domain-types/activation_run/collections/pending_changes"
     )
     assert fake.calls[1][2]["headers"] == {"If-Match": '"etag-value"'}
+    assert fake.calls[2][0] == "GET"
+    assert fake.calls[2][1].endswith(
+        "/objects/activation_run/activation/actions/wait-for-completion/invoke"
+    )
+
+
+def test_activation_wait_failure_is_reported():
+    sync = _load()
+    client = sync.CheckmkApi(
+        "https://checkmk.example/site/check_mk/api/v1",
+        "automation",
+        "secret",
+        None,
+        30,
+    )
+    client.session = _Session(
+        [
+            _Response(200, {"value": [{"id": "change"}]}, {"ETag": '"etag"'}),
+            _Response(202, {"id": "activation"}),
+            _Response(500, text="activation failed later"),
+        ]
+    )
+    with pytest.raises(RuntimeError, match="activation wait failed"):
+        client.activate("site")
 
 
 def test_activation_skips_when_no_changes_are_pending():
