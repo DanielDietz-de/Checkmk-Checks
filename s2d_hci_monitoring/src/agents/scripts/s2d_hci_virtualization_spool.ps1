@@ -4,9 +4,9 @@
     Run the opt-in Hyper-V collector and atomically maintain a validated spool file.
 .DESCRIPTION
     Executes the collector under a dedicated scheduled-task identity, validates
-    the versioned protocol and final collector-health envelope, and replaces the
-    live spool file only after a complete successful run. The previous valid
-    spool file is preserved on every failure.
+    the versioned protocol, record-byte accounting, bounded framing, and final
+    collector-health envelope, and replaces the live spool file only after a
+    complete successful run. The previous valid spool file is preserved on every failure.
 #>
 
 [CmdletBinding()]
@@ -81,9 +81,7 @@ function Read-S2DHciSpoolConfig {
     #>
     param([Parameter(Mandatory)] [string]$Path)
 
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-        throw "Spool configuration not found: $Path"
-    }
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Spool configuration not found: $Path" }
     $json = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
     foreach ($name in @('collector_path', 'spool_file')) {
         if (-not ($json.PSObject.Properties.Name -contains $name) -or [string]::IsNullOrWhiteSpace([string]$json.$name)) {
@@ -98,29 +96,35 @@ function Test-S2DHciCollectorOutput {
     .SYNOPSIS
         Validate a complete virtualization collector run before spool publication.
     .DESCRIPTION
-        Enforces the output-size bound, JSON framing, protocol version, single run
-        identifier, exactly one matching collector-health envelope, and successful
-        completion. Any violation throws so the existing live spool is preserved.
+        Recomputes exactly the JSON-record count and bytes governed by the collector
+        limits, validates them against collector-health accounting, independently
+        bounds Checkmk/piggyback framing and the health row, enforces one run ID,
+        and requires one successful complete virtualization health envelope.
     #>
     param(
         [Parameter(Mandatory)] [string[]]$Lines,
         [Parameter(Mandatory)] [int]$MaximumBytes
     )
 
-    $joined = $Lines -join [System.Environment]::NewLine
-    $bytes = [System.Text.Encoding]::UTF8.GetByteCount($joined)
-    if ($bytes -gt ($MaximumBytes + 32768)) {
-        throw "Collector output exceeds the configured data bound plus protocol overhead."
-    }
-
+    [int64]$recordBytes = 0
+    [int64]$framingBytes = 0
+    [int64]$healthBytes = 0
+    [int]$recordCount = 0
     $runId = $null
     $healthRows = New-Object 'System.Collections.Generic.List[object]'
     $inHealth = $false
+
     foreach ($line in $Lines) {
         $trimmed = ([string]$line).Trim()
         if ([string]::IsNullOrWhiteSpace($trimmed)) { continue }
-        if ($trimmed.StartsWith('<<<<') -and $trimmed.EndsWith('>>>>')) { continue }
+        $lineBytes = [System.Text.Encoding]::UTF8.GetByteCount($trimmed) + 1
+
+        if ($trimmed.StartsWith('<<<<') -and $trimmed.EndsWith('>>>>')) {
+            $framingBytes += $lineBytes
+            continue
+        }
         if ($trimmed.StartsWith('<<<') -and $trimmed.EndsWith('>>>')) {
+            $framingBytes += $lineBytes
             $inHealth = ($trimmed -eq '<<<s2d_hci_collector_health>>>')
             continue
         }
@@ -138,16 +142,41 @@ function Test-S2DHciCollectorOutput {
         elseif (-not $runId.Equals([string]$record.run_id, [System.StringComparison]::OrdinalIgnoreCase)) {
             throw 'Collector output mixes multiple run identifiers.'
         }
-        if ($inHealth) { $healthRows.Add($record) }
+
+        if ($inHealth) {
+            $healthRows.Add($record)
+            $healthBytes += $lineBytes
+        }
+        else {
+            $recordBytes += $lineBytes
+            $recordCount++
+        }
     }
 
     if ($healthRows.Count -ne 1) { throw "Expected exactly one collector-health row, found $($healthRows.Count)." }
     $health = $healthRows[0]
     if ([string]$health.collector -ne 'virtualization') { throw 'Collector-health row belongs to the wrong collector.' }
-    if (-not [bool]$health.success -or -not [bool]$health.complete -or [bool]$health.truncated) {
+    if ($health.success -ne $true -or $health.complete -ne $true -or $health.truncated -ne $false) {
         throw "Virtualization collector did not complete successfully: $($health.errors -join '; ')"
     }
     if ([string]$health.role -eq 'disabled') { throw 'Virtualization collection is disabled in s2d_hci.json.' }
+
+    if ($recordBytes -gt $MaximumBytes) { throw 'Collector JSON record bytes exceed the configured output bound.' }
+    if ([int64]$health.output_bytes -ne $recordBytes) {
+        throw "Collector output-byte accounting mismatch: health=$($health.output_bytes), observed=$recordBytes."
+    }
+    if ([int]$health.record_count -ne $recordCount) {
+        throw "Collector record-count accounting mismatch: health=$($health.record_count), observed=$recordCount."
+    }
+
+    # Each VM contributes a bounded GUID piggyback marker and a fixed set of section
+    # headers. A generous per-record allowance preserves valid empty subsections while
+    # still preventing unbounded non-record framing from bypassing max_output_bytes.
+    [int64]$maximumFramingBytes = ([int64]$recordCount + 2) * 1024
+    if ($framingBytes -gt $maximumFramingBytes) {
+        throw "Collector framing exceeds the derived bound: observed=$framingBytes, maximum=$maximumFramingBytes."
+    }
+    if ($healthBytes -gt 16384) { throw 'Collector-health envelope exceeds the fixed 16 KiB bound.' }
     return $true
 }
 
@@ -156,9 +185,7 @@ $configRoot = Join-Path $AgentRoot 'config'
 $binRoot = Join-Path $AgentRoot 'bin'
 $spoolRoot = Join-Path $AgentRoot 'spool'
 
-foreach ($trusted in @($ConfigPath, $configRoot, $binRoot, $spoolRoot)) {
-    Assert-S2DHciNoReparsePoint -Path $trusted -Root $AgentRoot
-}
+foreach ($trusted in @($ConfigPath, $configRoot, $binRoot, $spoolRoot)) { Assert-S2DHciNoReparsePoint -Path $trusted -Root $AgentRoot }
 $config = Read-S2DHciSpoolConfig -Path $ConfigPath
 $collectorPath = [System.IO.Path]::GetFullPath([string]$config.collector_path)
 $spoolFile = [System.IO.Path]::GetFullPath([string]$config.spool_file)
