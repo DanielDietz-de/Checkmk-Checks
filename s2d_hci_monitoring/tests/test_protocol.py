@@ -1,4 +1,4 @@
-"""Protocol parser tests for malformed, duplicate, mixed-run, and bounded numeric input."""
+"""Protocol parser tests for malformed, duplicate, mixed-run, state-policy, and bounded numeric input."""
 
 from __future__ import annotations
 
@@ -74,6 +74,13 @@ def test_unknown_state_defaults_unknown() -> None:
 
 
 def test_unhealthy_state_uses_offline_policy() -> None:
-    """Microsoft Unhealthy health status must map through the offline policy instead of degrading to an ambiguous UNKNOWN state."""
+    """Microsoft Unhealthy health status must map through the offline policy instead of degrading to UNKNOWN."""
 
     assert state_from_text("Unhealthy") == State.CRIT
+
+
+def test_disabled_state_uses_offline_policy() -> None:
+    """A disabled S2D deployment must be a real offline condition rather than an ambiguous UNKNOWN state."""
+
+    assert state_from_text("Disabled") == State.CRIT
+    assert state_from_text("Disabled", {"offline_state": "warn"}) == State.WARN
