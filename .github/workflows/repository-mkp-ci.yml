@@ -21,7 +21,7 @@ env:
 jobs:
   select:
     name: Select validation scope
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       mode: ${{ steps.selection.outputs.mode }}
@@ -84,7 +84,7 @@ jobs:
   tests:
     name: Run all package tests
     needs: select
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
@@ -202,7 +202,7 @@ jobs:
   build:
     name: Build all active MKPs
     needs: select
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
       artifact-name: ${{ steps.metadata.outputs.artifact-name }}
@@ -316,7 +316,7 @@ jobs:
     needs:
       - select
       - build
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -400,7 +400,7 @@ jobs:
     if: >-
       needs.select.outputs.mode == 'full' &&
       github.event_name != 'push'
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     timeout-minutes: 25
 
     steps:
