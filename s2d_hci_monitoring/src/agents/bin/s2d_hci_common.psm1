@@ -85,8 +85,9 @@ function Get-S2DHciConfig {
         Load and validate the non-secret S2D/HCI collector configuration.
     .DESCRIPTION
         Starts from conservative production defaults, optionally overlays the
-        JSON configuration file, and validates every accepted setting. Unknown
-        keys are ignored and no credential material is supported.
+        JSON configuration file, and validates every accepted setting. Invalid
+        configuration falls back atomically to conservative defaults while an
+        explicit error marker is carried into collector-health telemetry.
     #>
     param([Parameter(Mandatory)] [string]$AgentRoot)
 
@@ -107,27 +108,38 @@ function Get-S2DHciConfig {
         return [pscustomobject]$defaults
     }
 
-    $json = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($json.PSObject.Properties.Name -contains 'protocol_version') {
-        $version = ConvertTo-S2DHciBoundedInt -Value $json.protocol_version -Name 'protocol_version' -Minimum 1 -Maximum 1
-        $defaults.protocol_version = $version
-    }
-    if ($json.PSObject.Properties.Name -contains 'max_records') {
-        $defaults.max_records = ConvertTo-S2DHciBoundedInt -Value $json.max_records -Name 'max_records' -Minimum 1 -Maximum 5000
-    }
-    if ($json.PSObject.Properties.Name -contains 'max_output_bytes') {
-        $defaults.max_output_bytes = ConvertTo-S2DHciBoundedInt -Value $json.max_output_bytes -Name 'max_output_bytes' -Minimum 16384 -Maximum 4194304
-    }
-    if ($json.PSObject.Properties.Name -contains 'max_runtime_seconds') {
-        $defaults.max_runtime_seconds = ConvertTo-S2DHciBoundedInt -Value $json.max_runtime_seconds -Name 'max_runtime_seconds' -Minimum 5 -Maximum 240
-    }
-    foreach ($name in @('include_addresses', 'include_paths', 'include_serials', 'include_locations', 'virtualization_enabled')) {
-        if ($json.PSObject.Properties.Name -contains $name) {
-            $defaults[$name] = ConvertTo-S2DHciBoolean -Value $json.$name -Name $name
-        }
+    $resolved = [ordered]@{}
+    foreach ($entry in $defaults.GetEnumerator()) {
+        $resolved[$entry.Key] = $entry.Value
     }
 
-    return [pscustomobject]$defaults
+    try {
+        $json = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($json.PSObject.Properties.Name -contains 'protocol_version') {
+            $version = ConvertTo-S2DHciBoundedInt -Value $json.protocol_version -Name 'protocol_version' -Minimum 1 -Maximum 1
+            $resolved.protocol_version = $version
+        }
+        if ($json.PSObject.Properties.Name -contains 'max_records') {
+            $resolved.max_records = ConvertTo-S2DHciBoundedInt -Value $json.max_records -Name 'max_records' -Minimum 1 -Maximum 5000
+        }
+        if ($json.PSObject.Properties.Name -contains 'max_output_bytes') {
+            $resolved.max_output_bytes = ConvertTo-S2DHciBoundedInt -Value $json.max_output_bytes -Name 'max_output_bytes' -Minimum 16384 -Maximum 4194304
+        }
+        if ($json.PSObject.Properties.Name -contains 'max_runtime_seconds') {
+            $resolved.max_runtime_seconds = ConvertTo-S2DHciBoundedInt -Value $json.max_runtime_seconds -Name 'max_runtime_seconds' -Minimum 5 -Maximum 240
+        }
+        foreach ($name in @('include_addresses', 'include_paths', 'include_serials', 'include_locations', 'virtualization_enabled')) {
+            if ($json.PSObject.Properties.Name -contains $name) {
+                $resolved[$name] = ConvertTo-S2DHciBoolean -Value $json.$name -Name $name
+            }
+        }
+    }
+    catch {
+        $defaults['configuration_error'] = 'Collector configuration is invalid; safe defaults are active.'
+        return [pscustomobject]$defaults
+    }
+
+    return [pscustomobject]$resolved
 }
 
 function New-S2DHciRunContext {
@@ -136,12 +148,21 @@ function New-S2DHciRunContext {
         Create the mutable accounting state for one collector invocation.
     .DESCRIPTION
         Records the run identifier, output counters, error list, role, and
-        stopwatch used to build the final collector-health envelope.
+        stopwatch used to build the final collector-health envelope. A shared
+        configuration error is imported immediately so the run cannot appear OK.
     #>
     param(
         [Parameter(Mandatory)] [string]$Collector,
         [Parameter(Mandatory)] [object]$Config
     )
+
+    $errorMessages = New-Object 'System.Collections.Generic.List[string]'
+    $complete = $true
+    $configurationError = $Config.PSObject.Properties['configuration_error']
+    if ($null -ne $configurationError -and -not [string]::IsNullOrWhiteSpace([string]$configurationError.Value)) {
+        $errorMessages.Add([string]$configurationError.Value)
+        $complete = $false
+    }
 
     return [pscustomobject]@{
         Collector = $Collector
@@ -149,9 +170,9 @@ function New-S2DHciRunContext {
         Config = $Config
         RecordCount = 0
         OutputBytes = 0
-        ErrorMessages = New-Object 'System.Collections.Generic.List[string]'
+        ErrorMessages = $errorMessages
         Truncated = $false
-        Complete = $true
+        Complete = $complete
         Role = 'local'
         ClusterName = $null
         LogicalHost = $null
