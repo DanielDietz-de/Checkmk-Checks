@@ -14,10 +14,20 @@ def _read(relative: str) -> str:
 
 
 def test_common_module_enforces_bounds_and_protocol() -> None:
-    """Shared collection must enforce protocol, runtime, record, and output limits."""
+    """Shared collection must enforce protocol, runtime, record, output, and health-error limits."""
 
     text = _read("src/agents/bin/s2d_hci_common.psm1")
-    for token in ("protocol_version", "run_id", "max_runtime_seconds", "max_records", "max_output_bytes", "s2d_hci_collector_health"):
+    for token in (
+        "protocol_version",
+        "run_id",
+        "max_runtime_seconds",
+        "max_records",
+        "max_output_bytes",
+        "s2d_hci_collector_health",
+        "$script:S2DHciMaximumHealthErrors = 20",
+        "ErrorsOmitted",
+        "errors_omitted",
+    ):
         assert token in text
     assert "Get-S2DHciClusterContext" in text
     assert "<<<<$HostName>>>>" in text
@@ -118,16 +128,25 @@ def test_gmsa_task_honors_should_process_for_acl_mutation() -> None:
     assert "$status = if ($WhatIfPreference) { 'WhatIf' } else { 'InstalledOrUpdated' }" in text
 
 
-def test_spool_wrapper_preserves_last_good_output() -> None:
-    """The spool wrapper must validate process and protocol success before atomic replacement."""
+def test_spool_wrapper_preserves_last_good_output_and_recomputes_bounds() -> None:
+    """The spool wrapper must validate native success, exact record accounting, bounded framing, and atomic replacement."""
 
     text = _read("src/agents/scripts/s2d_hci_virtualization_spool.ps1")
-    assert "$collectorExitCode = $LASTEXITCODE" in text
-    assert "Test-S2DHciCollectorOutput" in text
-    assert "unsupported or missing protocol version" in text.lower()
-    assert "mixes multiple run identifiers" in text
-    assert "File]::Replace" in text
-    assert "Assert-S2DHciNoReparsePoint" in text
+    for token in (
+        "$collectorExitCode = $LASTEXITCODE",
+        "Test-S2DHciCollectorOutput",
+        "unsupported or missing protocol version",
+        "mixes multiple run identifiers",
+        "$recordBytes -gt $MaximumBytes",
+        "$health.output_bytes -ne $recordBytes",
+        "$health.record_count -ne $recordCount",
+        "$maximumFramingBytes = ([int64]$recordCount + 2) * 1024",
+        "$healthBytes -gt 16384",
+        "File]::Replace",
+        "Assert-S2DHciNoReparsePoint",
+    ):
+        assert token.lower() in text.lower()
+    assert "MaximumBytes + 32768" not in text
     assert "ExecutionPolicy Bypass" not in text
 
 
@@ -142,11 +161,13 @@ def test_cluster_and_vm_piggyback_contracts_exist() -> None:
     assert "virtualization_enabled" in virt
 
 
-def test_virtualization_vhd_errors_respect_path_privacy_and_preserve_parent_state() -> None:
-    """Hyper-V VHD failures must redact path-bearing exception text by default while emitting a non-sensitive differencing-disk flag."""
+def test_virtualization_vhd_errors_respect_path_privacy_and_pass_through_disks() -> None:
+    """VHD failures must redact paths while pathless pass-through disks must bypass Get-VHD without a synthetic metadata error."""
 
     text = _read("src/agents/plugins/s2d_hci_virtualization.ps1")
     assert "$record.has_parent" in text
     assert "VHD metadata query failed; path details are redacted by policy." in text
-    assert "if ($CollectorConfig.include_paths)" in text
+    assert "$isPassThrough" in text
+    assert "attachment_type = if ($isPassThrough) { 'pass_through' }" in text
+    assert "if (-not [string]::IsNullOrWhiteSpace($drivePath) -and (Test-S2DHciCommandAvailable -Name 'Get-VHD'))" in text
     assert "$record.vhd_error = $_.Exception.Message" not in text
