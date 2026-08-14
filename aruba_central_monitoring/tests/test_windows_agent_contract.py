@@ -65,10 +65,20 @@ def test_authoritative_ap_count_mismatch_fails_before_cache_write():
 
 def test_configuration_failures_enter_monitoring_failure_handler():
     default_config = SCRIPT.index("$config = Get-DefaultConfig")
-    try_block = SCRIPT.index("try {", default_config)
+    fallback_config = SCRIPT.index("$failureConfig = $config", default_config)
+    try_block = SCRIPT.index("try {", fallback_config)
     config_read = SCRIPT.index("$config = Read-Configuration -Path $ConfigFile", try_block)
-    invocation = SCRIPT.index("$execution = Invoke-Cencli -Config $config", config_read)
-    assert default_config < try_block < config_read < invocation
+    validated_snapshot = SCRIPT.index("$failureConfig = $config", config_read)
+    invocation = SCRIPT.index("$execution = Invoke-Cencli -Config $config", validated_snapshot)
+    assert default_config < fallback_config < try_block < config_read < validated_snapshot < invocation
+
+
+def test_failure_handler_uses_only_validated_fallback_config():
+    _, failure = SCRIPT.rsplit("\ncatch {", 1)
+    assert "Read-LastGood -Path ([string]$failureConfig.LastGoodCacheFile)" in failure
+    assert "-MaxAgeSeconds ([int]$failureConfig.MaxStaleSeconds)" in failure
+    assert "-EmitPiggyback ([bool]$failureConfig.EmitPiggyback)" in failure
+    assert "([int]$config.MaxStaleSeconds)" not in failure
 
 
 def test_last_good_cache_is_not_replaced_in_failure_handler():
