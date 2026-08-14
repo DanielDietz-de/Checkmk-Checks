@@ -155,6 +155,29 @@ def test_gmsa_task_retires_previous_and_removes_derived_spool_state() -> None:
     assert "spool\\600_s2d_hci_virtualization.txt" not in remover
 
 
+def test_gmsa_task_quiesces_existing_publisher_before_generated_state_changes() -> None:
+    """An in-flight old wrapper must be stopped before a previous spool snapshot can be retired or recreated."""
+
+    installer = _read("tools/windows/Install-S2DHciVirtualizationCollectorTask.ps1")
+    for token in (
+        "function Stop-S2DHciScheduledTaskPublisher",
+        "Disable-ScheduledTask -TaskName $TaskName -TaskPath '\\'",
+        "Stop-ScheduledTask -TaskName $TaskName -TaskPath '\\'",
+        "$deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)",
+        "did not stop within $TimeoutSeconds seconds",
+        "Quiesce existing scheduled collector before generated-state update",
+        "Stop-S2DHciScheduledTaskPublisher -TaskName $TaskName",
+        "Enable-ScheduledTask -TaskName $TaskName -TaskPath '\\'",
+    ):
+        assert token in installer
+    assert installer.index("Stop-S2DHciScheduledTaskPublisher -TaskName $TaskName") < installer.index(
+        "Retire previously configured virtualization spool snapshot"
+    )
+    assert installer.index("Disable-ScheduledTask -TaskName $TaskName") < installer.index(
+        "Stop-ScheduledTask -TaskName $TaskName"
+    )
+
+
 def test_gmsa_task_grants_and_verifies_every_runtime_dependency() -> None:
     """The gMSA installer and validator must explicitly cover shared code, configuration, and hardened parent-directory traversal."""
 
