@@ -242,8 +242,6 @@ function Convert-ToHostName {
 function Assert-UniqueHostNames {
     param($AccessPoints)
 
-    # PowerShell hashtables compare string keys case-insensitively by default,
-    # matching the conservative collision semantics used by the synchronizer.
     $seen = @{}
     foreach ($ap in @($AccessPoints)) {
         $hostName = [string](Get-ObjectProperty $ap 'host_name' '')
@@ -263,16 +261,16 @@ function Assert-UniqueHostNames {
 function Convert-Radio {
     param($Radio, [int]$Index)
     return [ordered]@{
-        index         = [int](Get-ObjectProperty $Radio 'index' $Index)
-        radio_name    = [string](Get-ObjectProperty $Radio 'radio_name' "Radio $Index")
-        radio_type    = [string](Get-ObjectProperty $Radio 'radio_type' '')
-        band          = Get-ObjectProperty $Radio 'band' $null
-        channel       = [string](Get-ObjectProperty $Radio 'channel' '')
-        status        = [string](Get-ObjectProperty $Radio 'status' 'Unknown')
-        tx_power      = Convert-ToNumber (Get-ObjectProperty $Radio 'tx_power' $null)
-        utilization   = Convert-ToNumber (Get-ObjectProperty $Radio 'utilization' $null)
+        index          = [int](Get-ObjectProperty $Radio 'index' $Index)
+        radio_name     = [string](Get-ObjectProperty $Radio 'radio_name' "Radio $Index")
+        radio_type     = [string](Get-ObjectProperty $Radio 'radio_type' '')
+        band           = Get-ObjectProperty $Radio 'band' $null
+        channel        = [string](Get-ObjectProperty $Radio 'channel' '')
+        status         = [string](Get-ObjectProperty $Radio 'status' 'Unknown')
+        tx_power       = Convert-ToNumber (Get-ObjectProperty $Radio 'tx_power' $null)
+        utilization    = Convert-ToNumber (Get-ObjectProperty $Radio 'utilization' $null)
         spatial_stream = [string](Get-ObjectProperty $Radio 'spatial_stream' '')
-        macaddr       = [string](Get-ObjectProperty $Radio 'macaddr' '')
+        macaddr        = [string](Get-ObjectProperty $Radio 'macaddr' '')
     }
 }
 
@@ -420,8 +418,10 @@ function Write-MonitoringOutput {
 }
 
 $config = Get-DefaultConfig
+$failureConfig = $config
 try {
     $config = Read-Configuration -Path $ConfigFile
+    $failureConfig = $config
     $execution = Invoke-Cencli -Config $config
     $accessPoints = Get-AccessPoints -Root $execution.Object
     Assert-UniqueHostNames -AccessPoints $accessPoints
@@ -452,7 +452,7 @@ try {
 }
 catch {
     $message = Protect-Message $_.Exception.Message
-    $lastGood = Read-LastGood -Path ([string]$config.LastGoodCacheFile) -MaxAgeSeconds ([int]$config.MaxStaleSeconds)
+    $lastGood = Read-LastGood -Path ([string]$failureConfig.LastGoodCacheFile) -MaxAgeSeconds ([int]$failureConfig.MaxStaleSeconds)
     if ($null -ne $lastGood) {
         $cachedCollector = $lastGood.Cache.collector
         $collector = [ordered]@{
@@ -472,7 +472,7 @@ catch {
             api_rate_remaining       = Get-ObjectProperty $cachedCollector 'api_rate_remaining' $null
             api_rate_limit           = Get-ObjectProperty $cachedCollector 'api_rate_limit' $null
         }
-        Write-MonitoringOutput -Collector $collector -AccessPoints @($lastGood.Cache.access_points) -EmitPiggyback ([bool]$config.EmitPiggyback)
+        Write-MonitoringOutput -Collector $collector -AccessPoints @($lastGood.Cache.access_points) -EmitPiggyback ([bool]$failureConfig.EmitPiggyback)
     }
     else {
         $collector = [ordered]@{
