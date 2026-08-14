@@ -69,7 +69,7 @@ A zero-finding audit means only that the defined deterministic rules found no vi
 
 ## Current audited state
 
-At the completion of this repository-wide remediation, the local deterministic report covers **98 active packages** and reports **0 critical, 0 high, 0 medium, and 0 low findings**. CI regenerates this evidence for every pull request and publishes the JSON report with the exact audited source snapshot.
+At the completion of this repository-wide remediation, the local deterministic report covers **99 active packages** and reports **0 critical, 0 high, 0 medium, and 0 low findings**. CI regenerates this evidence for every pull request and publishes the JSON report with the exact audited source snapshot.
 
 ## What “ready to use” means
 

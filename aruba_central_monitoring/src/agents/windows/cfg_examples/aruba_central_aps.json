@@ -1,0 +1,9 @@
+{
+  "CencliPath": "cencli.exe",
+  "CencliPrefixArguments": "",
+  "CencliSuffixArguments": "",
+  "TimeoutSeconds": 60,
+  "LastGoodCacheFile": "C:\\ProgramData\\checkmk\\agent\\cache\\aruba_central_aps.last_good.json",
+  "MaxStaleSeconds": 1800,
+  "EmitPiggyback": true
+}

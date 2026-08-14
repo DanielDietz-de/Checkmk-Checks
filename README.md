@@ -6,7 +6,7 @@ The repository is maintained under the `DanielDietz-de` organization and contain
 
 ## Repository status
 
-The repository-wide release workflow currently discovers **98 active packages** from their canonical `*/src/info` manifests. Pull requests validate only the unambiguously affected packages when that is safe; shared, ambiguous, manual, and `master` changes receive complete repository validation. Full validation runs all package tests, builds deterministic MKP archives, verifies checksums and package inventories, and validates supported packages in clean Checkmk 2.4 and 2.5 sites.
+The repository-wide release workflow currently discovers **99 active packages** from their canonical `*/src/info` manifests. Pull requests validate only the unambiguously affected packages when that is safe; shared, ambiguous, manual, and `master` changes receive complete repository validation. Full validation runs all package tests, builds deterministic MKP archives, verifies checksums and package inventories, and validates supported packages in clean Checkmk 2.4 and 2.5 sites.
 
 Generated release state is never pushed directly to `master`. After a successful full `master` validation, a separate workflow rebuilds and verifies the exact validated artifacts, updates `automation/repository-mkp-release`, and opens or refreshes a normal release pull request. See [`docs/CI_ARCHITECTURE.md`](docs/CI_ARCHITECTURE.md) for the selector, publication, permissions, and failure-safety model.
 

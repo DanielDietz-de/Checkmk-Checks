@@ -1,0 +1,10 @@
+<<<aruba_central_aps:sep(0)>>>
+{"schema":1,"kind":"collector","collector":{"status":"OK","message":"Counts: ap: 2 (1:1), clients: 41","generated_at":"2026-08-06T18:00:00Z","stale":false,"last_success_age_seconds":0,"refresh_duration_seconds":31.25,"json_stream":"stdout","counts_stream":"stderr","rate_limit_stream":"stderr","ap_total":2,"ap_up":1,"ap_down":1,"clients_total":41,"api_rate_remaining":11964,"api_rate_limit":11970}}
+<<<<AP_CNRPKV30C2>>>>
+<<<aruba_central_aps:sep(0)>>>
+{"schema":1,"kind":"ap","ap":{"host_name":"AP_CNRPKV30C2","name":"50:e4:e0:cf:5e:68","status":"Up","type":"ap","model":"575","clients":34,"ip":"10.76.8.48/22","mac":"50:e4:e0:cf:5e:68","serial":"CNRPKV30C2","group":"Campus Bornheim","site":"Campus Bornheim - ABS5","uptime":"15w 3d 15m","uptime_seconds":9288900,"cpu_percent":10.0,"mem_total_mb":920.39,"mem_free_mb":312.2,"version":"10.7.1.1_92045","ssid_count":4,"sleep_status":false,"radios":[{"index":0,"radio_name":"Radio 5 GHz","radio_type":"802.11ax","band":1,"channel":"157E","status":"Up","tx_power":13,"utilization":14,"spatial_stream":"4x4:4","macaddr":"50:e4:e0:75:e6:90"},{"index":1,"radio_name":"Radio 2.4 GHz","radio_type":"802.11ax","band":0,"channel":"6","status":"Up","tx_power":5,"utilization":69,"spatial_stream":"2x2:2","macaddr":"50:e4:e0:75:e6:80"}]},"collector":{"generated_at":"2026-08-06T18:00:00Z","stale":false,"last_success_age_seconds":0}}
+<<<<>>>>
+<<<<B200-AP-01>>>>
+<<<aruba_central_aps:sep(0)>>>
+{"schema":1,"kind":"ap","ap":{"host_name":"B200-AP-01","name":"B200-AP-01","status":"Down","type":"ap","model":"515","clients":7,"ip":"192.0.2.10/24","mac":"aa:bb:cc:dd:ee:ff","serial":"CN00000001","group":"B200","site":"B200","uptime":"2d 1h","uptime_seconds":176400,"cpu_percent":25.0,"mem_total_mb":512.0,"mem_free_mb":128.0,"version":"10.7.1.1_92045","ssid_count":3,"sleep_status":false,"radios":[]},"collector":{"generated_at":"2026-08-06T18:00:00Z","stale":false,"last_success_age_seconds":0}}
+<<<<>>>>

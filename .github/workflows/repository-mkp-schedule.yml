@@ -16,7 +16,7 @@ concurrency:
 jobs:
   dispatch:
     name: Dispatch weekly full validation
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux]
     timeout-minutes: 5
 
     steps:

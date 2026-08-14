@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   guard:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux]
     timeout-minutes: 15
 
     steps:
@@ -35,6 +35,9 @@ jobs:
         run: >-
           python3 -m pip install --disable-pip-version-check
           requests==2.34.2
+
+      - name: Verify self-hosted workflow runners
+        run: python3 tools/ci/check_workflow_runners.py
 
       - name: Verify immutable workflow dependencies
         run: python3 tools/ci/pin_supply_chain.py --check

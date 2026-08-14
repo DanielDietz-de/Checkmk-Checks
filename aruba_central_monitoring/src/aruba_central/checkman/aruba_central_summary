@@ -1,0 +1,23 @@
+title: Aruba Central Collector Summary
+agents: aruba_central_aps
+catalog: hw/network/wlan
+license: GPLv2
+distribution: checkmk
+summary: Monitors Aruba Central collection, AP counts, clients, and API rate limit.
+description:
+ This service is created on the Windows collector host. The agent plug-in runs
+ {cencli show aps -v --json}, reads both standard output and standard error,
+ locates the JSON object, and separately parses the diagnostic lines {Counts}
+ and {API Rate Limit} regardless of the stream used by cencli.
+
+ The service reports total, Up, and non-Up access points; total wireless
+ clients; remaining and maximum API calls; cencli runtime; the stream carrying
+ JSON; and the age of the last successful collection. A failed collection is
+ {CRIT}. When a bounded last-known-good cache exists, AP piggyback data remains
+ available but the collector service stays {CRIT} and reports the stale age.
+
+ Configurable levels are available for remaining API calls, last successful
+ collection age, and the number of APs not Up.
+discovery:
+ One service is discovered on the collector host when a valid collector JSON
+ document is present in the {aruba_central_aps} agent section.

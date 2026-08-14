@@ -1,0 +1,9 @@
+plugins:
+  enabled: yes
+  execution:
+    - pattern: $CUSTOM_PLUGINS_PATH$\aruba_central_aps.ps1
+      async: yes
+      timeout: 90
+      cache_age: 300
+      retry_count: 2
+      description: Aruba Central AP inventory and health via cencli
