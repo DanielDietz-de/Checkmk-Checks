@@ -12,10 +12,10 @@ Use spool mode only when Hyper-V read access should run under a dedicated group 
 
 ## Install
 
-1. In the Bakery rule select **Custom Hyper-V workload collection > Dedicated gMSA spool task** (`virtualization_mode = gmsa_spool`). This deploys the collector, wrapper, and shared `s2d_hci.json` configuration but intentionally does not invent or register a service-account identity.
+1. In the Bakery rule select **Custom Hyper-V workload collection > Dedicated gMSA spool task** (`virtualization_mode = gmsa_spool`). This deploys the collector, wrapper, shared module, and shared `s2d_hci.json` configuration but intentionally does not invent or register a service-account identity.
 2. Bake and deploy the Windows agent package. Confirm that direct Hyper-V plug-in mode is not selected for the same node.
-3. Run `tools/windows/Install-S2DHciVirtualizationCollectorTask.ps1 -ServiceAccount 'DOMAIN\account$'`. Use `-DryRun` first to inspect the derived paths. The installer writes only a non-secret path configuration, grants scoped ACLs, validates those ACLs, and registers a non-elevated scheduled task.
-4. Run `tools/windows/Test-S2DHciVirtualizationCollectorIdentity.ps1` and verify the local gMSA and ACL results before enabling production monitoring.
+3. Run `tools/windows/Install-S2DHciVirtualizationCollectorTask.ps1 -ServiceAccount 'DOMAIN\account$'`. Use `-DryRun` first to inspect the derived paths. The installer requires the collector, wrapper, `bin/s2d_hci_common.psm1`, and `config/s2d_hci.json` to be present; writes only a non-secret spool path configuration; grants explicit read/execute or read rights to those runtime dependencies; grants read/execute traversal on the agent root, `bin`, and `config` directories; grants modify rights only to the spool directory; verifies the resulting NTFS rights; and registers a non-elevated scheduled task.
+4. Run `tools/windows/Test-S2DHciVirtualizationCollectorIdentity.ps1` and require `GmsaUsable`, all three traversal indicators, collector/wrapper/common-module read/execute indicators, both configuration-read indicators, and `SpoolModifyPresent` to be true before enabling production monitoring.
 
 ## Runtime safety
 
@@ -25,4 +25,4 @@ The previous spool remains untouched on every failure. The numeric spool prefix 
 
 ## Validation
 
-Run `tools/windows/Test-S2DHciVirtualizationCollectorIdentity.ps1` for the configured gMSA and confirm all expected ACL indicators plus `GmsaUsable`. Trigger the task manually, check Task Scheduler result, inspect the spool for one successful virtualization health envelope, and validate resulting VM piggyback hosts.
+Run `tools/windows/Test-S2DHciVirtualizationCollectorIdentity.ps1` for the configured gMSA and confirm every reported runtime-access indicator plus `GmsaUsable`. Trigger the task manually, check Task Scheduler result, inspect the spool for one successful virtualization health envelope, and validate resulting VM piggyback hosts.
