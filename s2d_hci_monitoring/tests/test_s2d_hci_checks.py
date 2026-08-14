@@ -78,14 +78,11 @@ def test_checkpoint_defaults_include_complete_state_policy() -> None:
     """Verify checkpoint defaults contain every required state-policy key so Checkmk 2.5 can validate the referenced ruleset."""
 
     assert set(virtualization.STATE_DEFAULTS) <= set(virtualization.CHECKPOINT_DEFAULTS)
-    assert virtualization.CHECKPOINT_DEFAULTS["levels_upper_age_hours"] == (
-        "fixed",
-        (24.0, 72.0),
-    )
+    assert virtualization.CHECKPOINT_DEFAULTS["levels_upper_age_hours"] == ("fixed", (24.0, 72.0))
 
 
 def test_healthy_storage_with_ok_operational_state_is_ok() -> None:
-    """Healthy plus OK must remain an OK storage state instead of becoming UNKNOWN when the two vendor fields are evaluated together."""
+    """Healthy plus OK must remain an OK storage state instead of becoming UNKNOWN when vendor fields are evaluated together."""
 
     section = storage.parse_s2d_hci_storage_pools(
         [_row(protocol_version=1, run_id="r", identity="pool-a", friendly_name="Pool A", health_status="Healthy", operational_status="OK")]
@@ -95,7 +92,7 @@ def test_healthy_storage_with_ok_operational_state_is_ok() -> None:
 
 
 def test_storage_health_uses_worst_independent_component_state() -> None:
-    """A healthy object with degraded operational status must report WARN while a genuinely unhealthy object must report CRIT."""
+    """A healthy object with degraded operational status must WARN while a genuinely unhealthy object must CRIT."""
 
     degraded = storage.parse_s2d_hci_storage_pools(
         [_row(protocol_version=1, run_id="r", identity="pool-a", friendly_name="Pool A", health_status="Healthy", operational_status="Degraded")]
@@ -119,3 +116,23 @@ def test_differencing_disk_warns_without_parent_path() -> None:
     result = list(virtualization.check_s2d_hci_virtualization_hard_disks("SCSI0:0", virtualization.STATE_DEFAULTS, section))[0]
     assert result.state == State.WARN
     assert "parent" in result.summary.lower()
+
+
+def test_pass_through_disk_is_not_a_vhd_metadata_failure() -> None:
+    """A valid pathless pass-through attachment must remain OK and must not require VHD metadata."""
+
+    section = virtualization.parse_s2d_hci_virtualization_hard_disks(
+        [
+            _row(
+                protocol_version=1,
+                run_id="r",
+                identity="SCSI0:1",
+                name="SCSI0:1",
+                attachment_type="pass_through",
+                disk_number=3,
+            )
+        ]
+    )
+    result = list(virtualization.check_s2d_hci_virtualization_hard_disks("SCSI0:1", virtualization.STATE_DEFAULTS, section))[0]
+    assert result.state == State.OK
+    assert "metadata unavailable" not in result.summary.lower()
