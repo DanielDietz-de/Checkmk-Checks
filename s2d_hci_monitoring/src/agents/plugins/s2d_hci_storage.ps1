@@ -11,8 +11,28 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $agentRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 Import-Module (Join-Path $agentRoot 'bin\s2d_hci_common.psm1') -Force -ErrorAction Stop
-$config = Get-S2DHciConfig -AgentRoot $agentRoot
+$configError = $null
+try {
+    $config = Get-S2DHciConfig -AgentRoot $agentRoot
+}
+catch {
+    $configError = 'Collector configuration is invalid; safe defaults are active.'
+    $config = [pscustomobject]@{
+        protocol_version = 1
+        max_records = 2000
+        max_output_bytes = 1048576
+        max_runtime_seconds = 120
+        include_addresses = $false
+        include_paths = $false
+        include_serials = $false
+        include_locations = $false
+        virtualization_enabled = $false
+    }
+}
 $context = New-S2DHciRunContext -Collector 'storage' -Config $config
+if ($configError) {
+    Add-S2DHciCollectorError -Context $context -Message $configError
+}
 $piggybackOpen = $false
 
 try {
