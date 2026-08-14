@@ -168,6 +168,7 @@ def test_virtualization_vhd_errors_respect_path_privacy_and_pass_through_disks()
     assert "$record.has_parent" in text
     assert "VHD metadata query failed; path details are redacted by policy." in text
     assert "$isPassThrough" in text
-    assert "attachment_type = if ($isPassThrough) { 'pass_through' }" in text
+    assert "$attachmentType = 'pass_through'" in text
+    assert "attachment_type = $attachmentType" in text
     assert "if (-not [string]::IsNullOrWhiteSpace($drivePath) -and (Test-S2DHciCommandAvailable -Name 'Get-VHD'))" in text
     assert "$record.vhd_error = $_.Exception.Message" not in text
