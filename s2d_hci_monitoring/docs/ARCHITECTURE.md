@@ -10,6 +10,8 @@ Each physical cluster node runs the selected read-only collectors. Cluster-wide 
 
 The elected node wraps cluster-wide sections in a Checkmk piggyback block named `s2d-cluster-<normalized-cluster-name>`. Because that name is independent of the current owner node, failover does not churn cluster monitoring identity.
 
+Storage telemetry on that logical host is restricted to Cluster Shared Volumes and objects associated with **clustered, non-primordial Storage Spaces pools**. Pool, virtual-disk, volume, and physical-disk sections do not enumerate unfiltered node-local Storage objects. This boundary prevents an elected node's operating-system, recovery, or unrelated local Storage Spaces objects from being published as if they were stable cluster resources when leadership changes.
+
 Hyper-V collection is disabled by default. When enabled, each VM is emitted to `s2d-vm-<VM GUID>`, which keeps the monitoring host stable across live migration. Host-level VMMS health stays on the physical Hyper-V host.
 
 ## Versioned protocol
@@ -32,7 +34,7 @@ Checkmk Agent Bakery also supplies a Windows plug-in timeout, providing a second
 
 ## Stable identity
 
-Storage objects use Microsoft stable IDs where available. Raw identifiers that may expose serials or paths are hashed before becoming service identity. Volumes use drive letters where present or a hashed stable identifier, with the filesystem label retained as display data. VM host identity uses the VM GUID. Per-VM objects use checkpoint IDs, NIC IDs, or controller coordinates.
+Storage objects use Microsoft stable IDs where available. Raw identifiers that may expose serials or paths are hashed before becoming service identity. Clustered volumes use a hashed Microsoft `UniqueId`/`ObjectId` (with path only as a final non-emitted identity source), while drive letters and filesystem labels remain display data. This prevents service identity from depending on the currently elected node or on a drive-letter assignment. VM host identity uses the VM GUID. Per-VM objects use checkpoint IDs, NIC IDs, or controller coordinates.
 
 ## Failure isolation
 
