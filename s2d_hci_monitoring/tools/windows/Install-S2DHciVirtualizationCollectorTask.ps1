@@ -4,8 +4,10 @@
     Install or update the least-privilege gMSA virtualization spool task.
 .DESCRIPTION
     Validates the gMSA locally, writes only non-secret path configuration,
-    grants the account read access to collector/config files and modify access
-    only to the Checkmk spool directory, and registers a non-elevated task.
+    grants the account read access to every runtime dependency and directory
+    traversal required by the collector, grants modify access only to the
+    Checkmk spool directory, verifies the resulting NTFS rights, and registers
+    a non-elevated task.
 #>
 
 [CmdletBinding(SupportsShouldProcess = $true)]
@@ -102,33 +104,43 @@ function Grant-S2DHciAcl {
 function Assert-S2DHciAclPresent {
     <#
     .SYNOPSIS
-        Verify that the expected gMSA identity is present on a resulting ACL.
+        Verify that the configured gMSA has the required effective NTFS rights.
     .DESCRIPTION
-        Reads the effective icacls text for the target path and fails when either
-        the command fails or the configured identity is absent. This verifies that
-        the installer did not silently proceed after an ACL change failure.
+        Resolves the configured identity to its SID, reads the target ACL, and
+        requires at least one allow rule for that SID containing every requested
+        FileSystemRights bit. This verifies rights rather than merely checking that
+        the account name appears in command output.
     #>
     param(
         [Parameter(Mandatory)] [string]$Path,
-        [Parameter(Mandatory)] [string]$Identity
+        [Parameter(Mandatory)] [string]$Identity,
+        [Parameter(Mandatory)] [System.Security.AccessControl.FileSystemRights]$RequiredRights
     )
 
-    $output = (& icacls.exe $Path 2>&1 | Out-String)
-    if ($LASTEXITCODE -ne 0 -or $output.IndexOf($Identity, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
-        throw "ACL verification failed for '$Identity' on '$Path'."
+    $targetSid = (New-Object System.Security.Principal.NTAccount($Identity)).Translate([System.Security.Principal.SecurityIdentifier])
+    $acl = Get-Acl -LiteralPath $Path
+    foreach ($rule in $acl.Access) {
+        if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) { continue }
+        try { $ruleSid = $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]) }
+        catch { continue }
+        if ($ruleSid.Value -ne $targetSid.Value) { continue }
+        if (($rule.FileSystemRights -band $RequiredRights) -eq $RequiredRights) { return }
     }
+    throw "ACL verification failed for '$Identity' on '$Path'; required rights: $RequiredRights."
 }
 
 $AgentRoot = [System.IO.Path]::GetFullPath($AgentRoot)
 $binRoot = Join-Path $AgentRoot 'bin'
 $configRoot = Join-Path $AgentRoot 'config'
 $spoolRoot = Join-Path $AgentRoot 'spool'
+$commonModulePath = Join-Path $binRoot 's2d_hci_common.psm1'
+$collectorConfigPath = Join-Path $configRoot 's2d_hci.json'
 $CollectorPath = Resolve-S2DHciDefaultPath -Candidate $CollectorPath -Fallback (Join-Path $binRoot 's2d_hci_virtualization.ps1')
 $WrapperPath = Resolve-S2DHciDefaultPath -Candidate $WrapperPath -Fallback (Join-Path $binRoot 's2d_hci_virtualization_spool.ps1')
 $ConfigPath = Resolve-S2DHciDefaultPath -Candidate $ConfigPath -Fallback (Join-Path $configRoot 's2d_hci_virtualization_spool.json')
 $SpoolFile = Resolve-S2DHciDefaultPath -Candidate $SpoolFile -Fallback (Join-Path $spoolRoot '600_s2d_hci_virtualization.txt')
 
-foreach ($path in @($CollectorPath, $WrapperPath, $ConfigPath, $SpoolFile)) {
+foreach ($path in @($CollectorPath, $WrapperPath, $ConfigPath, $SpoolFile, $commonModulePath, $collectorConfigPath)) {
     if (-not (Test-S2DHciPathUnderRoot -Path $path -Root $AgentRoot)) { throw "Path must remain below '$AgentRoot': $path" }
 }
 if (-not (Test-S2DHciPathUnderRoot -Path $CollectorPath -Root $binRoot)) { throw 'Collector must be deployed below the Checkmk bin directory.' }
@@ -136,7 +148,7 @@ if (-not (Test-S2DHciPathUnderRoot -Path $WrapperPath -Root $binRoot)) { throw '
 if (-not (Test-S2DHciPathUnderRoot -Path $SpoolFile -Root $spoolRoot)) { throw 'Spool file must remain below the Checkmk spool directory.' }
 
 if ($DryRun) {
-    [pscustomobject]@{ TaskName=$TaskName; ServiceAccount=$ServiceAccount; CollectorPath=$CollectorPath; WrapperPath=$WrapperPath; ConfigPath=$ConfigPath; SpoolFile=$SpoolFile; RunLevel='Limited' }
+    [pscustomobject]@{ TaskName=$TaskName; ServiceAccount=$ServiceAccount; CollectorPath=$CollectorPath; WrapperPath=$WrapperPath; CommonModulePath=$commonModulePath; CollectorConfigPath=$collectorConfigPath; ConfigPath=$ConfigPath; SpoolFile=$SpoolFile; RunLevel='Limited' }
     return
 }
 
@@ -144,7 +156,7 @@ Assert-S2DHciGmsaUsable -Identity $ServiceAccount
 foreach ($directory in @($configRoot, $spoolRoot)) {
     if (-not (Test-Path -LiteralPath $directory -PathType Container) -and $PSCmdlet.ShouldProcess($directory, 'Create directory')) { New-Item -ItemType Directory -Path $directory -Force | Out-Null }
 }
-foreach ($file in @($CollectorPath, $WrapperPath)) {
+foreach ($file in @($CollectorPath, $WrapperPath, $commonModulePath, $collectorConfigPath)) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Required file not found: $file" }
 }
 
@@ -153,11 +165,27 @@ if ($PSCmdlet.ShouldProcess($ConfigPath, 'Write non-secret spool configuration')
     $plannedConfig | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $ConfigPath -Encoding UTF8 -Force
 }
 
+# Explicit traversal is required when inheritance on the agent tree is hardened.
+foreach ($directory in @($AgentRoot, $binRoot, $configRoot)) {
+    Grant-S2DHciAcl -Path $directory -Identity $ServiceAccount -Permission '(RX)'
+}
 Grant-S2DHciAcl -Path $CollectorPath -Identity $ServiceAccount -Permission '(RX)'
 Grant-S2DHciAcl -Path $WrapperPath -Identity $ServiceAccount -Permission '(RX)'
+Grant-S2DHciAcl -Path $commonModulePath -Identity $ServiceAccount -Permission '(RX)'
+Grant-S2DHciAcl -Path $collectorConfigPath -Identity $ServiceAccount -Permission '(R)'
 Grant-S2DHciAcl -Path $ConfigPath -Identity $ServiceAccount -Permission '(R)'
 Grant-S2DHciAcl -Path $spoolRoot -Identity $ServiceAccount -Permission '(OI)(CI)(M)'
-foreach ($path in @($CollectorPath, $WrapperPath, $ConfigPath, $spoolRoot)) { Assert-S2DHciAclPresent -Path $path -Identity $ServiceAccount }
+
+foreach ($directory in @($AgentRoot, $binRoot, $configRoot)) {
+    Assert-S2DHciAclPresent -Path $directory -Identity $ServiceAccount -RequiredRights ([System.Security.AccessControl.FileSystemRights]::ReadAndExecute)
+}
+foreach ($file in @($CollectorPath, $WrapperPath, $commonModulePath)) {
+    Assert-S2DHciAclPresent -Path $file -Identity $ServiceAccount -RequiredRights ([System.Security.AccessControl.FileSystemRights]::ReadAndExecute)
+}
+foreach ($file in @($collectorConfigPath, $ConfigPath)) {
+    Assert-S2DHciAclPresent -Path $file -Identity $ServiceAccount -RequiredRights ([System.Security.AccessControl.FileSystemRights]::Read)
+}
+Assert-S2DHciAclPresent -Path $spoolRoot -Identity $ServiceAccount -RequiredRights ([System.Security.AccessControl.FileSystemRights]::Modify)
 
 $taskArgument = "-NoProfile -NonInteractive -File `"$WrapperPath`" -ConfigPath `"$ConfigPath`" -AgentRoot `"$AgentRoot`""
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $taskArgument
