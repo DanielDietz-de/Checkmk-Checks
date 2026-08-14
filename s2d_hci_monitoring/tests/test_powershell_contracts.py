@@ -23,6 +23,33 @@ def test_common_module_enforces_bounds_and_protocol() -> None:
     assert "<<<<$HostName>>>>" in text
 
 
+def test_invalid_config_is_fail_visible_with_safe_defaults() -> None:
+    """Malformed or invalid shared config must preserve health output and never leave a partially applied configuration."""
+
+    text = _read("src/agents/bin/s2d_hci_common.psm1")
+    assert "$resolved = [ordered]@{}" in text
+    assert "configuration_error" in text
+    assert "Collector configuration is invalid; safe defaults are active." in text
+    assert "$errorMessages.Add([string]$configurationError.Value)" in text
+    assert "$complete = $false" in text
+
+
+def test_sections_stream_without_dynamic_scriptblocks() -> None:
+    """Collector sections must stream records through bounded serialization rather than materializing dynamic scriptblock results."""
+
+    common = _read("src/agents/bin/s2d_hci_common.psm1")
+    assert "ValueFromPipeline = $true" in common
+    assert "Write-S2DHciSectionError" in common
+    for relative in (
+        "src/agents/plugins/s2d_hci_fast.ps1",
+        "src/agents/plugins/s2d_hci_storage.ps1",
+        "src/agents/plugins/s2d_hci_jobs.ps1",
+        "src/agents/plugins/s2d_hci_health.ps1",
+        "src/agents/plugins/s2d_hci_virtualization.ps1",
+    ):
+        assert "-ScriptBlock" not in _read(relative)
+
+
 def test_sensitive_fields_and_virtualization_default_off() -> None:
     """The committed configuration must minimize sensitive telemetry and disable custom VM collection."""
 
