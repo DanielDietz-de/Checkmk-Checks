@@ -120,10 +120,11 @@ function Get-S2DHciRegisteredConfigPath {
         Recover the spool configuration path from the existing scheduled task.
     .DESCRIPTION
         Reads the root Task Scheduler entry with the configured task name and
-        extracts exactly one -ConfigPath argument from its registered action.
-        The recovered path is canonicalized and confined to the trusted Checkmk
-        config directory. An existing task with missing, ambiguous, or untrusted
-        configuration arguments is rejected rather than overwritten blindly.
+        enumerates every -ConfigPath argument across all registered actions. The
+        task is accepted only when exactly one argument is present. The recovered
+        path is canonicalized and confined to the trusted Checkmk config directory.
+        Missing, duplicate, ambiguous, or untrusted state is rejected rather than
+        overwritten blindly.
     #>
     param(
         [Parameter(Mandatory)] [string]$TaskName,
@@ -140,13 +141,14 @@ function Get-S2DHciRegisteredConfigPath {
     foreach ($taskAction in @($existingTask.Actions)) {
         $arguments = [string]$taskAction.Arguments
         if ([string]::IsNullOrWhiteSpace($arguments)) { continue }
-        $match = [regex]::Match($arguments, '(?i)(?:^|\s)-ConfigPath\s+(?:"([^"]+)"|''([^'']+)''|(\S+))')
-        if (-not $match.Success) { continue }
-        $captured = @($match.Groups[1].Value, $match.Groups[2].Value, $match.Groups[3].Value) |
-            Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
-            Select-Object -First 1
-        if (-not [string]::IsNullOrWhiteSpace([string]$captured)) {
-            $configPaths.Add([System.IO.Path]::GetFullPath([string]$captured))
+        $argumentMatches = [regex]::Matches($arguments, '(?i)(?:^|\s)-ConfigPath\s+(?:"([^"]+)"|''([^'']+)''|(\S+))')
+        foreach ($match in $argumentMatches) {
+            $captured = @($match.Groups[1].Value, $match.Groups[2].Value, $match.Groups[3].Value) |
+                Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+                Select-Object -First 1
+            if (-not [string]::IsNullOrWhiteSpace([string]$captured)) {
+                $configPaths.Add([System.IO.Path]::GetFullPath([string]$captured))
+            }
         }
     }
 
