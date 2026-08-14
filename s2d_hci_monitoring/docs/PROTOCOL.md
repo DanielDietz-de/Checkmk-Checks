@@ -19,18 +19,21 @@ A section-level failure is represented as a JSON object with `success=false`, `s
 - source/cluster/logical-host context where applicable;
 - bounded `errors` array and UTC start/finish timestamps.
 
-A failed/incomplete/truncated run is CRIT. Invalid/malformed health envelopes are UNKNOWN. An intentionally disabled virtualization collector is OK with an explicit disabled summary.
+A failed/incomplete/truncated run is CRIT. Invalid/malformed health envelopes are UNKNOWN. An intentionally disabled virtualization collector is OK only when the health envelope confirms a successful, complete, non-truncated invocation.
 
 ## Parser invariants
 
-Server-side parsing is fail-visible:
+Server-side parsing is fail-visible and treats each section as one coherent collector snapshot:
 
 - malformed JSON => synthetic UNKNOWN service;
 - non-object JSON => synthetic UNKNOWN service;
 - unsupported/missing protocol version => synthetic UNKNOWN service;
 - missing `run_id` => synthetic UNKNOWN service;
+- a `run_id` that differs from the first valid row in the section => mismatching row rejected plus synthetic UNKNOWN mixed-run service;
 - missing stable identity => synthetic UNKNOWN service;
 - duplicate stable identity => first object retained plus synthetic UNKNOWN duplicate service;
 - `success=false` => UNKNOWN with collector error text.
 
-These invariants prevent malformed, partial, duplicate, or failed collection from being interpreted as healthy empty monitoring.
+The first valid `run_id` establishes the section snapshot. Rows from another collector invocation are never merged into that snapshot, which prevents direct/spool overlap, stale piggyback data, or overlapping runs from being interpreted as one coherent state.
+
+These invariants prevent malformed, partial, mixed-run, duplicate, or failed collection from being interpreted as healthy empty monitoring.
