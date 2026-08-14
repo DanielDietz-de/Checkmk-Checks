@@ -13,6 +13,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $script:S2DHciProtocolVersion = 1
+$script:S2DHciMaximumHealthErrors = 20
 
 function ConvertTo-S2DHciBoolean {
     <#
@@ -27,17 +28,10 @@ function ConvertTo-S2DHciBoolean {
         [Parameter(Mandatory)] [string]$Name
     )
 
-    if ($Value -is [bool]) {
-        return [bool]$Value
-    }
-
+    if ($Value -is [bool]) { return [bool]$Value }
     $text = [string]$Value
-    if ($text.Trim().ToLowerInvariant() -eq 'true') {
-        return $true
-    }
-    if ($text.Trim().ToLowerInvariant() -eq 'false') {
-        return $false
-    }
+    if ($text.Trim().ToLowerInvariant() -eq 'true') { return $true }
+    if ($text.Trim().ToLowerInvariant() -eq 'false') { return $false }
     throw "Configuration value '$Name' must be a Boolean."
 }
 
@@ -57,12 +51,8 @@ function ConvertTo-S2DHciBoundedInt {
     )
 
     $parsed = 0
-    if (-not [int]::TryParse([string]$Value, [ref]$parsed)) {
-        throw "Configuration value '$Name' must be an integer."
-    }
-    if ($parsed -lt $Minimum -or $parsed -gt $Maximum) {
-        throw "Configuration value '$Name' must be between $Minimum and $Maximum."
-    }
+    if (-not [int]::TryParse([string]$Value, [ref]$parsed)) { throw "Configuration value '$Name' must be an integer." }
+    if ($parsed -lt $Minimum -or $parsed -gt $Maximum) { throw "Configuration value '$Name' must be between $Minimum and $Maximum." }
     return $parsed
 }
 
@@ -102,22 +92,15 @@ function Get-S2DHciConfig {
         include_locations = $false
         virtualization_enabled = $false
     }
-
     $path = Join-Path $AgentRoot 'config\s2d_hci.json'
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-        return [pscustomobject]$defaults
-    }
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return [pscustomobject]$defaults }
 
     $resolved = [ordered]@{}
-    foreach ($entry in $defaults.GetEnumerator()) {
-        $resolved[$entry.Key] = $entry.Value
-    }
-
+    foreach ($entry in $defaults.GetEnumerator()) { $resolved[$entry.Key] = $entry.Value }
     try {
         $json = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($json.PSObject.Properties.Name -contains 'protocol_version') {
-            $version = ConvertTo-S2DHciBoundedInt -Value $json.protocol_version -Name 'protocol_version' -Minimum 1 -Maximum 1
-            $resolved.protocol_version = $version
+            $resolved.protocol_version = ConvertTo-S2DHciBoundedInt -Value $json.protocol_version -Name 'protocol_version' -Minimum 1 -Maximum 1
         }
         if ($json.PSObject.Properties.Name -contains 'max_records') {
             $resolved.max_records = ConvertTo-S2DHciBoundedInt -Value $json.max_records -Name 'max_records' -Minimum 1 -Maximum 5000
@@ -129,16 +112,13 @@ function Get-S2DHciConfig {
             $resolved.max_runtime_seconds = ConvertTo-S2DHciBoundedInt -Value $json.max_runtime_seconds -Name 'max_runtime_seconds' -Minimum 5 -Maximum 240
         }
         foreach ($name in @('include_addresses', 'include_paths', 'include_serials', 'include_locations', 'virtualization_enabled')) {
-            if ($json.PSObject.Properties.Name -contains $name) {
-                $resolved[$name] = ConvertTo-S2DHciBoolean -Value $json.$name -Name $name
-            }
+            if ($json.PSObject.Properties.Name -contains $name) { $resolved[$name] = ConvertTo-S2DHciBoolean -Value $json.$name -Name $name }
         }
     }
     catch {
         $defaults['configuration_error'] = 'Collector configuration is invalid; safe defaults are active.'
         return [pscustomobject]$defaults
     }
-
     return [pscustomobject]$resolved
 }
 
@@ -147,8 +127,8 @@ function New-S2DHciRunContext {
     .SYNOPSIS
         Create the mutable accounting state for one collector invocation.
     .DESCRIPTION
-        Records the run identifier, output counters, error list, role, and
-        stopwatch used to build the final collector-health envelope. A shared
+        Records the run identifier, output counters, bounded error list, role,
+        and stopwatch used to build the final collector-health envelope. A shared
         configuration error is imported immediately so the run cannot appear OK.
     #>
     param(
@@ -163,7 +143,6 @@ function New-S2DHciRunContext {
         $errorMessages.Add([string]$configurationError.Value)
         $complete = $false
     }
-
     return [pscustomobject]@{
         Collector = $Collector
         RunId = [guid]::NewGuid().Guid
@@ -171,6 +150,7 @@ function New-S2DHciRunContext {
         RecordCount = 0
         OutputBytes = 0
         ErrorMessages = $errorMessages
+        ErrorsOmitted = 0
         Truncated = $false
         Complete = $complete
         Role = 'local'
@@ -186,8 +166,9 @@ function Add-S2DHciCollectorError {
     .SYNOPSIS
         Record one bounded collector error and mark the run incomplete.
     .DESCRIPTION
-        Adds a sanitized message to the run context without terminating the
-        remaining independent sections.
+        Retains at most twenty sanitized messages and counts additional errors
+        without retaining their text. This bounds collector-health memory and
+        output even when many independent objects fail in one invocation.
     #>
     param(
         [Parameter(Mandatory)] [object]$Context,
@@ -195,10 +176,9 @@ function Add-S2DHciCollectorError {
     )
 
     $bounded = $Message.Trim()
-    if ($bounded.Length -gt 512) {
-        $bounded = $bounded.Substring(0, 512) + ' [truncated]'
-    }
-    $Context.ErrorMessages.Add($bounded)
+    if ($bounded.Length -gt 512) { $bounded = $bounded.Substring(0, 512) + ' [truncated]' }
+    if ($Context.ErrorMessages.Count -lt $script:S2DHciMaximumHealthErrors) { $Context.ErrorMessages.Add($bounded) }
+    else { $Context.ErrorsOmitted++ }
     $Context.Complete = $false
 }
 
@@ -215,13 +195,8 @@ function Add-S2DHciProtocolFields {
         [Parameter(Mandatory)] [object]$Context
     )
 
-    $ordered = [ordered]@{
-        protocol_version = $script:S2DHciProtocolVersion
-        run_id = $Context.RunId
-    }
-    foreach ($property in $InputObject.PSObject.Properties) {
-        $ordered[$property.Name] = $property.Value
-    }
+    $ordered = [ordered]@{ protocol_version = $script:S2DHciProtocolVersion; run_id = $Context.RunId }
+    foreach ($property in $InputObject.PSObject.Properties) { $ordered[$property.Name] = $property.Value }
     return [pscustomobject]$ordered
 }
 
@@ -239,26 +214,20 @@ function Write-S2DHciJsonLine {
     )
 
     if ($Context.Stopwatch.Elapsed.TotalSeconds -gt $Context.Config.max_runtime_seconds) {
-        $Context.Truncated = $true
-        $Context.Complete = $false
+        $Context.Truncated = $true; $Context.Complete = $false
         throw "Collector runtime limit of $($Context.Config.max_runtime_seconds) seconds was reached."
     }
-
     if ($Context.RecordCount -ge $Context.Config.max_records) {
-        $Context.Truncated = $true
-        $Context.Complete = $false
+        $Context.Truncated = $true; $Context.Complete = $false
         throw "Collector record limit of $($Context.Config.max_records) was reached."
     }
-
     $record = Add-S2DHciProtocolFields -InputObject $InputObject -Context $Context
     $line = $record | ConvertTo-Json -Compress -Depth 8
     $bytes = [System.Text.Encoding]::UTF8.GetByteCount($line) + 1
     if (($Context.OutputBytes + $bytes) -gt $Context.Config.max_output_bytes) {
-        $Context.Truncated = $true
-        $Context.Complete = $false
+        $Context.Truncated = $true; $Context.Complete = $false
         throw "Collector output limit of $($Context.Config.max_output_bytes) bytes was reached."
     }
-
     $Context.RecordCount++
     $Context.OutputBytes += $bytes
     Write-Output $line
@@ -282,14 +251,8 @@ function Write-S2DHciSection {
         [Parameter(ValueFromPipeline = $true)] [AllowNull()] [object]$InputObject
     )
 
-    begin {
-        Write-Output "<<<$Name>>>"
-    }
-    process {
-        if ($null -ne $InputObject) {
-            Write-S2DHciJsonLine -InputObject $InputObject -Context $Context
-        }
-    }
+    begin { Write-Output "<<<$Name>>>" }
+    process { if ($null -ne $InputObject) { Write-S2DHciJsonLine -InputObject $InputObject -Context $Context } }
 }
 
 function Write-S2DHciSectionError {
@@ -298,8 +261,8 @@ function Write-S2DHciSectionError {
         Convert one independently caught section failure into bounded telemetry.
     .DESCRIPTION
         Records the failure in collector health and attempts to emit a structured
-        error object in the affected section. If a configured output bound is
-        already exhausted, collector health remains the authoritative failure signal.
+        error object in the affected section. Both health and structured error text
+        are bounded; if record capacity is exhausted, health remains authoritative.
     #>
     param(
         [Parameter(Mandatory)] [string]$Name,
@@ -307,17 +270,14 @@ function Write-S2DHciSectionError {
         [Parameter(Mandatory)] [System.Management.Automation.ErrorRecord]$ErrorRecord
     )
 
-    Add-S2DHciCollectorError -Context $Context -Message "${Name}: $($ErrorRecord.Exception.Message)"
+    $errorMessage = ([string]$ErrorRecord.Exception.Message).Trim()
+    if ($errorMessage.Length -gt 512) { $errorMessage = $errorMessage.Substring(0, 512) + ' [truncated]' }
+    Add-S2DHciCollectorError -Context $Context -Message "${Name}: $errorMessage"
     try {
-        [pscustomobject]@{
-            section = $Name
-            success = $false
-            error = $ErrorRecord.Exception.Message
-        } | Write-S2DHciSection -Name $Name -Context $Context
+        [pscustomobject]@{ section = $Name; success = $false; error = $errorMessage } |
+            Write-S2DHciSection -Name $Name -Context $Context
     }
-    catch {
-        # Collector health remains available even when no record capacity remains.
-    }
+    catch { }
 }
 
 function ConvertTo-S2DHciHostName {
@@ -326,16 +286,13 @@ function ConvertTo-S2DHciHostName {
         Convert an arbitrary source name into a conservative piggyback host name.
     .DESCRIPTION
         Lowercases the name, replaces unsupported characters with hyphens, and
-        removes leading or trailing separators while preserving deterministic
-        identity.
+        removes leading or trailing separators while preserving deterministic identity.
     #>
     param([Parameter(Mandatory)] [string]$Value)
 
     $normalized = ($Value.ToLowerInvariant() -replace '[^a-z0-9_.-]', '-')
     $normalized = ($normalized -replace '-+', '-').Trim('-', '.')
-    if ([string]::IsNullOrWhiteSpace($normalized)) {
-        throw 'Cannot derive an empty piggyback host name.'
-    }
+    if ([string]::IsNullOrWhiteSpace($normalized)) { throw 'Cannot derive an empty piggyback host name.' }
     return $normalized
 }
 
@@ -345,8 +302,7 @@ function Get-S2DHciStableHash {
         Return a short deterministic SHA-256 identifier for a sensitive value.
     .DESCRIPTION
         Hashes a stable source identifier and returns the first 16 hexadecimal
-        characters so service identities remain deterministic without exposing
-        raw paths, serial numbers, or vendor identifiers.
+        characters so service identities remain deterministic without exposing raw values.
     #>
     param([Parameter(Mandatory)] [string]$Value)
 
@@ -356,9 +312,7 @@ function Get-S2DHciStableHash {
         $digest = $sha.ComputeHash($bytes)
         return (($digest | ForEach-Object { $_.ToString('x2') }) -join '').Substring(0, 16)
     }
-    finally {
-        $sha.Dispose()
-    }
+    finally { $sha.Dispose() }
 }
 
 function Get-S2DHciClusterContext {
@@ -367,33 +321,20 @@ function Get-S2DHciClusterContext {
         Determine cluster identity, deterministic leader, and logical host name.
     .DESCRIPTION
         Elects the alphabetically first currently-Up cluster node. Every node
-        computes the same result, so only one node emits cluster-wide sections
-        without requiring a mutable coordination service.
+        computes the same result, so only one emits cluster-wide sections.
     #>
     param([Parameter(Mandatory)] [object]$Context)
 
     $cluster = Get-Cluster -ErrorAction Stop
-    $upNodes = @(Get-ClusterNode -ErrorAction Stop | Where-Object {
-        $_.State.ToString().ToLowerInvariant() -eq 'up'
-    } | Sort-Object Name)
-    if ($upNodes.Count -eq 0) {
-        throw 'No Up cluster node is available for collector election.'
-    }
-
+    $upNodes = @(Get-ClusterNode -ErrorAction Stop | Where-Object { $_.State.ToString().ToLowerInvariant() -eq 'up' } | Sort-Object Name)
+    if ($upNodes.Count -eq 0) { throw 'No Up cluster node is available for collector election.' }
     $current = $env:COMPUTERNAME.Split('.')[0]
     $leader = [string]$upNodes[0].Name
     $logicalHost = ConvertTo-S2DHciHostName -Value ("s2d-cluster-" + [string]$cluster.Name)
     $Context.ClusterName = [string]$cluster.Name
     $Context.LogicalHost = $logicalHost
     $Context.Role = if ($current.Equals($leader.Split('.')[0], [System.StringComparison]::OrdinalIgnoreCase)) { 'leader' } else { 'standby' }
-
-    return [pscustomobject]@{
-        ClusterName = [string]$cluster.Name
-        Leader = $leader
-        CurrentNode = $current
-        LogicalHost = $logicalHost
-        IsLeader = ($Context.Role -eq 'leader')
-    }
+    return [pscustomobject]@{ ClusterName=[string]$cluster.Name; Leader=$leader; CurrentNode=$current; LogicalHost=$logicalHost; IsLeader=($Context.Role -eq 'leader') }
 }
 
 function Start-S2DHciPiggyback {
@@ -401,11 +342,9 @@ function Start-S2DHciPiggyback {
     .SYNOPSIS
         Begin a Checkmk piggyback block for one logical host.
     .DESCRIPTION
-        Emits the canonical opening marker used by Checkmk to attribute the
-        following sections to a stable logical host.
+        Emits the canonical opening marker used by Checkmk to attribute the following sections.
     #>
     param([Parameter(Mandatory)] [string]$HostName)
-
     Write-Output "<<<<$HostName>>>>"
 }
 
@@ -414,11 +353,9 @@ function Stop-S2DHciPiggyback {
     .SYNOPSIS
         Close the active Checkmk piggyback block.
     .DESCRIPTION
-        Emits the canonical empty-host marker so subsequent collector-health
-        output belongs to the physical source node.
+        Emits the canonical empty-host marker so subsequent health output belongs to the source node.
     #>
     param()
-
     Write-Output '<<<<>>>>'
 }
 
@@ -427,9 +364,8 @@ function Write-S2DHciCollectorHealth {
     .SYNOPSIS
         Emit the final explicit collector-health service record.
     .DESCRIPTION
-        Closes run accounting, exposes protocol version, role, bounds, errors,
-        and completion state, and therefore prevents failed or partial runs
-        from silently appearing as empty monitoring data.
+        Closes run accounting and exposes protocol version, role, bounds,
+        bounded errors, omitted-error count, and completion state.
     #>
     param([Parameter(Mandatory)] [object]$Context)
 
@@ -439,7 +375,7 @@ function Write-S2DHciCollectorHealth {
         protocol_version = $script:S2DHciProtocolVersion
         run_id = $Context.RunId
         collector = $Context.Collector
-        success = ($Context.ErrorMessages.Count -eq 0 -and -not $Context.Truncated)
+        success = ($Context.ErrorMessages.Count -eq 0 -and $Context.ErrorsOmitted -eq 0 -and -not $Context.Truncated)
         complete = [bool]$Context.Complete
         truncated = [bool]$Context.Truncated
         record_count = [int]$Context.RecordCount
@@ -448,31 +384,19 @@ function Write-S2DHciCollectorHealth {
         max_output_bytes = [int]$Context.Config.max_output_bytes
         max_runtime_seconds = [int]$Context.Config.max_runtime_seconds
         elapsed_ms = [int64]$Context.Stopwatch.ElapsedMilliseconds
-        role = [string]$Context.Role
+        role = $Context.Role
         cluster_name = $Context.ClusterName
         logical_host = $Context.LogicalHost
-        source_host = $env:COMPUTERNAME
         errors = @($Context.ErrorMessages)
-        started_at = $Context.Started.ToString('o')
-        finished_at = [DateTime]::UtcNow.ToString('o')
+        errors_omitted = [int]$Context.ErrorsOmitted
+        started_utc = $Context.Started.ToString('o')
+        finished_utc = [DateTime]::UtcNow.ToString('o')
     }
-    $health | ConvertTo-Json -Compress -Depth 6
+    Write-Output ($health | ConvertTo-Json -Compress -Depth 8)
 }
 
 Export-ModuleMember -Function @(
-    'ConvertTo-S2DHciBoolean',
-    'ConvertTo-S2DHciBoundedInt',
-    'Get-S2DHciAgentRoot',
-    'Get-S2DHciConfig',
-    'New-S2DHciRunContext',
-    'Add-S2DHciCollectorError',
-    'Write-S2DHciJsonLine',
-    'Write-S2DHciSection',
-    'Write-S2DHciSectionError',
-    'ConvertTo-S2DHciHostName',
-    'Get-S2DHciStableHash',
-    'Get-S2DHciClusterContext',
-    'Start-S2DHciPiggyback',
-    'Stop-S2DHciPiggyback',
-    'Write-S2DHciCollectorHealth'
+    'Get-S2DHciAgentRoot','Get-S2DHciConfig','New-S2DHciRunContext','Add-S2DHciCollectorError',
+    'Write-S2DHciJsonLine','Write-S2DHciSection','Write-S2DHciSectionError','Get-S2DHciStableHash',
+    'Get-S2DHciClusterContext','Start-S2DHciPiggyback','Stop-S2DHciPiggyback','Write-S2DHciCollectorHealth'
 )
