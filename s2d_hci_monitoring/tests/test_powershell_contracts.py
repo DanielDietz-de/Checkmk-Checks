@@ -63,7 +63,7 @@ def test_sections_stream_without_dynamic_scriptblocks() -> None:
 def test_sensitive_fields_and_virtualization_default_off() -> None:
     """The committed configuration must minimize sensitive telemetry and disable custom VM collection."""
 
-    text = _read("src/agents/config/s2d_hci.json").read_text(encoding="utf-8").lower() if False else _read("src/agents/config/s2d_hci.json").lower()
+    text = _read("src/agents/config/s2d_hci.json").lower()
     for key in ("include_addresses", "include_paths", "include_serials", "include_locations", "virtualization_enabled"):
         assert f'"{key}": false' in text
 
