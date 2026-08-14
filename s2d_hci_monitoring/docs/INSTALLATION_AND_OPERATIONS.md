@@ -1,44 +1,65 @@
 # Installation and operations
 
-## Preferred deployment: Agent Bakery
+## Prerequisites
 
-1. Install and enable the validated `s2d_hci_monitoring` MKP on Checkmk 2.5.
-2. Create an `S2D/HCI monitoring collectors` Agent Bakery rule scoped only to intended Windows cluster nodes.
-3. Keep sensitive fields and custom Hyper-V collection disabled unless operationally required.
-4. Bake/sign/deploy the Windows agent according to the site's normal change process.
-5. Inspect raw agent output and verify `s2d_hci_collector_health` on every target node.
-6. Create/discover the logical `s2d-cluster-*` piggyback host and, if Hyper-V collection is enabled, the `s2d-vm-<guid>` piggyback hosts according to site policy.
-7. Rediscover services and validate expected state transitions.
+- Checkmk 2.5.x;
+- Windows PowerShell 5.1 or newer on monitored nodes;
+- `FailoverClusters` for cluster collectors;
+- `Storage` for storage collectors;
+- `Hyper-V` only when custom workload collection is enabled;
+- enough agent runtime for the selected bounded collector timeout.
+
+## Recommended deployment: Agent Bakery
+
+Create the Agent Bakery rule **S2D/HCI monitoring collectors** and scope it only to intended Windows cluster nodes.
+
+Cluster/storage collectors may be enabled independently. Custom Hyper-V collection is controlled by the mutually exclusive `virtualization_mode` setting:
+
+- `disabled` — default; no custom Hyper-V collector;
+- `direct` — normal Checkmk Windows agent plug-in;
+- `gmsa_spool` — collector and fail-safe wrapper are delivered as support binaries for a separately registered gMSA task.
+
+The Bakery deploys timed collectors using Checkmk's normal cached plug-in layout. Depending on the agent/runtime path, a collector can therefore execute from either `agent\plugins` or `agent\plugins\<interval>`. Every packaged collector normalizes both layouts back to the real Checkmk agent root before importing `bin\s2d_hci_common.psm1` or reading `config\s2d_hci.json`; interval caching must not change configuration or module resolution.
+
+After baking and installing the agent, re-run service discovery on:
+
+1. physical cluster nodes for collector-health and local host services;
+2. the generated `s2d-cluster-<cluster>` piggyback host;
+3. generated `s2d-vm-<VM GUID>` piggyback hosts only when custom Hyper-V collection is enabled.
 
 ## Manual deployment
 
-Use only when Bakery is unavailable. Copy the manifest-owned agent files from `src/agents` to the matching Checkmk agent directories. Direct plug-ins require `bin/s2d_hci_common.psm1`. Place a reviewed `config/s2d_hci.json` in the agent configuration directory. Do not copy files outside the package manifest or use broad synchronization with delete semantics.
+For controlled/manual installations, copy the package files from `src/` to the corresponding Checkmk Windows agent paths. Direct plug-ins may execute from the normal `plugins` directory; the same bootstrap logic also supports Checkmk-created one-level cached interval directories below `plugins`.
 
-## Operational checks
+At minimum, direct collectors require:
 
-For every physical node, verify collector-health services. For cluster-wide data, verify only the elected node emits the `s2d-cluster-*` piggyback block. During failover, the elected source may change but the logical piggyback host must remain unchanged.
+- the selected plug-in scripts;
+- `bin/s2d_hci_common.psm1`;
+- `config/s2d_hci.json`.
 
-When a collector approaches configured limits, investigate object counts and cmdlet latency before increasing limits. Do not make limits unbounded.
+Prefer Bakery deployment so interval, timeout, privacy, and mode settings remain centrally reproducible.
 
-## Hyper-V
+## gMSA spool mode
 
-Custom Hyper-V monitoring is opt-in because Checkmk may already monitor VMs through other mechanisms. The Bakery field `virtualization_mode` has three explicit values: `disabled` (default), `direct`, and `gmsa_spool`. Choose exactly one mode. Never run direct and spool collection for the same node because duplicate sections are ambiguous.
+The Bakery does not register a scheduled task because the gMSA identity is environment-specific. After support files are deployed, use `tools/windows/Install-S2DHciVirtualizationCollectorTask.ps1`, starting with `-DryRun`. Validate the account and runtime ACL contract with `tools/windows/Test-S2DHciVirtualizationCollectorIdentity.ps1`.
 
-`direct` deploys the virtualization collector as a normal Checkmk Windows agent plug-in. `gmsa_spool` deploys the collector and wrapper as support binaries and sets `virtualization_enabled=true`; the operator must then register the host-specific scheduled task with `tools/windows/Install-S2DHciVirtualizationCollectorTask.ps1`.
+The task installer confines collector/wrapper paths to the agent `bin` tree, spool configuration to `config`, and output to `spool`. An existing task's registered `ConfigPath` is immutable for in-place updates; use the remove/reinstall lifecycle documented in [gMSA spool collector](GMSA_SPOOL_COLLECTOR.md) when that path must change.
 
-## Upgrade
+Do not enable direct and gMSA-spool virtualization collection on the same node.
 
-1. Review CHANGELOG and manifest changes.
-2. Build/verify the new MKP and evidence.
-3. Test on representative non-production nodes.
-4. Update the package and rebake agents.
-5. Verify protocol health, discovery, thresholds, and piggyback identity.
-6. Record production acceptance evidence.
+## Operational checks after deployment
 
-## Rollback
+- Confirm every physical collector reports one `S2D/HCI collector health` service.
+- Confirm only the elected cluster node emits cluster-wide piggyback sections.
+- Confirm healthy cluster/storage objects remain OK and failed or unavailable commands are visible as UNKNOWN/CRIT rather than disappearing.
+- Confirm custom Hyper-V data appears only when explicitly enabled.
+- Confirm sensitive addresses, paths, serials, and physical locations remain absent unless their corresponding settings are enabled.
+- For gMSA mode, confirm the scheduled task result, the configured spool lifetime/path, runtime identity validation, and exactly one active package spool snapshot.
 
-Reinstall the previously validated MKP and rebake/redeploy its agent package. If gMSA spool mode changed, restore the previous reviewed binaries/configuration and verify the task identity. Never reuse an MKP whose checksum or provenance cannot be verified.
+## Troubleshooting
 
-## Removal
+If cluster-wide services disappear, inspect the physical collector-health service first. Startup/module/configuration failures are expected to surface there even when object sections cannot be collected.
 
-Remove the Bakery rule, rebake/redeploy agents, remove the Checkmk package, and rediscover services. For manually installed gMSA tasks use `tools/windows/Remove-S2DHciVirtualizationCollectorTask.ps1`; generated spool/config state is removed only with the explicit `-RemoveGeneratedState` switch.
+If a Bakery-timed collector reports missing `plugins\bin\s2d_hci_common.psm1` or reads configuration below `plugins\config`, verify that the deployed script is from the current package: cached interval execution must normalize `plugins\<interval>` back to the agent root.
+
+If gMSA spool data becomes stale, inspect Task Scheduler, run the identity validator, check the generated spool config, and verify that no superseded `*_s2d_hci_virtualization.txt` file remains after an interval/path update.
