@@ -3,11 +3,12 @@
 .SYNOPSIS
     Remove the S2D/HCI gMSA scheduled task and optional generated state.
 .DESCRIPTION
-    Removes only the named task and, when explicitly requested, reads the current
-    generated spool configuration before removing it, deletes that configured
-    spool snapshot plus any package-standard derived-lifetime snapshots, and then
-    removes the configuration. Packaged collector files are left to the Checkmk
-    agent package lifecycle. Every mutation honors ShouldProcess.
+    Removes only the named root task and, when explicitly requested, first
+    recovers and validates the task's registered ConfigPath while the task still
+    exists, reads the current generated spool configuration, enumerates generated
+    spool snapshots, and only then unregisters the task and removes the validated
+    generated state. Packaged collector files are left to the Checkmk agent package
+    lifecycle. Every mutation honors ShouldProcess.
 #>
 
 [CmdletBinding(SupportsShouldProcess = $true)]
@@ -37,6 +38,52 @@ function Test-S2DHciPathUnderRoot {
     $fullPath = [System.IO.Path]::GetFullPath($Path)
     $fullRoot = [System.IO.Path]::GetFullPath($Root).TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
     return $fullPath.StartsWith($fullRoot, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Get-S2DHciRegisteredConfigPath {
+    <#
+    .SYNOPSIS
+        Recover the spool configuration path from the existing root task.
+    .DESCRIPTION
+        Reads the named root scheduled task and enumerates every -ConfigPath
+        argument across all actions. Exactly one occurrence is required. The path
+        is canonicalized and confined to the trusted Checkmk config directory so
+        generated-state removal never follows ambiguous or untrusted task state.
+    #>
+    param(
+        [Parameter(Mandatory)] [string]$TaskName,
+        [Parameter(Mandatory)] [string]$ConfigRoot
+    )
+
+    $existingTask = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction SilentlyContinue
+    if ($null -eq $existingTask) { return $null }
+    if (@($existingTask).Count -ne 1) {
+        throw "Expected exactly one root scheduled task named '$TaskName'; inspect ambiguous task state before removal."
+    }
+
+    $configPaths = [System.Collections.Generic.List[string]]::new()
+    foreach ($taskAction in @($existingTask.Actions)) {
+        $arguments = [string]$taskAction.Arguments
+        if ([string]::IsNullOrWhiteSpace($arguments)) { continue }
+        $argumentMatches = [regex]::Matches($arguments, '(?i)(?:^|\s)-ConfigPath\s+(?:"([^"]+)"|''([^'']+)''|(\S+))')
+        foreach ($match in $argumentMatches) {
+            $captured = @($match.Groups[1].Value, $match.Groups[2].Value, $match.Groups[3].Value) |
+                Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+                Select-Object -First 1
+            if (-not [string]::IsNullOrWhiteSpace([string]$captured)) {
+                $configPaths.Add([System.IO.Path]::GetFullPath([string]$captured))
+            }
+        }
+    }
+
+    if ($configPaths.Count -ne 1) {
+        throw "Existing scheduled task '$TaskName' does not expose exactly one recoverable -ConfigPath; inspect or repair it before generated-state removal."
+    }
+    $registered = $configPaths[0]
+    if (-not (Test-S2DHciPathUnderRoot -Path $registered -Root $ConfigRoot)) {
+        throw "Existing scheduled task '$TaskName' references a configuration path outside the trusted config directory: $registered"
+    }
+    return $registered
 }
 
 function Read-S2DHciConfiguredSpoolFile {
@@ -81,26 +128,37 @@ function Remove-S2DHciFileIfPresent {
     if (Test-Path -LiteralPath $Path -PathType Leaf) { Remove-Item -LiteralPath $Path -Force }
 }
 
-if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
-    if ($PSCmdlet.ShouldProcess($TaskName, 'Unregister scheduled task')) {
-        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
-    }
-}
+$root = [System.IO.Path]::GetFullPath($AgentRoot)
+$configRoot = Join-Path $root 'config'
+$spoolRoot = Join-Path $root 'spool'
+$registeredConfigPath = $null
+$configuredSpoolFile = $null
+$spoolFiles = New-Object 'System.Collections.Generic.List[string]'
 
+# Resolve and validate every generated-state dependency before unregistering the
+# task. If recovery fails, the live task remains intact and the operator can
+# inspect/repair its state without an orphaned custom configuration.
 if ($RemoveGeneratedState) {
-    $root = [System.IO.Path]::GetFullPath($AgentRoot)
-    $configRoot = Join-Path $root 'config'
-    $spoolRoot = Join-Path $root 'spool'
+    $registeredConfigPath = Get-S2DHciRegisteredConfigPath -TaskName $TaskName -ConfigRoot $configRoot
     if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
-        $ConfigPath = Join-Path $configRoot 's2d_hci_virtualization_spool.json'
+        $ConfigPath = if ($null -ne $registeredConfigPath) {
+            $registeredConfigPath
+        } else {
+            Join-Path $configRoot 's2d_hci_virtualization_spool.json'
+        }
     }
     $ConfigPath = [System.IO.Path]::GetFullPath($ConfigPath)
     if (-not (Test-S2DHciPathUnderRoot -Path $ConfigPath -Root $configRoot)) {
         throw "Generated spool configuration must remain below '$configRoot': $ConfigPath"
     }
+    if ($null -ne $registeredConfigPath -and -not $registeredConfigPath.Equals($ConfigPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Existing scheduled task '$TaskName' uses ConfigPath '$registeredConfigPath', not '$ConfigPath'. Remove generated state using the registered path or omit -ConfigPath."
+    }
+    if ($null -ne $registeredConfigPath -and -not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
+        throw "Existing scheduled task '$TaskName' references missing configuration '$ConfigPath'; inspect or repair it before generated-state removal."
+    }
 
     $configuredSpoolFile = Read-S2DHciConfiguredSpoolFile -Path $ConfigPath -SpoolRoot $spoolRoot
-    $spoolFiles = New-Object 'System.Collections.Generic.List[string]'
     if ($null -ne $configuredSpoolFile) { $spoolFiles.Add($configuredSpoolFile) }
 
     if (Test-Path -LiteralPath $spoolRoot -PathType Container) {
@@ -111,7 +169,19 @@ if ($RemoveGeneratedState) {
             if (Test-S2DHciPathUnderRoot -Path $candidate -Root $spoolRoot) { $spoolFiles.Add($candidate) }
         }
     }
+}
 
+$existingTask = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction SilentlyContinue
+if ($null -ne $existingTask) {
+    if (@($existingTask).Count -ne 1) {
+        throw "Expected exactly one root scheduled task named '$TaskName'; inspect ambiguous task state before removal."
+    }
+    if ($PSCmdlet.ShouldProcess($TaskName, 'Unregister scheduled task')) {
+        Unregister-ScheduledTask -TaskName $TaskName -TaskPath '\' -Confirm:$false
+    }
+}
+
+if ($RemoveGeneratedState) {
     foreach ($path in @($spoolFiles | Sort-Object -Unique)) {
         if ($PSCmdlet.ShouldProcess($path, 'Remove generated virtualization spool snapshot')) {
             Remove-S2DHciFileIfPresent -Path $path
