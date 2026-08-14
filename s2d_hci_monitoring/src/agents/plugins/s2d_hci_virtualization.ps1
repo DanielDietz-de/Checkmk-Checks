@@ -53,7 +53,8 @@ function Write-S2DHciVmSections {
         replication, checkpoint, NIC, and disk records through bounded section
         writers, and converts independent query failures into explicit telemetry.
         If a record or byte bound truncates the run, the function stops before
-        emitting any further section or VM framing.
+        emitting any further section or VM framing; a truncation exception does
+        not trigger a second error-section header.
     #>
     param(
         [Parameter(Mandatory)] [object]$Vm,
@@ -87,7 +88,9 @@ function Write-S2DHciVmSections {
             if ($CollectorConfig.include_paths) { $record.path = [string]$Vm.Path }
             [pscustomobject]$record | Write-S2DHciSection -Name $sectionName -Context $RunContext
         }
-        catch { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
+        catch {
+            if (-not $RunContext.Truncated) { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
+        }
         if ($RunContext.Truncated) { return }
 
         $sectionName = 's2d_hci_virtualization_services'
@@ -101,7 +104,9 @@ function Write-S2DHciVmSections {
                 }
             } | Write-S2DHciSection -Name $sectionName -Context $RunContext
         }
-        catch { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
+        catch {
+            if (-not $RunContext.Truncated) { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
+        }
         if ($RunContext.Truncated) { return }
 
         $sectionName = 's2d_hci_virtualization_replication'
@@ -128,7 +133,9 @@ function Write-S2DHciVmSections {
                 } | Write-S2DHciSection -Name $sectionName -Context $RunContext
             }
         }
-        catch { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
+        catch {
+            if (-not $RunContext.Truncated) { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
+        }
         if ($RunContext.Truncated) { return }
 
         $sectionName = 's2d_hci_virtualization_checkpoints'
@@ -142,7 +149,9 @@ function Write-S2DHciVmSections {
                 }
             } | Write-S2DHciSection -Name $sectionName -Context $RunContext
         }
-        catch { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
+        catch {
+            if (-not $RunContext.Truncated) { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
+        }
         if ($RunContext.Truncated) { return }
 
         $sectionName = 's2d_hci_virtualization_network_adapters'
@@ -162,7 +171,9 @@ function Write-S2DHciVmSections {
                 [pscustomobject]$record
             } | Write-S2DHciSection -Name $sectionName -Context $RunContext
         }
-        catch { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
+        catch {
+            if (-not $RunContext.Truncated) { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
+        }
         if ($RunContext.Truncated) { return }
 
         $sectionName = 's2d_hci_virtualization_hard_disks'
@@ -211,7 +222,9 @@ function Write-S2DHciVmSections {
                 [pscustomobject]$record
             } | Write-S2DHciSection -Name $sectionName -Context $RunContext
         }
-        catch { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
+        catch {
+            if (-not $RunContext.Truncated) { Write-S2DHciSectionError -Name $sectionName -Context $RunContext -ErrorRecord $_ }
+        }
     }
     finally { Stop-S2DHciPiggyback }
 }
@@ -230,7 +243,9 @@ try {
                 module_available = $true
             } | Write-S2DHciSection -Name $sectionName -Context $context
         }
-        catch { Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_ }
+        catch {
+            if (-not $context.Truncated) { Write-S2DHciSectionError -Name $sectionName -Context $context -ErrorRecord $_ }
+        }
 
         Get-VM -ErrorAction Stop | Sort-Object VMId | ForEach-Object {
             if (-not $context.Truncated) {
