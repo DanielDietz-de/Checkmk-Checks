@@ -161,13 +161,20 @@ function Write-S2DHciVmSections {
                 $drive = $_
                 $drivePath = [string]$drive.Path
                 $isPassThrough = [string]::IsNullOrWhiteSpace($drivePath) -and $null -ne $drive.DiskNumber
+                $attachmentType = 'unknown'
+                if ($isPassThrough) {
+                    $attachmentType = 'pass_through'
+                }
+                elseif (-not [string]::IsNullOrWhiteSpace($drivePath)) {
+                    $attachmentType = 'vhd'
+                }
                 $record = [ordered]@{
                     identity = "$($drive.ControllerType)$($drive.ControllerNumber):$($drive.ControllerLocation)"
                     controller_type = $drive.ControllerType.ToString()
                     controller_number = $drive.ControllerNumber
                     controller_location = $drive.ControllerLocation
                     disk_number = $drive.DiskNumber
-                    attachment_type = if ($isPassThrough) { 'pass_through' } elseif (-not [string]::IsNullOrWhiteSpace($drivePath)) { 'vhd' } else { 'unknown' }
+                    attachment_type = $attachmentType
                 }
 
                 if (-not [string]::IsNullOrWhiteSpace($drivePath) -and (Test-S2DHciCommandAvailable -Name 'Get-VHD')) {
