@@ -16,6 +16,10 @@ import re
 import sys
 
 RUNS_ON_RE = re.compile(r"^(?P<indent>\s*)runs-on:\s*(?P<value>.*)$")
+UNSUPPORTED_RUNS_ON_KEY_RE = re.compile(
+    r"(?:^|[,{?])\s*(?:[\"']runs-on[\"']|runs-on)\s*:",
+    re.IGNORECASE,
+)
 SELF_HOSTED_RE = re.compile(r"(?<![A-Za-z0-9_-])self-hosted(?![A-Za-z0-9_-])", re.IGNORECASE)
 LINUX_RE = re.compile(r"(?<![A-Za-z0-9_-])linux(?![A-Za-z0-9_-])", re.IGNORECASE)
 GITHUB_HOSTED_RE = re.compile(
@@ -90,6 +94,21 @@ def _runs_on_blocks(text: str) -> list[tuple[int, str]]:
     return blocks
 
 
+def _unsupported_runs_on_lines(text: str) -> list[int]:
+    """Find alternate YAML key forms that the restricted selector parser rejects."""
+
+    unsupported: list[int] = []
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        if raw_line.lstrip().startswith("#"):
+            continue
+        line = _without_yaml_comment(raw_line)
+        if not line or RUNS_ON_RE.match(line):
+            continue
+        if UNSUPPORTED_RUNS_ON_KEY_RE.search(line):
+            unsupported.append(line_number)
+    return unsupported
+
+
 def _hosted_labels(block: str) -> list[str]:
     """Return normalized GitHub-hosted labels referenced by one runner selector."""
 
@@ -133,6 +152,12 @@ def validate_workflow_runners(root: Path) -> list[str]:
             errors.append(f"{relative}: cannot read workflow: {exc}")
             continue
 
+        for line_number in _unsupported_runs_on_lines(text):
+            errors.append(
+                f"{relative}:{line_number}: unsupported runs-on key syntax; use the "
+                "canonical unquoted block key so runner policy can be verified"
+            )
+
         for line_number, block in _runs_on_blocks(text):
             labels = _hosted_labels(block)
             if labels:
@@ -169,8 +194,6 @@ def validate_workflow_runners(root: Path) -> list[str]:
                     f"both self-hosted and linux labels; missing {', '.join(missing)}"
                 )
 
-    # A configured exception must remain exact if that workflow is present. This catches
-    # a workflow silently switching to a dynamic or otherwise unrecognized selector.
     present = {path.relative_to(root).as_posix() for path in workflow_files(root)}
     for relative in sorted(set(GITHUB_HOSTED_EXCEPTIONS) & present):
         if relative not in seen_exception_workflows:
