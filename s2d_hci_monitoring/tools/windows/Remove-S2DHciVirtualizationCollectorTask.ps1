@@ -3,12 +3,12 @@
 .SYNOPSIS
     Remove the S2D/HCI gMSA scheduled task and optional generated state.
 .DESCRIPTION
-    Removes only the named root task and, when explicitly requested, first
-    recovers and validates the task's registered ConfigPath while the task still
-    exists, reads the current generated spool configuration, enumerates generated
-    spool snapshots, and only then unregisters the task and removes the validated
-    generated state. Packaged collector files are left to the Checkmk agent package
-    lifecycle. Every mutation honors ShouldProcess.
+    Recovers and validates generated state while the task still exists, quiesces
+    the existing publisher by preventing new triggers and stopping all running
+    instances, unregisters only the named root task, and, when explicitly
+    requested, removes only validated generated spool/configuration state.
+    Packaged collector files are left to the Checkmk agent package lifecycle.
+    Every mutation honors ShouldProcess.
 #>
 
 [CmdletBinding(SupportsShouldProcess = $true)]
@@ -86,6 +86,43 @@ function Get-S2DHciRegisteredConfigPath {
     return $registered
 }
 
+function Stop-S2DHciScheduledTaskPublisher {
+    <#
+    .SYNOPSIS
+        Quiesce the scheduled collector before unregistering or deleting state.
+    .DESCRIPTION
+        Disables the root task so no new trigger can start, stops all currently
+        running task instances, and verifies a bounded transition out of Running.
+        If a later removal step fails, the remaining task stays disabled so a stale
+        publisher cannot recreate generated state that was already selected for
+        deletion.
+    #>
+    param(
+        [Parameter(Mandatory)] [string]$TaskName,
+        [ValidateRange(1, 120)] [int]$TimeoutSeconds = 30
+    )
+
+    $existingTask = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction Stop
+    if (@($existingTask).Count -ne 1) {
+        throw "Expected exactly one root scheduled task named '$TaskName' while quiescing removal."
+    }
+
+    Disable-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction Stop | Out-Null
+    Stop-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction Stop | Out-Null
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $currentTask = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction Stop
+        if (@($currentTask).Count -ne 1) {
+            throw "Scheduled task '$TaskName' became ambiguous while waiting for it to stop."
+        }
+        if ([string]$currentTask.State -ne 'Running') { return }
+        Start-Sleep -Milliseconds 250
+    } while ([DateTime]::UtcNow -lt $deadline)
+
+    throw "Scheduled task '$TaskName' did not stop within $TimeoutSeconds seconds; task and generated state were not removed."
+}
+
 function Read-S2DHciConfiguredSpoolFile {
     <#
     .SYNOPSIS
@@ -135,9 +172,9 @@ $registeredConfigPath = $null
 $configuredSpoolFile = $null
 $spoolFiles = New-Object 'System.Collections.Generic.List[string]'
 
-# Resolve and validate every generated-state dependency before unregistering the
-# task. If recovery fails, the live task remains intact and the operator can
-# inspect/repair its state without an orphaned custom configuration.
+# Resolve and validate every generated-state dependency before stopping or
+# unregistering the task. If recovery fails, the live task remains untouched and
+# the operator can inspect/repair its state without orphaned custom configuration.
 if ($RemoveGeneratedState) {
     $registeredConfigPath = Get-S2DHciRegisteredConfigPath -TaskName $TaskName -ConfigRoot $configRoot
     if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
@@ -175,6 +212,9 @@ $existingTask = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction
 if ($null -ne $existingTask) {
     if (@($existingTask).Count -ne 1) {
         throw "Expected exactly one root scheduled task named '$TaskName'; inspect ambiguous task state before removal."
+    }
+    if ($PSCmdlet.ShouldProcess($TaskName, 'Quiesce scheduled collector before removal')) {
+        Stop-S2DHciScheduledTaskPublisher -TaskName $TaskName
     }
     if ($PSCmdlet.ShouldProcess($TaskName, 'Unregister scheduled task')) {
         Unregister-ScheduledTask -TaskName $TaskName -TaskPath '\' -Confirm:$false
