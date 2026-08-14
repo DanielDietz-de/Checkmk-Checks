@@ -198,6 +198,23 @@ def test_radio_service_keys_preserve_normalized_name_collisions(monkeypatch):
     assert section.access_point.radios["Radio_5_GHz_1"].index == 1
 
 
+def test_radio_service_fallback_key_is_rechecked_until_unique(monkeypatch):
+    plugin = _load(monkeypatch)
+    payload = _ap_payload()
+    payload["ap"]["radios"] = [
+        {"index": 0, "radio_name": "A", "status": "Up"},
+        {"index": 2, "radio_name": "A_0", "status": "Up"},
+        {"index": 0, "radio_name": "A", "status": "Up"},
+    ]
+    section = plugin.parse_aruba_central_aps(_row(payload))
+    services = list(plugin.discover_radio(section))
+    assert [service.item for service in services] == ["A_0", "A_0_2", "A_0_3"]
+    assert len(section.access_point.radios) == 3
+    assert section.access_point.radios["A_0"].index == 0
+    assert section.access_point.radios["A_0_2"].index == 2
+    assert section.access_point.radios["A_0_3"].index == 0
+
+
 def test_failed_collector_is_critical(monkeypatch):
     plugin = _load(monkeypatch)
     payload = _collector_payload()
