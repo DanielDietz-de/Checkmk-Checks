@@ -3,12 +3,13 @@
 .SYNOPSIS
     Install or update the least-privilege gMSA virtualization spool task.
 .DESCRIPTION
-    Validates the gMSA locally, writes only non-secret path configuration,
-    grants the account read access to every runtime dependency and directory
-    traversal required by the collector, grants modify access only to the
-    Checkmk spool directory, verifies the resulting NTFS rights, and registers
-    a non-elevated task. Every mutation honors PowerShell ShouldProcess so
-    -WhatIf remains side-effect free.
+    Validates the gMSA locally, derives a spool lifetime that safely covers the
+    configured task interval, writes only non-secret path configuration, grants
+    the account read access to every runtime dependency and directory traversal
+    required by the collector, grants modify access only to the Checkmk spool
+    directory, verifies the resulting NTFS rights, and registers a non-elevated
+    task. Every mutation honors PowerShell ShouldProcess so -WhatIf remains
+    side-effect free.
 #>
 
 [CmdletBinding(SupportsShouldProcess = $true)]
@@ -45,6 +46,51 @@ function Resolve-S2DHciDefaultPath {
 
     if ([string]::IsNullOrWhiteSpace($Candidate)) { return $Fallback }
     return $Candidate
+}
+
+function Get-S2DHciSpoolLifetimeSeconds {
+    <#
+    .SYNOPSIS
+        Derive the Checkmk spool lifetime from the scheduled collection interval.
+    .DESCRIPTION
+        Keeps the historical ten-minute minimum and otherwise retains spool data
+        for two full task intervals. This prevents a normal schedule from aging
+        out before the next collection and tolerates one missed or delayed run.
+    #>
+    param([Parameter(Mandatory)] [ValidateRange(1, 1440)] [int]$IntervalMinutes)
+
+    [int64]$intervalSeconds = [int64]$IntervalMinutes * 60
+    [int64]$lifetimeSeconds = [Math]::Max([int64]600, $intervalSeconds * 2)
+    return [int]$lifetimeSeconds
+}
+
+function Assert-S2DHciSpoolLifetime {
+    <#
+    .SYNOPSIS
+        Validate the numeric Checkmk spool prefix against the scheduled interval.
+    .DESCRIPTION
+        Requires a leading `<seconds>_` filename prefix and a lifetime of at least
+        two collection intervals. Custom spool paths therefore cannot silently
+        create monitoring gaps by expiring before the scheduled task runs again.
+    #>
+    param(
+        [Parameter(Mandatory)] [string]$Path,
+        [Parameter(Mandatory)] [ValidateRange(1, 1440)] [int]$IntervalMinutes
+    )
+
+    $name = [System.IO.Path]::GetFileName($Path)
+    if ($name -notmatch '^(\d+)_') {
+        throw "Spool file '$name' must begin with a numeric Checkmk lifetime prefix such as '600_'."
+    }
+    [int64]$lifetimeSeconds = 0
+    if (-not [int64]::TryParse($Matches[1], [ref]$lifetimeSeconds)) {
+        throw "Spool lifetime prefix is not a valid integer: $name"
+    }
+    [int64]$minimumSeconds = [int64]$IntervalMinutes * 120
+    if ($lifetimeSeconds -lt $minimumSeconds) {
+        throw "Spool lifetime $lifetimeSeconds seconds is shorter than the required two task intervals ($minimumSeconds seconds)."
+    }
+    return [int]$lifetimeSeconds
 }
 
 function Test-S2DHciPathUnderRoot {
@@ -106,12 +152,12 @@ function Grant-S2DHciAcl {
 function Assert-S2DHciAclPresent {
     <#
     .SYNOPSIS
-        Verify that the configured gMSA has the required effective NTFS rights.
+        Verify that the configured gMSA has the required NTFS allow rights.
     .DESCRIPTION
         Resolves the configured identity to its SID, reads the target ACL, and
         requires at least one allow rule for that SID containing every requested
-        FileSystemRights bit. This verifies rights rather than merely checking that
-        the account name appears in command output.
+        FileSystemRights bit. This verifies the explicit rights installed by this
+        tool rather than merely checking that the account name appears in output.
     #>
     param(
         [Parameter(Mandatory)] [string]$Path,
@@ -137,10 +183,11 @@ $configRoot = Join-Path $AgentRoot 'config'
 $spoolRoot = Join-Path $AgentRoot 'spool'
 $commonModulePath = Join-Path $binRoot 's2d_hci_common.psm1'
 $collectorConfigPath = Join-Path $configRoot 's2d_hci.json'
+$spoolLifetimeSeconds = Get-S2DHciSpoolLifetimeSeconds -IntervalMinutes $IntervalMinutes
 $CollectorPath = Resolve-S2DHciDefaultPath -Candidate $CollectorPath -Fallback (Join-Path $binRoot 's2d_hci_virtualization.ps1')
 $WrapperPath = Resolve-S2DHciDefaultPath -Candidate $WrapperPath -Fallback (Join-Path $binRoot 's2d_hci_virtualization_spool.ps1')
 $ConfigPath = Resolve-S2DHciDefaultPath -Candidate $ConfigPath -Fallback (Join-Path $configRoot 's2d_hci_virtualization_spool.json')
-$SpoolFile = Resolve-S2DHciDefaultPath -Candidate $SpoolFile -Fallback (Join-Path $spoolRoot '600_s2d_hci_virtualization.txt')
+$SpoolFile = Resolve-S2DHciDefaultPath -Candidate $SpoolFile -Fallback (Join-Path $spoolRoot ("{0}_s2d_hci_virtualization.txt" -f $spoolLifetimeSeconds))
 
 foreach ($path in @($CollectorPath, $WrapperPath, $ConfigPath, $SpoolFile, $commonModulePath, $collectorConfigPath)) {
     if (-not (Test-S2DHciPathUnderRoot -Path $path -Root $AgentRoot)) { throw "Path must remain below '$AgentRoot': $path" }
@@ -148,9 +195,21 @@ foreach ($path in @($CollectorPath, $WrapperPath, $ConfigPath, $SpoolFile, $comm
 if (-not (Test-S2DHciPathUnderRoot -Path $CollectorPath -Root $binRoot)) { throw 'Collector must be deployed below the Checkmk bin directory.' }
 if (-not (Test-S2DHciPathUnderRoot -Path $WrapperPath -Root $binRoot)) { throw 'Wrapper must be deployed below the Checkmk bin directory.' }
 if (-not (Test-S2DHciPathUnderRoot -Path $SpoolFile -Root $spoolRoot)) { throw 'Spool file must remain below the Checkmk spool directory.' }
+$spoolLifetimeSeconds = Assert-S2DHciSpoolLifetime -Path $SpoolFile -IntervalMinutes $IntervalMinutes
 
 if ($DryRun) {
-    [pscustomobject]@{ TaskName=$TaskName; ServiceAccount=$ServiceAccount; CollectorPath=$CollectorPath; WrapperPath=$WrapperPath; CommonModulePath=$commonModulePath; CollectorConfigPath=$collectorConfigPath; ConfigPath=$ConfigPath; SpoolFile=$SpoolFile; RunLevel='Limited' }
+    [pscustomobject]@{
+        TaskName=$TaskName
+        ServiceAccount=$ServiceAccount
+        CollectorPath=$CollectorPath
+        WrapperPath=$WrapperPath
+        CommonModulePath=$commonModulePath
+        CollectorConfigPath=$collectorConfigPath
+        ConfigPath=$ConfigPath
+        SpoolFile=$SpoolFile
+        SpoolLifetimeSeconds=$spoolLifetimeSeconds
+        RunLevel='Limited'
+    }
     return
 }
 
@@ -198,4 +257,12 @@ if ($PSCmdlet.ShouldProcess($TaskName, "Register scheduled task as $ServiceAccou
 }
 
 $status = if ($WhatIfPreference) { 'WhatIf' } else { 'InstalledOrUpdated' }
-[pscustomobject]@{ TaskName=$TaskName; ServiceAccount=$ServiceAccount; Status=$status; RunLevel='Limited'; ConfigPath=$ConfigPath; SpoolFile=$SpoolFile }
+[pscustomobject]@{
+    TaskName=$TaskName
+    ServiceAccount=$ServiceAccount
+    Status=$status
+    RunLevel='Limited'
+    ConfigPath=$ConfigPath
+    SpoolFile=$SpoolFile
+    SpoolLifetimeSeconds=$spoolLifetimeSeconds
+}
