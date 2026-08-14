@@ -54,6 +54,15 @@ def test_piggyback_host_name_collisions_fail_closed_before_cache_write():
     assert check < cache_write < output
 
 
+def test_authoritative_ap_count_mismatch_fails_before_cache_write():
+    assert "$diagnostics.counts_stream -ne 'derived'" in SCRIPT
+    assert "cencli AP count mismatch" in SCRIPT
+    validation = SCRIPT.index("cencli AP count mismatch")
+    cache_write = SCRIPT.index("Write-AtomicJson -Path")
+    output = SCRIPT.index("Write-MonitoringOutput -Collector $collector")
+    assert validation < cache_write < output
+
+
 def test_configuration_failures_enter_monitoring_failure_handler():
     default_config = SCRIPT.index("$config = Get-DefaultConfig")
     try_block = SCRIPT.index("try {", default_config)
