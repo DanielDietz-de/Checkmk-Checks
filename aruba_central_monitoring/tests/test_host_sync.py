@@ -32,6 +32,19 @@ def _load():
     return module
 
 
+def _planned_host(sync):
+    return sync.PlannedHost(
+        host_name="AP-01",
+        group_title="Campus Bornheim",
+        group_id="campus_bornheim",
+        folder_id="~campus_bornheim~accesspoint",
+        folder_path="/campus_bornheim/accesspoint",
+        site="Campus Bornheim - ABS5",
+        serial="SERIAL",
+        mac="00:11:22:33:44:55",
+    )
+
+
 def test_extract_and_plan_exact_folder_hierarchy():
     sync = _load()
     access_points = sync._extract_access_points(FIXTURE.read_text(encoding="utf-8"))
@@ -78,6 +91,31 @@ def test_extract_fails_closed_on_truncated_ap_section():
         sync._extract_access_points(output)
 
 
+def test_extract_rejects_payload_host_name_mismatch():
+    sync = _load()
+    payload = json.dumps(
+        {
+            "schema": 1,
+            "kind": "ap",
+            "ap": {
+                "host_name": "AP-OTHER",
+                "group": "B200",
+                "site": "B200",
+            },
+        }
+    )
+    output = "\n".join(
+        [
+            "<<<<AP-EXPECTED>>>>",
+            sync.SECTION,
+            payload,
+            "<<<<>>>>",
+        ]
+    )
+    with pytest.raises(ValueError, match="does not match its piggyback target"):
+        sync._extract_access_points(output)
+
+
 def test_extract_rejects_duplicate_piggyback_host_names():
     sync = _load()
     payload = json.dumps(
@@ -99,7 +137,17 @@ def test_extract_rejects_duplicate_piggyback_host_names():
             "<<<<>>>>",
             "<<<<ap_dup>>>>",
             sync.SECTION,
-            payload,
+            json.dumps(
+                {
+                    "schema": 1,
+                    "kind": "ap",
+                    "ap": {
+                        "host_name": "ap_dup",
+                        "group": "B200",
+                        "site": "B200",
+                    },
+                }
+            ),
             "<<<<>>>>",
         ]
     )
@@ -286,16 +334,7 @@ def test_folder_and_host_requests_use_checkmk_object_ids():
     )
     fake = _Session([_Response(201), _Response(201), _Response(201)])
     client.session = fake
-    host = sync.PlannedHost(
-        host_name="AP-01",
-        group_title="Campus Bornheim",
-        group_id="campus_bornheim",
-        folder_id="~campus_bornheim~accesspoint",
-        folder_path="/campus_bornheim/accesspoint",
-        site="Campus Bornheim - ABS5",
-        serial="SERIAL",
-        mac="00:11:22:33:44:55",
-    )
+    host = _planned_host(sync)
     assert client.create_folder("campus_bornheim", "Campus Bornheim", "~") == "created"
     assert (
         client.create_folder("accesspoint", "Accesspoint", "~campus_bornheim")
@@ -305,6 +344,95 @@ def test_folder_and_host_requests_use_checkmk_object_ids():
     assert fake.calls[0][2]["json"]["parent"] == "~"
     assert fake.calls[1][2]["json"]["parent"] == "~campus_bornheim"
     assert fake.calls[2][2]["json"]["folder"] == "~campus_bornheim~accesspoint"
+
+
+def test_existing_host_is_accepted_only_after_exact_configuration_verification():
+    sync = _load()
+    client = sync.CheckmkApi(
+        "https://checkmk.example/site/check_mk/api/v1",
+        "automation",
+        "secret",
+        None,
+        30,
+    )
+    host = _planned_host(sync)
+    existing = {
+        "id": host.host_name,
+        "extensions": {
+            "folder": host.folder_path,
+            "attributes": {
+                **sync.DEFAULT_ATTRIBUTES,
+                "meta_data": {"created_by": "automation"},
+            },
+        },
+    }
+    fake = _Session(
+        [
+            _Response(409, text="Host already exists"),
+            _Response(200, existing),
+        ]
+    )
+    client.session = fake
+    assert client.create_host(host) == "exists-verified"
+    assert fake.calls[1][0] == "GET"
+    assert fake.calls[1][1].endswith("/objects/host_config/AP-01")
+
+
+def test_existing_host_in_wrong_folder_is_rejected():
+    sync = _load()
+    client = sync.CheckmkApi(
+        "https://checkmk.example/site/check_mk/api/v1",
+        "automation",
+        "secret",
+        None,
+        30,
+    )
+    host = _planned_host(sync)
+    existing = {
+        "id": host.host_name,
+        "extensions": {
+            "folder": "/unrelated/accesspoint",
+            "attributes": dict(sync.DEFAULT_ATTRIBUTES),
+        },
+    }
+    client.session = _Session(
+        [
+            _Response(409, text="Host already exists"),
+            _Response(200, existing),
+        ]
+    )
+    with pytest.raises(RuntimeError, match="does not match planned configuration"):
+        client.create_host(host)
+
+
+def test_existing_host_with_extra_or_conflicting_attributes_is_rejected():
+    sync = _load()
+    client = sync.CheckmkApi(
+        "https://checkmk.example/site/check_mk/api/v1",
+        "automation",
+        "secret",
+        None,
+        30,
+    )
+    host = _planned_host(sync)
+    existing = {
+        "id": host.host_name,
+        "extensions": {
+            "folder": host.folder_path,
+            "attributes": {
+                **sync.DEFAULT_ATTRIBUTES,
+                "ipaddress": "192.0.2.10",
+            },
+        },
+    }
+    client.session = _Session(
+        [
+            _Response(409, text="Host already exists"),
+            _Response(200, existing),
+        ]
+    )
+    with pytest.raises(RuntimeError, match="does not match planned configuration"):
+        client.create_host(host)
 
 
 def test_activation_reads_pending_etag_and_sends_if_match():
