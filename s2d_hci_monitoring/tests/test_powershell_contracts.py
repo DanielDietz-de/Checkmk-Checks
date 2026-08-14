@@ -72,9 +72,9 @@ def test_gmsa_task_is_non_elevated_and_bounded() -> None:
 
 
 def test_gmsa_task_grants_and_verifies_every_runtime_dependency() -> None:
-    """The gMSA installer must explicitly cover shared code, configuration, and hardened parent-directory traversal."""
+    """The gMSA installer and validator must explicitly cover shared code, configuration, and hardened parent-directory traversal."""
 
-    text = _read("tools/windows/Install-S2DHciVirtualizationCollectorTask.ps1")
+    installer = _read("tools/windows/Install-S2DHciVirtualizationCollectorTask.ps1")
     for token in (
         "$commonModulePath = Join-Path $binRoot 's2d_hci_common.psm1'",
         "$collectorConfigPath = Join-Path $configRoot 's2d_hci.json'",
@@ -85,9 +85,22 @@ def test_gmsa_task_grants_and_verifies_every_runtime_dependency() -> None:
         "FileSystemRights]::ReadAndExecute",
         "FileSystemRights]::Read",
         "FileSystemRights]::Modify",
+        "required rights: $RequiredRights",
     ):
-        assert token in text
-    assert "required rights: $RequiredRights" in text
+        assert token in installer
+
+    validator = _read("tools/windows/Test-S2DHciVirtualizationCollectorIdentity.ps1")
+    for token in (
+        "AgentRootTraversePresent",
+        "BinTraversePresent",
+        "ConfigTraversePresent",
+        "CommonModuleReadExecutePresent",
+        "CollectorConfigReadPresent",
+        "SpoolConfigReadPresent",
+        "SpoolModifyPresent",
+        "Test-S2DHciAclRights",
+    ):
+        assert token in validator
 
 
 def test_spool_wrapper_preserves_last_good_output() -> None:
