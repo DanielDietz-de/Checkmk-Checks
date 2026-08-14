@@ -135,12 +135,15 @@ def _access_point(raw: Any) -> AccessPoint | None:
             if radio_index is None:
                 radio_index = index
             normalized_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", name).strip("_") or "radio"
-            key = f"{normalized_name}_{radio_index}"
-            if key in radios:
+            base_key = f"{normalized_name}_{radio_index}"
+            key = base_key
+            discriminator = index
+            while key in radios:
                 # Preserve every radio even if the source violates the expected unique
-                # index contract. The enumeration position is deterministic for this
-                # payload and prevents silent dictionary replacement.
-                key = f"{key}_{index}"
+                # index contract or a fallback key collides with another natural key.
+                # Enumeration order makes the discriminator deterministic for this payload.
+                key = f"{base_key}_{discriminator}"
+                discriminator += 1
             radios[key] = Radio(
                 key=key,
                 index=radio_index,
