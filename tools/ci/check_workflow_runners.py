@@ -17,6 +17,7 @@ import sys
 
 RUNS_ON_RE = re.compile(r"^(?P<indent>\s*)runs-on:\s*(?P<value>.*)$")
 SELF_HOSTED_RE = re.compile(r"(?<![A-Za-z0-9_-])self-hosted(?![A-Za-z0-9_-])", re.IGNORECASE)
+LINUX_RE = re.compile(r"(?<![A-Za-z0-9_-])linux(?![A-Za-z0-9_-])", re.IGNORECASE)
 GITHUB_HOSTED_RE = re.compile(
     r"(?<![A-Za-z0-9_-])(?:ubuntu|windows|macos)-(?:latest|slim|[A-Za-z0-9][A-Za-z0-9.-]*)(?![A-Za-z0-9_-])",
     re.IGNORECASE,
@@ -47,8 +48,18 @@ def workflow_files(root: Path) -> list[Path]:
     )
 
 
+def _without_yaml_comment(value: str) -> str:
+    """Remove an unquoted YAML comment from the simple runner-selector syntax we allow."""
+
+    # Runner selectors in this repository are deliberately restricted to plain labels,
+    # bracket lists, or the documented group/labels mapping. A literal '#' in a quoted
+    # runner label is therefore outside the accepted contract and can be treated as a
+    # comment delimiter without weakening the policy.
+    return value.split("#", 1)[0].strip()
+
+
 def _runs_on_blocks(text: str) -> list[tuple[int, str]]:
-    """Return line numbers and complete inline or indented ``runs-on`` blocks."""
+    """Return line numbers and comment-free inline or indented ``runs-on`` blocks."""
 
     lines = text.splitlines()
     blocks: list[tuple[int, str]] = []
@@ -61,7 +72,7 @@ def _runs_on_blocks(text: str) -> list[tuple[int, str]]:
 
         line_number = index + 1
         indent = len(match.group("indent"))
-        parts = [match.group("value")]
+        parts = [_without_yaml_comment(match.group("value"))]
         index += 1
         while index < len(lines):
             candidate = lines[index]
@@ -71,9 +82,11 @@ def _runs_on_blocks(text: str) -> list[tuple[int, str]]:
             candidate_indent = len(candidate) - len(candidate.lstrip())
             if candidate_indent <= indent:
                 break
-            parts.append(candidate.strip())
+            normalized = _without_yaml_comment(candidate.strip())
+            if normalized:
+                parts.append(normalized)
             index += 1
-        blocks.append((line_number, " ".join(parts)))
+        blocks.append((line_number, " ".join(part for part in parts if part)))
     return blocks
 
 
@@ -83,15 +96,27 @@ def _hosted_labels(block: str) -> list[str]:
     return [match.group(0).lower() for match in GITHUB_HOSTED_RE.finditer(block)]
 
 
+def _plain_scalar(block: str) -> str | None:
+    """Return one literal scalar selector, rejecting lists, mappings, and expressions."""
+
+    value = block.strip()
+    if not value or "${{" in value or value.startswith("[") or ":" in value or " " in value:
+        return None
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        value = value[1:-1].strip()
+    return value.lower() or None
+
+
 def _is_allowed_hosted_exception(relative: str, labels: list[str], block: str) -> bool:
-    """Return whether one runner selector exactly matches a pinned hosted exception."""
+    """Return whether the complete selector exactly equals a pinned hosted exception."""
 
     allowed = GITHUB_HOSTED_EXCEPTIONS.get(relative)
-    if allowed is None:
+    scalar = _plain_scalar(block)
+    if allowed is None or scalar is None:
         return False
     if SELF_HOSTED_RE.search(block):
         return False
-    return bool(labels) and set(labels).issubset(allowed)
+    return len(labels) == 1 and labels[0] == scalar and scalar in allowed
 
 
 def validate_workflow_runners(root: Path) -> list[str]:
@@ -117,7 +142,7 @@ def validate_workflow_runners(root: Path) -> list[str]:
                 for hosted in labels:
                     errors.append(
                         f"{relative}:{line_number}: GitHub-hosted runner label "
-                        f"{hosted!r} is not an approved exception"
+                        f"{hosted!r} is not an approved exact exception"
                     )
                 if SELF_HOSTED_RE.search(block):
                     errors.append(
@@ -126,10 +151,22 @@ def validate_workflow_runners(root: Path) -> list[str]:
                     )
                 continue
 
-            if not SELF_HOSTED_RE.search(block):
+            if "${{" in block:
                 errors.append(
-                    f"{relative}:{line_number}: runs-on must explicitly include "
-                    "the self-hosted label"
+                    f"{relative}:{line_number}: dynamic runs-on expressions are not "
+                    "permitted by the runner policy"
+                )
+                continue
+
+            missing: list[str] = []
+            if not SELF_HOSTED_RE.search(block):
+                missing.append("self-hosted")
+            if not LINUX_RE.search(block):
+                missing.append("linux")
+            if missing:
+                errors.append(
+                    f"{relative}:{line_number}: ordinary runs-on must explicitly include "
+                    f"both self-hosted and linux labels; missing {', '.join(missing)}"
                 )
 
     # A configured exception must remain exact if that workflow is present. This catches
@@ -163,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
         print("\n".join(errors), file=sys.stderr)
         return 1
     print(
-        "Validated self-hosted runner policy with "
+        "Validated self-hosted Linux runner policy with "
         f"{len(GITHUB_HOSTED_EXCEPTIONS)} pinned hosted exceptions "
         f"across {len(workflow_files(root))} workflows."
     )
