@@ -17,7 +17,9 @@ A section-level failure is represented as a JSON object with `success=false`, `s
 - `record_count`, `output_bytes`, configured bounds, and `elapsed_ms`;
 - `role` (`leader`, `standby`, `local`, or `disabled`);
 - source/cluster/logical-host context where applicable;
-- bounded `errors` array and UTC start/finish timestamps.
+- up to 20 bounded `errors`, `errors_omitted`, and UTC start/finish timestamps.
+
+`output_bytes` counts compact JSON data records only, using the same one-byte line accounting enforced by `Write-S2DHciJsonLine`; Checkmk section headers, piggyback markers, and the final collector-health row are protocol framing rather than data-record bytes. The gMSA spool wrapper recomputes the data-record count and bytes and requires them to match the health envelope, while independently bounding framing and collector-health size. This avoids both under-counting unbounded framing and rejecting valid high-record runs with a fixed overhead allowance.
 
 A failed/incomplete/truncated run is CRIT. Invalid/malformed health envelopes are UNKNOWN. An intentionally disabled virtualization collector is OK only when the health envelope confirms a successful, complete, non-truncated invocation.
 
