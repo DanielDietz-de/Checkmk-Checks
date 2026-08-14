@@ -18,7 +18,7 @@ import stat
 import subprocess
 import sys
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import requests
 
@@ -128,9 +128,13 @@ def _extract_access_points(agent_output: str) -> list[dict[str, Any]]:
             if not isinstance(ap, dict):
                 raise ValueError(f"{current_host}: Aruba AP section has no AP object")
             normalized = dict(ap)
-            normalized["host_name"] = str(
-                normalized.get("host_name") or current_host
-            ).strip()
+            payload_host = str(normalized.get("host_name") or "").strip()
+            if payload_host and payload_host.casefold() != current_host.casefold():
+                raise ValueError(
+                    f"{current_host}: AP payload host name {payload_host!r} does not "
+                    "match its piggyback target"
+                )
+            normalized["host_name"] = current_host.strip()
             if not normalized["host_name"]:
                 raise ValueError("Aruba AP section has an empty piggyback host name")
             access_points.append(normalized)
@@ -356,8 +360,52 @@ class CheckmkApi:
             f"folder creation failed ({response.status_code}): {response.text[:500]}"
         )
 
+    def _verify_existing_host(self, host: PlannedHost) -> None:
+        """Require an occupied host name to match the complete planned AP configuration."""
+
+        response = self._request(
+            "GET",
+            f"/objects/host_config/{quote(host.host_name, safe='')}",
+        )
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"existing host {host.host_name!r} could not be verified "
+                f"({response.status_code}): {response.text[:500]}"
+            )
+        try:
+            payload = response.json()
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"existing host {host.host_name!r} returned invalid JSON"
+            ) from exc
+        if not isinstance(payload, dict) or payload.get("id") != host.host_name:
+            raise RuntimeError(
+                f"existing host {host.host_name!r} returned an unexpected object identity"
+            )
+        extensions = payload.get("extensions")
+        if not isinstance(extensions, dict):
+            raise RuntimeError(
+                f"existing host {host.host_name!r} has no configuration extensions"
+            )
+        folder = str(extensions.get("folder", ""))
+        attributes = extensions.get("attributes")
+        if not isinstance(attributes, dict):
+            raise RuntimeError(
+                f"existing host {host.host_name!r} has no explicit attributes"
+            )
+        explicit_attributes = {
+            key: value for key, value in attributes.items() if key != "meta_data"
+        }
+        folder_matches = folder in {host.folder_id, host.folder_path}
+        attributes_match = explicit_attributes == DEFAULT_ATTRIBUTES
+        if not folder_matches or not attributes_match:
+            raise RuntimeError(
+                f"existing host {host.host_name!r} does not match planned configuration; "
+                f"folder={folder!r}, attributes={explicit_attributes!r}"
+            )
+
     def create_host(self, host: PlannedHost) -> str:
-        """Create one piggyback-only host in its folder object ID."""
+        """Create one piggyback-only host or verify an exact existing equivalent."""
 
         response = self._request(
             "POST",
@@ -372,7 +420,8 @@ class CheckmkApi:
         if response.status_code in {200, 201}:
             return "created"
         if self._already_exists(response):
-            return "exists"
+            self._verify_existing_host(host)
+            return "exists-verified"
         raise RuntimeError(
             f"host {host.host_name!r} creation failed "
             f"({response.status_code}): {response.text[:500]}"
