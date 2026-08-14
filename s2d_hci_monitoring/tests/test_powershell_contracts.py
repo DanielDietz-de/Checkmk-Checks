@@ -71,6 +71,25 @@ def test_gmsa_task_is_non_elevated_and_bounded() -> None:
     assert "ExecutionPolicy Bypass" not in text
 
 
+def test_gmsa_task_grants_and_verifies_every_runtime_dependency() -> None:
+    """The gMSA installer must explicitly cover shared code, configuration, and hardened parent-directory traversal."""
+
+    text = _read("tools/windows/Install-S2DHciVirtualizationCollectorTask.ps1")
+    for token in (
+        "$commonModulePath = Join-Path $binRoot 's2d_hci_common.psm1'",
+        "$collectorConfigPath = Join-Path $configRoot 's2d_hci.json'",
+        "@($AgentRoot, $binRoot, $configRoot)",
+        "Grant-S2DHciAcl -Path $commonModulePath",
+        "Grant-S2DHciAcl -Path $collectorConfigPath",
+        "Assert-S2DHciAclPresent -Path $spoolRoot",
+        "FileSystemRights]::ReadAndExecute",
+        "FileSystemRights]::Read",
+        "FileSystemRights]::Modify",
+    ):
+        assert token in text
+    assert "required rights: $RequiredRights" in text
+
+
 def test_spool_wrapper_preserves_last_good_output() -> None:
     """The spool wrapper must validate process and protocol success before atomic replacement."""
 
