@@ -5,13 +5,13 @@
 .DESCRIPTION
     Validates the gMSA locally, derives a spool lifetime that safely covers the
     configured task interval, recovers the configuration path registered on an
-    existing task before updating state, retires any previously configured spool
-    snapshot when its path changes, writes only non-secret path configuration,
-    grants the account read access to every runtime dependency and directory
-    traversal required by the collector, grants modify access only to the Checkmk
-    spool directory, verifies the resulting NTFS rights, and registers a
-    non-elevated task. Every mutation honors PowerShell ShouldProcess so -WhatIf
-    remains side-effect free.
+    existing task, quiesces any existing publisher before generated-state changes,
+    retires any previously configured spool snapshot when its path changes, writes
+    only non-secret path configuration, grants the account read access to every
+    runtime dependency and directory traversal required by the collector, grants
+    modify access only to the Checkmk spool directory, verifies the resulting NTFS
+    rights, and registers a non-elevated task. Every mutation honors PowerShell
+    ShouldProcess so -WhatIf remains side-effect free.
 #>
 
 [CmdletBinding(SupportsShouldProcess = $true)]
@@ -56,8 +56,8 @@ function Get-S2DHciSpoolLifetimeSeconds {
         Derive the Checkmk spool lifetime from the scheduled collection interval.
     .DESCRIPTION
         Keeps the historical ten-minute minimum and otherwise retains spool data
-        for two full task intervals. This prevents a normal schedule from aging
-        out before the next collection and tolerates one missed or delayed run.
+        for two full intervals. This prevents normal data from aging out before the
+        next collection and tolerates one missed or delayed run.
     #>
     param([Parameter(Mandatory)] [ValidateRange(1, 1440)] [int]$IntervalMinutes)
 
@@ -160,6 +160,43 @@ function Get-S2DHciRegisteredConfigPath {
         throw "Existing scheduled task '$TaskName' references a configuration path outside the trusted config directory: $registered"
     }
     return $registered
+}
+
+function Stop-S2DHciScheduledTaskPublisher {
+    <#
+    .SYNOPSIS
+        Quiesce an existing scheduled collector before changing generated state.
+    .DESCRIPTION
+        Disables the root task first so no new trigger can start, immediately stops
+        all running task instances, and then verifies that the task is no longer in
+        the Running state within a bounded timeout. The task remains disabled if a
+        later update step fails, which is intentionally fail-closed: an old
+        publisher cannot recreate a retired spool snapshot after cleanup.
+    #>
+    param(
+        [Parameter(Mandatory)] [string]$TaskName,
+        [ValidateRange(1, 120)] [int]$TimeoutSeconds = 30
+    )
+
+    $existingTask = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction Stop
+    if (@($existingTask).Count -ne 1) {
+        throw "Expected exactly one root scheduled task named '$TaskName' while quiescing the collector."
+    }
+
+    Disable-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction Stop | Out-Null
+    Stop-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction Stop | Out-Null
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $currentTask = Get-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction Stop
+        if (@($currentTask).Count -ne 1) {
+            throw "Scheduled task '$TaskName' became ambiguous while waiting for it to stop."
+        }
+        if ([string]$currentTask.State -ne 'Running') { return }
+        Start-Sleep -Milliseconds 250
+    } while ([DateTime]::UtcNow -lt $deadline)
+
+    throw "Scheduled task '$TaskName' did not stop within $TimeoutSeconds seconds; generated state was not changed."
 }
 
 function Read-S2DHciPreviousSpoolFile {
@@ -333,6 +370,12 @@ foreach ($file in @($CollectorPath, $WrapperPath, $commonModulePath, $collectorC
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Required file not found: $file" }
 }
 
+if ($null -ne $registeredConfigPath) {
+    if ($PSCmdlet.ShouldProcess($TaskName, 'Quiesce existing scheduled collector before generated-state update')) {
+        Stop-S2DHciScheduledTaskPublisher -TaskName $TaskName
+    }
+}
+
 if ($null -ne $previousSpoolFile -and -not $previousSpoolFile.Equals($SpoolFile, [System.StringComparison]::OrdinalIgnoreCase)) {
     if ($PSCmdlet.ShouldProcess($previousSpoolFile, 'Retire previously configured virtualization spool snapshot')) {
         Remove-S2DHciGeneratedFileIfPresent -Path $previousSpoolFile
@@ -372,7 +415,8 @@ $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterva
 $principal = New-ScheduledTaskPrincipal -UserId $ServiceAccount -LogonType ServiceAccount -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes ([Math]::Max(2, $IntervalMinutes - 1))) -StartWhenAvailable
 if ($PSCmdlet.ShouldProcess($TaskName, "Register scheduled task as $ServiceAccount")) {
-    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+    Register-ScheduledTask -TaskName $TaskName -TaskPath '\' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+    Enable-ScheduledTask -TaskName $TaskName -TaskPath '\' -ErrorAction Stop | Out-Null
 }
 
 $status = if ($WhatIfPreference) { 'WhatIf' } else { 'InstalledOrUpdated' }
