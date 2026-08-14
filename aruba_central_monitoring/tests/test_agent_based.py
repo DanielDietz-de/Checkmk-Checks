@@ -120,6 +120,7 @@ def _ap_payload() -> dict:
             "sleep_status": False,
             "radios": [
                 {
+                    "index": 0,
                     "radio_name": "Radio 5 GHz",
                     "radio_type": "802.11ax",
                     "band": 1,
@@ -161,17 +162,40 @@ def test_ap_and_radio_services(monkeypatch):
     assert section.access_point.mem_free_mb == 312.2
     assert [service.item for service in plugin.discover_access_point(section)] == [None]
     radio_services = list(plugin.discover_radio(section))
-    assert [service.item for service in radio_services] == ["Radio_5_GHz"]
+    assert [service.item for service in radio_services] == ["Radio_5_GHz_0"]
     ap_results = list(plugin.check_access_point(plugin.check_plugin_aruba_central_ap["check_default_parameters"], section))
     assert any(isinstance(result, _Result) and result.state == _State.OK for result in ap_results)
     radio_results = list(
         plugin.check_radio(
-            "Radio_5_GHz",
+            "Radio_5_GHz_0",
             plugin.check_plugin_aruba_central_radio["check_default_parameters"],
             section,
         )
     )
     assert any(isinstance(result, _Metric) and result.name == "aruba_radio_utilization_percent" for result in radio_results)
+
+
+def test_radio_service_keys_preserve_normalized_name_collisions(monkeypatch):
+    plugin = _load(monkeypatch)
+    payload = _ap_payload()
+    payload["ap"]["radios"] = [
+        {
+            "index": 0,
+            "radio_name": "Radio 5 GHz",
+            "status": "Up",
+        },
+        {
+            "index": 1,
+            "radio_name": "Radio_5_GHz",
+            "status": "Up",
+        },
+    ]
+    section = plugin.parse_aruba_central_aps(_row(payload))
+    services = list(plugin.discover_radio(section))
+    assert [service.item for service in services] == ["Radio_5_GHz_0", "Radio_5_GHz_1"]
+    assert len(section.access_point.radios) == 2
+    assert section.access_point.radios["Radio_5_GHz_0"].index == 0
+    assert section.access_point.radios["Radio_5_GHz_1"].index == 1
 
 
 def test_failed_collector_is_critical(monkeypatch):
