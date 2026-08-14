@@ -155,8 +155,8 @@ def test_gmsa_task_retires_previous_and_removes_derived_spool_state() -> None:
     assert "spool\\600_s2d_hci_virtualization.txt" not in remover
 
 
-def test_gmsa_task_quiesces_existing_publisher_before_generated_state_changes() -> None:
-    """An in-flight old wrapper must be stopped before a previous spool snapshot can be retired or recreated."""
+def test_gmsa_task_quiesces_publishers_before_generated_state_changes() -> None:
+    """Install and removal must stop old task publishers before spool/config lifecycle mutations can race them."""
 
     installer = _read("tools/windows/Install-S2DHciVirtualizationCollectorTask.ps1")
     for token in (
@@ -167,6 +167,9 @@ def test_gmsa_task_quiesces_existing_publisher_before_generated_state_changes() 
         "did not stop within $TimeoutSeconds seconds",
         "Quiesce existing scheduled collector before generated-state update",
         "Stop-S2DHciScheduledTaskPublisher -TaskName $TaskName",
+        "New-ScheduledTaskSettingsSet",
+        "-Disable",
+        "Register disabled scheduled task",
         "Enable-ScheduledTask -TaskName $TaskName -TaskPath '\\'",
     ):
         assert token in installer
@@ -175,6 +178,28 @@ def test_gmsa_task_quiesces_existing_publisher_before_generated_state_changes() 
     )
     assert installer.index("Disable-ScheduledTask -TaskName $TaskName") < installer.index(
         "Stop-ScheduledTask -TaskName $TaskName"
+    )
+    assert installer.index("Register-ScheduledTask -TaskName $TaskName") < installer.index(
+        "Enable-ScheduledTask -TaskName $TaskName"
+    )
+
+    remover = _read("tools/windows/Remove-S2DHciVirtualizationCollectorTask.ps1")
+    for token in (
+        "function Stop-S2DHciScheduledTaskPublisher",
+        "Disable-ScheduledTask -TaskName $TaskName -TaskPath '\\'",
+        "Stop-ScheduledTask -TaskName $TaskName -TaskPath '\\'",
+        "Quiesce scheduled collector before removal",
+        "Stop-S2DHciScheduledTaskPublisher -TaskName $TaskName",
+    ):
+        assert token in remover
+    assert remover.index("$configuredSpoolFile = Read-S2DHciConfiguredSpoolFile") < remover.index(
+        "Stop-S2DHciScheduledTaskPublisher -TaskName $TaskName"
+    )
+    assert remover.index("Stop-S2DHciScheduledTaskPublisher -TaskName $TaskName") < remover.index(
+        "Unregister-ScheduledTask -TaskName $TaskName"
+    )
+    assert remover.index("Unregister-ScheduledTask -TaskName $TaskName") < remover.index(
+        "Remove generated virtualization spool snapshot"
     )
 
 
