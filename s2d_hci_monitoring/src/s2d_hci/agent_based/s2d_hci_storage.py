@@ -63,6 +63,15 @@ def _storage_result(item: str, params: Mapping[str, object], section: Section, l
     )
 
 
+def _active_detached_reason(value: object) -> str | None:
+    """Return a real Storage Spaces detach reason while ignoring the normal None/zero sentinel."""
+
+    normalized = str(value or "").strip()
+    if normalized.lower() in {"", "none", "0"}:
+        return None
+    return normalized
+
+
 def parse_s2d_hci_csv(string_table: Sequence[Sequence[str]]) -> Section:
     """Parse Cluster Shared Volumes using stable collector identities."""
 
@@ -162,18 +171,29 @@ def discover_s2d_hci_virtual_disks(section: Section):
 
 
 def check_s2d_hci_virtual_disks(item: str, params: Mapping[str, object], section: Section):
-    """Evaluate virtual-disk health, treating detach reasons as critical."""
+    """Evaluate virtual-disk health, treating only real detach reasons as critical."""
 
     entry, result = _storage_result(item, params, section, "Virtual disk")
     if entry is None or collector_error(entry):
         yield result
         return
-    if entry.details.get("detached_reason"):
-        yield Result(state=State.CRIT, summary=f"Virtual disk {entry.name} is detached: {entry.details.get('detached_reason')}", details=str(entry.details))
+    detached_reason = _active_detached_reason(entry.details.get("detached_reason"))
+    if detached_reason is not None:
+        yield Result(state=State.CRIT, summary=f"Virtual disk {entry.name} is detached: {detached_reason}", details=str(entry.details))
         return
     yield result
 
 
+check_plugin_s2d_hci_virtual_disks = CheckPlugin(
+    name="s2d_hci_virtual_disks",
+    service_name="S2D/HCI virtual disk %s",
+    discovery_function=discover_s2d_hci_virtual_disks,
+    check_default_parameters=STATE_DEFAULTS,
+    check_ruleset_name="s2d_hci_state_policy",
+)
+
+# Checkmk discovers the function from this name supplied above; assignment is kept
+# next to the plugin definition to make the runtime contract explicit and readable.
 check_plugin_s2d_hci_virtual_disks = CheckPlugin(
     name="s2d_hci_virtual_disks",
     service_name="S2D/HCI virtual disk %s",
