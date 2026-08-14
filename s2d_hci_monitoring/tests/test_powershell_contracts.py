@@ -63,7 +63,7 @@ def test_sections_stream_without_dynamic_scriptblocks() -> None:
 def test_sensitive_fields_and_virtualization_default_off() -> None:
     """The committed configuration must minimize sensitive telemetry and disable custom VM collection."""
 
-    text = _read("src/agents/config/s2d_hci.json").lower()
+    text = _read("src/agents/config/s2d_hci.json").read_text(encoding="utf-8").lower() if False else _read("src/agents/config/s2d_hci.json").lower()
     for key in ("include_addresses", "include_paths", "include_serials", "include_locations", "virtualization_enabled"):
         assert f'"{key}": false' in text
 
@@ -95,6 +95,21 @@ def test_gmsa_task_derives_spool_lifetime_from_interval() -> None:
     ):
         assert token in text
     assert "Join-Path $spoolRoot '600_s2d_hci_virtualization.txt'" not in text
+
+
+def test_gmsa_task_normalizes_and_confines_runtime_paths() -> None:
+    """Custom task paths must be canonicalized and remain under the directories whose traversal rights are granted."""
+
+    text = _read("tools/windows/Install-S2DHciVirtualizationCollectorTask.ps1")
+    for token in (
+        "$CollectorPath = [System.IO.Path]::GetFullPath($CollectorPath)",
+        "$WrapperPath = [System.IO.Path]::GetFullPath($WrapperPath)",
+        "$ConfigPath = [System.IO.Path]::GetFullPath($ConfigPath)",
+        "$SpoolFile = [System.IO.Path]::GetFullPath($SpoolFile)",
+        "Spool configuration must be deployed below the Checkmk config directory.",
+        "Spool file must remain below the Checkmk spool directory.",
+    ):
+        assert token in text
 
 
 def test_gmsa_task_retires_previous_and_removes_derived_spool_state() -> None:
