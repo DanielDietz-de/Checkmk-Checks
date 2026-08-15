@@ -203,3 +203,27 @@ def test_php_attribute_preserves_adjacent_purpose_comment(tmp_path, monkeypatch)
         "<?php\n// Return the configured route handler value.\n#[Route('/example')]\npublic function route_handler() { return true; }\n",
     )
     assert findings == []
+
+
+def test_php_slash_comment_closing_tag_returns_to_html(tmp_path, monkeypatch) -> None:
+    """Verify a PHP closing tag inside a slash comment ends PHP mode immediately."""
+    module = _load_policy_tool()
+    findings = _findings(
+        module,
+        tmp_path,
+        monkeypatch,
+        "<?php\n// leave PHP mode here ?>\nfunction fake_html_example() {}\n<?php\n// Describe the real function purpose clearly.\nfunction real_example() {}\n",
+    )
+    assert findings == []
+
+
+def test_php_hash_comment_closing_tag_returns_to_html(tmp_path, monkeypatch) -> None:
+    """Verify a PHP closing tag inside a hash comment ends PHP mode immediately."""
+    module = _load_policy_tool()
+    findings = _findings(
+        module,
+        tmp_path,
+        monkeypatch,
+        "<?php\n# leave PHP mode here ?>\nfunction fake_html_example() {}\n<?php\n// Describe the real function purpose clearly.\nfunction real_example() {}\n",
+    )
+    assert findings == []
