@@ -151,6 +151,18 @@ def test_meaningful_comment_satisfies_policy(tmp_path, monkeypatch) -> None:
     assert module.collect_findings(tmp_path) == []
 
 
+def test_blank_line_breaks_purpose_comment_adjacency(tmp_path, monkeypatch) -> None:
+    """Verify a blank line prevents an earlier header from documenting a declaration."""
+    module = _load_policy_tool()
+    source = tmp_path / "helper.sh"
+    source.write_text(
+        "#!/bin/bash\n\n# Describe the module and its behavior.\n\nrun_task() { :; }\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "tracked_files", lambda _root: [source])
+    assert any("run_task has no adjacent purpose comment" in item for item in module.collect_findings(tmp_path))
+
+
 def test_multiline_purpose_comment_block_satisfies_policy(tmp_path, monkeypatch) -> None:
     """Verify contiguous multi-line purpose comments are evaluated as one documentation block."""
     module = _load_policy_tool()
