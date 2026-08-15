@@ -16,7 +16,7 @@ SHELL_FUNCTION_PATTERN = re.compile(
     r"^(?P<indent>\s*)"
     r"(?=(?:function\s+|[A-Za-z_][A-Za-z0-9_]*\s*\(\s*\)))"
     r"(?:function\s+)?(?P<name>[A-Za-z_][A-Za-z0-9_]*)"
-    r"\s*(?:\(\s*\))?\s*(?:\{)?\s*(?:#.*)?$"
+    r"\s*(?:\(\s*\))?(?=\s|\{|$)"
 )
 PHP_FUNCTION_PATTERN = re.compile(
     r"^(?P<indent>\s*)(?:(?:public|protected|private|static|final|abstract)\s+)*"
