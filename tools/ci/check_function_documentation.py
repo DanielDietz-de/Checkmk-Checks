@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import Path
 import re
 import subprocess
@@ -25,17 +26,29 @@ SHELL_FUNCTION_PATTERN = re.compile(
     r"(?:function\s+)?(?P<name>" + SHELL_FUNCTION_NAME + r")"
     r"\s*(?:\(\s*\))?(?=\s|\{|$)"
 )
-PHP_TRIVIA = (
-    r"(?:[ \t\r\n]+|/\*[\s\S]*?\*/|//[^\r\n]*(?:\r?\n|$)|\#[^\r\n]*(?:\r?\n|$))*"
+PHP_MODIFIERS = frozenset(
+    {"public", "protected", "private", "static", "final", "abstract"}
 )
-PHP_FUNCTION_PATTERN = re.compile(
-    r"^(?P<indent>[ \t]*)"
-    r"(?:(?:public|protected|private|static|final|abstract)\b" + PHP_TRIVIA + r")*"
-    r"function\b" + PHP_TRIVIA
-    + r"&?" + PHP_TRIVIA
-    + r"(?P<name>[A-Za-z_][A-Za-z0-9_]*)\b" + PHP_TRIVIA + r"\(",
-    re.I | re.M,
-)
+
+
+@dataclass(frozen=True)
+class PhpToken:
+    """Represent one significant PHP lexical token and its source location."""
+
+    kind: str
+    value: str
+    offset: int
+    line_index: int
+
+
+@dataclass(frozen=True)
+class PhpFunctionDeclaration:
+    """Represent one named PHP function declaration and its source location."""
+
+    name: str
+    line_index: int
+    indent: str
+    offset: int
 
 
 def tracked_files(root: Path) -> list[Path]:
@@ -218,16 +231,231 @@ def check_pattern_file(path: Path, pattern: re.Pattern[str]) -> list[str]:
     return findings
 
 
+def _php_identifier_start(char: str) -> bool:
+    """Return whether one character may start a PHP identifier."""
+    return char == "_" or char.isalpha() or ord(char) >= 0x80
+
+
+def _php_identifier_continue(char: str) -> bool:
+    """Return whether one character may continue a PHP identifier."""
+    return char == "_" or char.isalnum() or ord(char) >= 0x80
+
+
+def _skip_php_quoted(text: str, offset: int, quote: str) -> int:
+    """Return the offset immediately after one quoted PHP string."""
+    cursor = offset + 1
+    while cursor < len(text):
+        char = text[cursor]
+        if char == "\\":
+            cursor += 2
+            continue
+        cursor += 1
+        if char == quote:
+            break
+    return min(cursor, len(text))
+
+
+def _parse_php_heredoc_label(text: str, offset: int) -> tuple[str, int] | None:
+    """Return a heredoc label and body offset when opener syntax is recognizable."""
+    cursor = offset + 3
+    while cursor < len(text) and text[cursor] in " \t":
+        cursor += 1
+    quote: str | None = None
+    if cursor < len(text) and text[cursor] in {"'", '"'}:
+        quote = text[cursor]
+        cursor += 1
+    if cursor >= len(text) or not _php_identifier_start(text[cursor]):
+        return None
+    start = cursor
+    cursor += 1
+    while cursor < len(text) and _php_identifier_continue(text[cursor]):
+        cursor += 1
+    label = text[start:cursor]
+    if quote is not None:
+        if cursor >= len(text) or text[cursor] != quote:
+            return None
+        cursor += 1
+    while cursor < len(text) and text[cursor] in " \t":
+        cursor += 1
+    if cursor < len(text) and text[cursor] == "\r":
+        cursor += 1
+    if cursor >= len(text) or text[cursor] != "\n":
+        return None
+    return label, cursor + 1
+
+
+def _skip_php_heredoc(text: str, offset: int) -> int | None:
+    """Return the offset after one heredoc or nowdoc body when recognized."""
+    parsed = _parse_php_heredoc_label(text, offset)
+    if parsed is None:
+        return None
+    label, cursor = parsed
+    while cursor < len(text):
+        line_end = text.find("\n", cursor)
+        if line_end < 0:
+            line_end = len(text)
+            next_line = len(text)
+        else:
+            next_line = line_end + 1
+        raw = text[cursor:line_end]
+        if raw.endswith("\r"):
+            raw = raw[:-1]
+        stripped = raw.lstrip(" \t")
+        if stripped.startswith(label):
+            remainder = stripped[len(label) :].lstrip(" \t")
+            if not remainder or not _php_identifier_continue(remainder[0]):
+                return next_line
+        cursor = next_line
+    return len(text)
+
+
+def php_tokens(text: str) -> list[PhpToken]:
+    """Return significant PHP tokens while excluding comments, strings, and heredocs."""
+    tokens: list[PhpToken] = []
+    offset = 0
+    line_index = 0
+    in_php = False
+    while offset < len(text):
+        if not in_php:
+            if text.startswith("<?php", offset):
+                in_php = True
+                offset += 5
+                continue
+            if text.startswith("<?=", offset):
+                in_php = True
+                offset += 3
+                continue
+            if text.startswith("<?", offset):
+                in_php = True
+                offset += 2
+                continue
+            if text[offset] == "\n":
+                line_index += 1
+            offset += 1
+            continue
+
+        if text.startswith("?>", offset):
+            in_php = False
+            offset += 2
+            continue
+        char = text[offset]
+        if char in " \t\r":
+            offset += 1
+            continue
+        if char == "\n":
+            line_index += 1
+            offset += 1
+            continue
+        if text.startswith("//", offset) or (
+            char == "#" and not text.startswith("#[", offset)
+        ):
+            end = text.find("\n", offset)
+            if end < 0:
+                break
+            offset = end
+            continue
+        if text.startswith("/*", offset):
+            end = text.find("*/", offset + 2)
+            if end < 0:
+                break
+            end += 2
+            line_index += text.count("\n", offset, end)
+            offset = end
+            continue
+        if char in {"'", '"', "`"}:
+            end = _skip_php_quoted(text, offset, char)
+            line_index += text.count("\n", offset, end)
+            offset = end
+            continue
+        if text.startswith("<<<", offset):
+            end = _skip_php_heredoc(text, offset)
+            if end is not None:
+                line_index += text.count("\n", offset, end)
+                offset = end
+                continue
+        if _php_identifier_start(char):
+            start = offset
+            token_line = line_index
+            offset += 1
+            while offset < len(text) and _php_identifier_continue(text[offset]):
+                offset += 1
+            tokens.append(PhpToken("identifier", text[start:offset], start, token_line))
+            continue
+        tokens.append(PhpToken("punctuation", char, offset, line_index))
+        offset += 1
+    return tokens
+
+
+def _php_attribute_start(tokens: list[PhpToken], closing_index: int) -> int | None:
+    """Return the opening attribute token index for one closing bracket."""
+    depth = 0
+    cursor = closing_index
+    while cursor >= 0:
+        value = tokens[cursor].value
+        if value == "]":
+            depth += 1
+        elif value == "[":
+            depth -= 1
+            if depth == 0:
+                if cursor > 0 and tokens[cursor - 1].value == "#":
+                    return cursor - 1
+                return None
+        cursor -= 1
+    return None
+
+
+def php_function_declarations(text: str) -> list[PhpFunctionDeclaration]:
+    """Return actual named PHP function declarations from lexically significant tokens."""
+    tokens = php_tokens(text)
+    declarations: list[PhpFunctionDeclaration] = []
+    for index, token in enumerate(tokens):
+        if token.kind != "identifier" or token.value.casefold() != "function":
+            continue
+        cursor = index + 1
+        if cursor < len(tokens) and tokens[cursor].value == "&":
+            cursor += 1
+        if cursor >= len(tokens) or tokens[cursor].kind != "identifier":
+            continue
+        name = tokens[cursor].value
+        if cursor + 1 >= len(tokens) or tokens[cursor + 1].value != "(":
+            continue
+
+        start_index = index
+        before = index - 1
+        while (
+            before >= 0
+            and tokens[before].kind == "identifier"
+            and tokens[before].value.casefold() in PHP_MODIFIERS
+        ):
+            start_index = before
+            before -= 1
+        while before >= 0 and tokens[before].value == "]":
+            attribute_start = _php_attribute_start(tokens, before)
+            if attribute_start is None:
+                break
+            start_index = attribute_start
+            before = attribute_start - 1
+
+        start = tokens[start_index]
+        line_start = text.rfind("\n", 0, start.offset) + 1
+        prefix = text[line_start : start.offset]
+        indent = prefix if not prefix.strip() else ""
+        declarations.append(
+            PhpFunctionDeclaration(name, start.line_index, indent, start.offset)
+        )
+    return declarations
+
+
 def check_php(path: Path) -> list[str]:
-    """Return documentation findings for named PHP functions across line breaks."""
+    """Return documentation findings for actual named PHP function declarations."""
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
     findings: list[str] = []
-    for match in PHP_FUNCTION_PATTERN.finditer(text):
-        line_index = text.count("\n", 0, match.start())
-        if not preceding_comment(lines, line_index):
+    for declaration in php_function_declarations(text):
+        if not preceding_comment(lines, declaration.line_index):
             findings.append(
-                f"{path}:{line_index + 1}: {match.group('name')} has no adjacent purpose comment"
+                f"{path}:{declaration.line_index + 1}: {declaration.name} "
+                "has no adjacent purpose comment"
             )
     return findings
 
