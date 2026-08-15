@@ -95,7 +95,7 @@ def check_python(path: Path) -> list[str]:
 
 
 def _strip_block_comment(lines: list[str], cursor: int) -> str | None:
-    """Return text from the block comment ending at ``cursor`` when one is complete."""
+    """Return the nearest meaningful segment of an adjacent C-style comment block."""
     collected: list[str] = []
     found_start = False
     while cursor >= 0:
@@ -107,13 +107,20 @@ def _strip_block_comment(lines: list[str], cursor: int) -> str | None:
         cursor -= 1
     if not found_start:
         return None
-    text_parts: list[str] = []
-    for raw in reversed(collected):
+
+    parts: list[str] = []
+    delimiter_only = {"/*", "/**", "*/", "*"}
+    for raw in collected:
+        if raw in delimiter_only:
+            continue
         cleaned = raw.replace("/*", " ").replace("*/", " ").strip()
         cleaned = cleaned.lstrip("*").strip()
-        if cleaned:
-            text_parts.append(cleaned)
-    return " ".join(text_parts)
+        if _comment_block_boundary(cleaned):
+            if not parts:
+                return cleaned or None
+            break
+        parts.append(cleaned)
+    return " ".join(reversed(parts)) if parts else None
 
 
 def _clean_line_comment(raw: str, marker: str) -> str:
