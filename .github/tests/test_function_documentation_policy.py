@@ -116,7 +116,7 @@ def test_decorative_comment_does_not_satisfy_policy(tmp_path, monkeypatch) -> No
     """Verify a decorative banner cannot masquerade as function purpose documentation."""
     module = _load_policy_tool()
     source = tmp_path / "helper.sh"
-    source.write_text("#!/bin/bash\n\n####################\n\ninpath() { :; }\n", encoding="utf-8")
+    source.write_text("#!/bin/bash\n\n# Company banner text only\n####################\n\ninpath() { :; }\n", encoding="utf-8")
     monkeypatch.setattr(module, "tracked_files", lambda _root: [source])
     assert any("inpath has no adjacent purpose comment" in item for item in module.collect_findings(tmp_path))
 
@@ -130,11 +130,40 @@ def test_directive_comment_does_not_satisfy_policy(tmp_path, monkeypatch) -> Non
     assert any("run_task has no adjacent purpose comment" in item for item in module.collect_findings(tmp_path))
 
 
+def test_adjacent_directive_blocks_earlier_purpose_text(tmp_path, monkeypatch) -> None:
+    """Verify an adjacent directive cannot borrow earlier purpose text to pass policy."""
+    module = _load_policy_tool()
+    source = tmp_path / "helper.sh"
+    source.write_text(
+        "#!/bin/bash\n\n# Run the task with bounded retries.\n# shellcheck disable=SC2317\nrun_task() { :; }\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "tracked_files", lambda _root: [source])
+    assert any("run_task has no adjacent purpose comment" in item for item in module.collect_findings(tmp_path))
+
+
 def test_meaningful_comment_satisfies_policy(tmp_path, monkeypatch) -> None:
     """Verify genuine adjacent purpose text satisfies non-Python documentation policy."""
     module = _load_policy_tool()
     source = tmp_path / "helper.sh"
     source.write_text("#!/bin/bash\n\n# Resolve a command from PATH safely.\ninpath() { :; }\n", encoding="utf-8")
+    monkeypatch.setattr(module, "tracked_files", lambda _root: [source])
+    assert module.collect_findings(tmp_path) == []
+
+
+def test_multiline_purpose_comment_block_satisfies_policy(tmp_path, monkeypatch) -> None:
+    """Verify contiguous multi-line purpose comments are evaluated as one documentation block."""
+    module = _load_policy_tool()
+    source = tmp_path / "helper.sh"
+    source.write_text(
+        "#!/bin/bash\n\n"
+        "# Shell version of the waitmax utility, that limits the runtime of\n"
+        "# commands. This version does not conserve the original exit code\n"
+        "# of the command. It succeeds if the command terminates\n"
+        "# in time.\n"
+        "function waitmax\n{\n    :\n}\n",
+        encoding="utf-8",
+    )
     monkeypatch.setattr(module, "tracked_files", lambda _root: [source])
     assert module.collect_findings(tmp_path) == []
 
