@@ -172,20 +172,26 @@ def normalize_python(path: Path) -> int:
     return len(operations)
 
 
-def normalize_pattern(path: Path, pattern: re.Pattern[str], marker: str) -> int:
-    """Add adjacent purpose comments before undocumented line-oriented functions."""
-    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+def normalize_line_declarations(
+    path: Path,
+    declarations: list[policy.LineFunctionDeclaration],
+    purpose_checker,
+    marker: str,
+) -> int:
+    """Add purpose comments before undocumented shell-like declarations."""
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines(keepends=True)
     insertions: list[tuple[int, str]] = []
-    for index, line in enumerate(lines):
-        match = pattern.search(line)
-        if not match or policy.preceding_comment(lines, index):
+    for declaration in declarations:
+        if purpose_checker(text, declaration):
             continue
-        indent = match.group("indent") or ""
+        line = lines[declaration.line_index]
         newline = "\r\n" if line.endswith("\r\n") else "\n"
         insertions.append(
             (
-                index,
-                f"{indent}{marker} {description(match.group('name'), 'function')}{newline}",
+                declaration.line_index,
+                f"{declaration.indent}{marker} "
+                f"{description(declaration.name, 'function')}{newline}",
             )
         )
     for index, content in reversed(insertions):
@@ -202,7 +208,7 @@ def normalize_php(path: Path) -> int:
     insertions: list[tuple[int, str]] = []
     for declaration in policy.php_function_declarations(text):
         index = declaration.line_index
-        if policy.preceding_comment(lines, index):
+        if policy.php_declaration_has_purpose(text, declaration):
             continue
         line_start = text.rfind("\n", 0, declaration.offset) + 1
         if text[line_start : declaration.offset].strip():
@@ -231,11 +237,21 @@ def normalize_repository(root: Path) -> dict[str, int]:
         if kind == "python":
             counts[kind] += normalize_python(path)
         elif kind == "powershell":
-            counts[kind] += normalize_pattern(
-                path, policy.POWERSHELL_FUNCTION_PATTERN, "#"
+            text = path.read_text(encoding="utf-8")
+            counts[kind] += normalize_line_declarations(
+                path,
+                policy.powershell_function_declarations(text),
+                policy.powershell_declaration_has_purpose,
+                "#",
             )
         elif kind == "shell":
-            counts[kind] += normalize_pattern(path, policy.SHELL_FUNCTION_PATTERN, "#")
+            text = path.read_text(encoding="utf-8")
+            counts[kind] += normalize_line_declarations(
+                path,
+                policy.shell_function_declarations(text),
+                policy.shell_declaration_has_purpose,
+                "#",
+            )
         elif kind == "php":
             counts[kind] += normalize_php(path)
     return counts
