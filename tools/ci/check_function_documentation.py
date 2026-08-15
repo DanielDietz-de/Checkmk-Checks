@@ -31,6 +31,14 @@ PHP_MODIFIERS = frozenset(
 )
 
 
+class LineFunctionDeclaration(NamedTuple):
+    """Represent one line-oriented function declaration and source location."""
+
+    name: str
+    line_index: int
+    indent: str
+
+
 class PhpToken(NamedTuple):
     """Represent one significant PHP lexical token and its source location."""
 
@@ -38,6 +46,16 @@ class PhpToken(NamedTuple):
     value: str
     offset: int
     line_index: int
+
+
+class PhpComment(NamedTuple):
+    """Represent one lexical PHP comment and its physical source span."""
+
+    marker: str
+    text: str
+    start_line: int
+    end_line: int
+    full_line: bool
 
 
 class PhpFunctionDeclaration(NamedTuple):
@@ -160,45 +178,6 @@ def _comment_block_boundary(text: str) -> bool:
     return bool(re.fullmatch(r"https?://\S+", text, re.I))
 
 
-def _line_comment_block(lines: list[str], cursor: int, marker: str) -> str | None:
-    """Return a contiguous line-comment purpose block ending at ``cursor``."""
-    nearest = _clean_line_comment(lines[cursor], marker)
-    if _comment_block_boundary(nearest):
-        return nearest or None
-
-    parts = [nearest]
-    cursor -= 1
-    while cursor >= 0:
-        stripped = lines[cursor].lstrip()
-        if not stripped.startswith(marker) or stripped.startswith("#!"):
-            break
-        text = _clean_line_comment(lines[cursor], marker)
-        if _comment_block_boundary(text):
-            break
-        parts.append(text)
-        cursor -= 1
-    return " ".join(reversed(parts))
-
-
-def preceding_comment_text(lines: list[str], index: int) -> str | None:
-    """Return normalized text from the directly adjacent purpose-comment block."""
-    if index <= 0:
-        return None
-    cursor = index - 1
-    if not lines[cursor].strip():
-        return None
-    stripped = lines[cursor].lstrip().strip()
-    if stripped.startswith("#!"):
-        return None
-    if stripped.startswith("#"):
-        return _line_comment_block(lines, cursor, "#")
-    if stripped.startswith("//"):
-        return _line_comment_block(lines, cursor, "//")
-    if stripped.endswith("*/") or stripped.startswith("/*"):
-        return _strip_block_comment(lines, cursor)
-    return None
-
-
 def meaningful_purpose_comment(text: str | None) -> bool:
     """Return whether adjacent comment text contains actual purpose documentation."""
     if not text:
@@ -211,22 +190,230 @@ def meaningful_purpose_comment(text: str | None) -> bool:
     return len(re.findall(r"[A-Za-z0-9]+", normalized)) >= PURPOSE_COMMENT_MIN_WORDS
 
 
-def preceding_comment(lines: list[str], index: int) -> bool:
-    """Return whether a declaration has a directly adjacent meaningful purpose comment."""
-    return meaningful_purpose_comment(preceding_comment_text(lines, index))
+def _purpose_from_line_comments(
+    declaration_line: int, comments: dict[int, str]
+) -> bool:
+    """Return whether lexical line comments directly document one declaration."""
+    cursor = declaration_line - 1
+    if cursor not in comments:
+        return False
+    nearest = comments[cursor]
+    if _comment_block_boundary(nearest):
+        return meaningful_purpose_comment(nearest)
+    parts = [nearest]
+    cursor -= 1
+    while cursor in comments:
+        text = comments[cursor]
+        if _comment_block_boundary(text):
+            break
+        parts.append(text)
+        cursor -= 1
+    return meaningful_purpose_comment(" ".join(reversed(parts)))
 
 
-def check_pattern_file(path: Path, pattern: re.Pattern[str]) -> list[str]:
-    """Return findings for undocumented line-oriented function declarations."""
-    findings: list[str] = []
-    lines = path.read_text(encoding="utf-8").splitlines()
-    for index, line in enumerate(lines):
-        match = pattern.search(line)
-        if match and not preceding_comment(lines, index):
-            findings.append(
-                f"{path}:{index + 1}: {match.group('name')} has no adjacent purpose comment"
+def _parse_shell_heredoc_operator(
+    line: str, offset: int
+) -> tuple[str, bool, int] | None:
+    """Return one shell heredoc delimiter parsed from an unquoted operator."""
+    if not line.startswith("<<", offset) or line.startswith("<<<", offset):
+        return None
+    cursor = offset + 2
+    strip_tabs = False
+    if cursor < len(line) and line[cursor] == "-":
+        strip_tabs = True
+        cursor += 1
+    while cursor < len(line) and line[cursor] in " \t":
+        cursor += 1
+    if cursor >= len(line):
+        return None
+    if line[cursor] in {"'", '"'}:
+        quote = line[cursor]
+        cursor += 1
+        start = cursor
+        while cursor < len(line) and line[cursor] != quote:
+            cursor += 1
+        if cursor >= len(line):
+            return None
+        delimiter = line[start:cursor]
+        return delimiter, strip_tabs, cursor + 1
+    start = cursor
+    while cursor < len(line) and line[cursor] not in " \t;&|()<>\r\n":
+        cursor += 1
+    raw = line[start:cursor]
+    delimiter = raw.replace("\\", "")
+    if not delimiter:
+        return None
+    return delimiter, strip_tabs, cursor
+
+
+def _scan_shell(
+    text: str,
+) -> tuple[list[LineFunctionDeclaration], dict[int, str]]:
+    """Return shell declarations and full-line lexical comments outside literals."""
+    declarations: list[LineFunctionDeclaration] = []
+    comments: dict[int, str] = {}
+    heredocs: list[tuple[str, bool]] = []
+    quote: str | None = None
+    for line_index, line in enumerate(text.splitlines()):
+        if heredocs:
+            delimiter, strip_tabs = heredocs[0]
+            candidate = line.lstrip("\t") if strip_tabs else line
+            if candidate == delimiter:
+                heredocs.pop(0)
+            continue
+
+        chars = list(line)
+        first_nonspace = len(line) - len(line.lstrip(" \t"))
+        cursor = 0
+        while cursor < len(line):
+            char = line[cursor]
+            if quote is not None:
+                chars[cursor] = " "
+                if quote in {'"', "`"} and char == "\\":
+                    if cursor + 1 < len(line):
+                        chars[cursor + 1] = " "
+                    cursor += 2
+                    continue
+                if char == quote:
+                    quote = None
+                cursor += 1
+                continue
+            if char in {"'", '"', "`"}:
+                quote = char
+                chars[cursor] = " "
+                cursor += 1
+                continue
+            if char == "#":
+                if cursor == first_nonspace:
+                    comments[line_index] = line[cursor + 1 :].strip().rstrip("#").strip()
+                for index in range(cursor, len(chars)):
+                    chars[index] = " "
+                break
+            if line.startswith("<<", cursor):
+                parsed = _parse_shell_heredoc_operator(line, cursor)
+                if parsed is not None:
+                    delimiter, strip_tabs, end = parsed
+                    heredocs.append((delimiter, strip_tabs))
+                    cursor = end
+                    continue
+            cursor += 1
+        sanitized = "".join(chars)
+        match = SHELL_FUNCTION_PATTERN.search(sanitized)
+        if match:
+            declarations.append(
+                LineFunctionDeclaration(
+                    match.group("name"), line_index, match.group("indent") or ""
+                )
             )
-    return findings
+    return declarations, comments
+
+
+def shell_function_declarations(text: str) -> list[LineFunctionDeclaration]:
+    """Return actual shell function declarations outside literal regions."""
+    return _scan_shell(text)[0]
+
+
+def shell_declaration_has_purpose(
+    text: str, declaration: LineFunctionDeclaration
+) -> bool:
+    """Return whether lexical shell comments document one function declaration."""
+    _, comments = _scan_shell(text)
+    return _purpose_from_line_comments(declaration.line_index, comments)
+
+
+def _scan_powershell(
+    text: str,
+) -> tuple[list[LineFunctionDeclaration], dict[int, str]]:
+    """Return PowerShell declarations and comments outside literal regions."""
+    declarations: list[LineFunctionDeclaration] = []
+    comments: dict[int, str] = {}
+    here_string: str | None = None
+    block_comment = False
+    quote: str | None = None
+    for line_index, line in enumerate(text.splitlines()):
+        if here_string is not None:
+            if line.strip() == here_string + "@":
+                here_string = None
+            continue
+
+        chars = list(line)
+        first_nonspace = len(line) - len(line.lstrip(" \t"))
+        cursor = 0
+        while cursor < len(line):
+            char = line[cursor]
+            if block_comment:
+                chars[cursor] = " "
+                if line.startswith("#>", cursor):
+                    chars[cursor] = chars[cursor + 1] = " "
+                    block_comment = False
+                    cursor += 2
+                    continue
+                cursor += 1
+                continue
+            if quote is not None:
+                chars[cursor] = " "
+                if quote == '"' and char == "`":
+                    if cursor + 1 < len(line):
+                        chars[cursor + 1] = " "
+                    cursor += 2
+                    continue
+                if (
+                    quote == "'"
+                    and char == "'"
+                    and cursor + 1 < len(line)
+                    and line[cursor + 1] == "'"
+                ):
+                    chars[cursor + 1] = " "
+                    cursor += 2
+                    continue
+                if char == quote:
+                    quote = None
+                cursor += 1
+                continue
+            if line.startswith("<#", cursor):
+                chars[cursor] = chars[cursor + 1] = " "
+                block_comment = True
+                cursor += 2
+                continue
+            if line.startswith('@"', cursor) or line.startswith("@'", cursor):
+                here_string = line[cursor + 1]
+                for index in range(cursor, len(chars)):
+                    chars[index] = " "
+                break
+            if char in {"'", '"'}:
+                quote = char
+                chars[cursor] = " "
+                cursor += 1
+                continue
+            if char == "#":
+                if cursor == first_nonspace:
+                    comments[line_index] = line[cursor + 1 :].strip().rstrip("#").strip()
+                for index in range(cursor, len(chars)):
+                    chars[index] = " "
+                break
+            cursor += 1
+        sanitized = "".join(chars)
+        match = POWERSHELL_FUNCTION_PATTERN.search(sanitized)
+        if match:
+            declarations.append(
+                LineFunctionDeclaration(
+                    match.group("name"), line_index, match.group("indent") or ""
+                )
+            )
+    return declarations, comments
+
+
+def powershell_function_declarations(text: str) -> list[LineFunctionDeclaration]:
+    """Return actual PowerShell function declarations outside literal regions."""
+    return _scan_powershell(text)[0]
+
+
+def powershell_declaration_has_purpose(
+    text: str, declaration: LineFunctionDeclaration
+) -> bool:
+    """Return whether lexical PowerShell comments document one function declaration."""
+    _, comments = _scan_powershell(text)
+    return _purpose_from_line_comments(declaration.line_index, comments)
 
 
 def _php_identifier_start(char: str) -> bool:
@@ -283,7 +470,7 @@ def _parse_php_heredoc_label(text: str, offset: int) -> tuple[str, int] | None:
 
 
 def _skip_php_heredoc(text: str, offset: int) -> int | None:
-    """Return the offset after one heredoc or nowdoc body when recognized."""
+    """Return the offset immediately after a heredoc or nowdoc terminator label."""
     parsed = _parse_php_heredoc_label(text, offset)
     if parsed is None:
         return None
@@ -300,22 +487,38 @@ def _skip_php_heredoc(text: str, offset: int) -> int | None:
             raw = raw[:-1]
         stripped = raw.lstrip(" \t")
         if stripped.startswith(label):
-            remainder = stripped[len(label) :].lstrip(" \t")
+            remainder = stripped[len(label) :]
             if not remainder or not _php_identifier_continue(remainder[0]):
-                return next_line
+                indentation = len(raw) - len(stripped)
+                return cursor + indentation + len(label)
         cursor = next_line
     return len(text)
 
 
-def php_tokens(text: str) -> list[PhpToken]:
-    """Return significant PHP tokens while excluding comments, strings, and heredocs."""
+def _php_line_prefix_is_whitespace(text: str, offset: int) -> bool:
+    """Return whether only indentation precedes one offset on its physical line."""
+    line_start = text.rfind("\n", 0, offset) + 1
+    return not text[line_start:offset].strip()
+
+
+def _php_line_suffix_is_whitespace(text: str, offset: int) -> bool:
+    """Return whether only whitespace follows one offset on its physical line."""
+    line_end = text.find("\n", offset)
+    if line_end < 0:
+        line_end = len(text)
+    return not text[offset:line_end].strip()
+
+
+def _php_lex(text: str) -> tuple[list[PhpToken], list[PhpComment]]:
+    """Return PHP code tokens and lexical comments while excluding literal regions."""
     tokens: list[PhpToken] = []
+    comments: list[PhpComment] = []
     offset = 0
     line_index = 0
     in_php = False
     while offset < len(text):
         if not in_php:
-            if text.startswith("<?php", offset):
+            if text[offset : offset + 5].casefold() == "<?php":
                 in_php = True
                 offset += 5
                 continue
@@ -347,9 +550,27 @@ def php_tokens(text: str) -> list[PhpToken]:
         if text.startswith("//", offset) or (
             char == "#" and not text.startswith("#[", offset)
         ):
+            marker = "//" if text.startswith("//", offset) else "#"
+            marker_length = len(marker)
             newline = text.find("\n", offset)
-            closing_tag = text.find("?>", offset + 1)
+            closing_tag = text.find("?>", offset + marker_length)
             if closing_tag >= 0 and (newline < 0 or closing_tag < newline):
+                end = closing_tag
+                closes_php = True
+            else:
+                end = newline if newline >= 0 else len(text)
+                closes_php = False
+            full_line = _php_line_prefix_is_whitespace(text, offset) and not closes_php
+            comments.append(
+                PhpComment(
+                    marker,
+                    text[offset + marker_length : end].strip(),
+                    line_index,
+                    line_index,
+                    full_line,
+                )
+            )
+            if closes_php:
                 offset = closing_tag
                 continue
             if newline < 0:
@@ -361,7 +582,15 @@ def php_tokens(text: str) -> list[PhpToken]:
             if end < 0:
                 break
             end += 2
-            line_index += text.count("\n", offset, end)
+            start_line = line_index
+            end_line = line_index + text.count("\n", offset, end)
+            full_line = _php_line_prefix_is_whitespace(
+                text, offset
+            ) and _php_line_suffix_is_whitespace(text, end)
+            comments.append(
+                PhpComment("/*", text[offset:end], start_line, end_line, full_line)
+            )
+            line_index = end_line
             offset = end
             continue
         if char in {"'", '"', "`"}:
@@ -385,7 +614,12 @@ def php_tokens(text: str) -> list[PhpToken]:
             continue
         tokens.append(PhpToken("punctuation", char, offset, line_index))
         offset += 1
-    return tokens
+    return tokens, comments
+
+
+def php_tokens(text: str) -> list[PhpToken]:
+    """Return significant PHP tokens outside comments and literal regions."""
+    return _php_lex(text)[0]
 
 
 def _php_attribute_start(tokens: list[PhpToken], closing_index: int) -> int | None:
@@ -406,9 +640,10 @@ def _php_attribute_start(tokens: list[PhpToken], closing_index: int) -> int | No
     return None
 
 
-def php_function_declarations(text: str) -> list[PhpFunctionDeclaration]:
-    """Return actual named PHP function declarations from lexically significant tokens."""
-    tokens = php_tokens(text)
+def _php_function_declarations_from_tokens(
+    text: str, tokens: list[PhpToken]
+) -> list[PhpFunctionDeclaration]:
+    """Return named PHP declarations from an existing significant-token stream."""
     declarations: list[PhpFunctionDeclaration] = []
     for index, token in enumerate(tokens):
         if token.kind != "identifier" or token.value.casefold() != "function":
@@ -448,13 +683,86 @@ def php_function_declarations(text: str) -> list[PhpFunctionDeclaration]:
     return declarations
 
 
+def php_function_declarations(text: str) -> list[PhpFunctionDeclaration]:
+    """Return actual named PHP declarations from lexical PHP tokens."""
+    tokens, _ = _php_lex(text)
+    return _php_function_declarations_from_tokens(text, tokens)
+
+
+def _php_comment_has_purpose(
+    declaration: PhpFunctionDeclaration, comments: list[PhpComment]
+) -> bool:
+    """Return whether lexical PHP comments directly document one declaration."""
+    candidates = [
+        comment
+        for comment in comments
+        if comment.full_line and comment.end_line == declaration.line_index - 1
+    ]
+    if not candidates:
+        return False
+    nearest = candidates[-1]
+    if nearest.marker == "/*":
+        lines = nearest.text.splitlines()
+        return meaningful_purpose_comment(
+            _strip_block_comment(lines, len(lines) - 1) if lines else None
+        )
+
+    nearest_text = nearest.text.strip()
+    if nearest.marker == "#":
+        nearest_text = nearest_text.rstrip("#").strip()
+    if _comment_block_boundary(nearest_text):
+        return meaningful_purpose_comment(nearest_text)
+    parts = [nearest_text]
+    current_line = nearest.start_line
+    comments_by_end_line = {
+        comment.end_line: comment for comment in comments if comment.full_line
+    }
+    while current_line - 1 in comments_by_end_line:
+        comment = comments_by_end_line[current_line - 1]
+        if comment.marker != nearest.marker:
+            break
+        text = comment.text.strip()
+        if comment.marker == "#":
+            text = text.rstrip("#").strip()
+        if _comment_block_boundary(text):
+            break
+        parts.append(text)
+        current_line = comment.start_line
+    return meaningful_purpose_comment(" ".join(reversed(parts)))
+
+
+def php_declaration_has_purpose(
+    text: str, declaration: PhpFunctionDeclaration
+) -> bool:
+    """Return whether a named PHP declaration has lexical purpose documentation."""
+    _, comments = _php_lex(text)
+    return _php_comment_has_purpose(declaration, comments)
+
+
+def check_line_declarations(
+    path: Path,
+    declarations: list[LineFunctionDeclaration],
+    purpose_checker,
+) -> list[str]:
+    """Return findings for undocumented shell-like function declarations."""
+    text = path.read_text(encoding="utf-8")
+    findings: list[str] = []
+    for declaration in declarations:
+        if not purpose_checker(text, declaration):
+            findings.append(
+                f"{path}:{declaration.line_index + 1}: {declaration.name} "
+                "has no adjacent purpose comment"
+            )
+    return findings
+
+
 def check_php(path: Path) -> list[str]:
     """Return documentation findings for actual named PHP function declarations."""
     text = path.read_text(encoding="utf-8")
-    lines = text.splitlines()
+    tokens, comments = _php_lex(text)
     findings: list[str] = []
-    for declaration in php_function_declarations(text):
-        if not preceding_comment(lines, declaration.line_index):
+    for declaration in _php_function_declarations_from_tokens(text, tokens):
+        if not _php_comment_has_purpose(declaration, comments):
             findings.append(
                 f"{path}:{declaration.line_index + 1}: {declaration.name} "
                 "has no adjacent purpose comment"
@@ -470,9 +778,23 @@ def collect_findings(root: Path) -> list[str]:
         if kind == "python":
             findings.extend(check_python(path))
         elif kind == "powershell":
-            findings.extend(check_pattern_file(path, POWERSHELL_FUNCTION_PATTERN))
+            text = path.read_text(encoding="utf-8")
+            findings.extend(
+                check_line_declarations(
+                    path,
+                    powershell_function_declarations(text),
+                    powershell_declaration_has_purpose,
+                )
+            )
         elif kind == "shell":
-            findings.extend(check_pattern_file(path, SHELL_FUNCTION_PATTERN))
+            text = path.read_text(encoding="utf-8")
+            findings.extend(
+                check_line_declarations(
+                    path,
+                    shell_function_declarations(text),
+                    shell_declaration_has_purpose,
+                )
+            )
         elif kind == "php":
             findings.extend(check_php(path))
     return findings
