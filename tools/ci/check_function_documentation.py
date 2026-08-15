@@ -9,6 +9,20 @@ import subprocess
 import sys
 
 MIN_DOC_WORDS = 4
+POWERSHELL_FUNCTION_PATTERN = re.compile(
+    r"^(?P<indent>\s*)function\s+(?P<name>[A-Za-z0-9_:-]+)\b", re.I
+)
+SHELL_FUNCTION_PATTERN = re.compile(
+    r"^(?P<indent>\s*)"
+    r"(?=(?:function\s+|[A-Za-z_][A-Za-z0-9_]*\s*\(\s*\)))"
+    r"(?:function\s+)?(?P<name>[A-Za-z_][A-Za-z0-9_]*)"
+    r"\s*(?:\(\s*\))?\s*(?:\{)?\s*(?:#.*)?$"
+)
+PHP_FUNCTION_PATTERN = re.compile(
+    r"^(?P<indent>\s*)(?:(?:public|protected|private|static|final|abstract)\s+)*"
+    r"function\s+&?\s*(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(",
+    re.I,
+)
 
 
 def tracked_files(root: Path) -> list[Path]:
@@ -102,25 +116,16 @@ def check_pattern_file(path: Path, pattern: re.Pattern[str]) -> list[str]:
 def collect_findings(root: Path) -> list[str]:
     """Collect documentation findings from all tracked supported source files."""
     findings: list[str] = []
-    ps_pattern = re.compile(r"^(?P<indent>\s*)function\s+(?P<name>[A-Za-z0-9_:-]+)\b", re.I)
-    sh_pattern = re.compile(
-        r"^(?P<indent>\s*)(?:function\s+)?(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(\)\s*\{"
-    )
-    php_pattern = re.compile(
-        r"^(?P<indent>\s*)(?:(?:public|protected|private|static|final|abstract)\s+)*"
-        r"function\s+&?\s*(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(",
-        re.I,
-    )
     for path in tracked_files(root):
         kind = source_kind(path)
         if kind == "python":
             findings.extend(check_python(path))
         elif kind == "powershell":
-            findings.extend(check_pattern_file(path, ps_pattern))
+            findings.extend(check_pattern_file(path, POWERSHELL_FUNCTION_PATTERN))
         elif kind == "shell":
-            findings.extend(check_pattern_file(path, sh_pattern))
+            findings.extend(check_pattern_file(path, SHELL_FUNCTION_PATTERN))
         elif kind == "php":
-            findings.extend(check_pattern_file(path, php_pattern))
+            findings.extend(check_pattern_file(path, PHP_FUNCTION_PATTERN))
     return findings
 
 
