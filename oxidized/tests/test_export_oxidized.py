@@ -17,6 +17,7 @@ loader.exec_module(module)
 
 
 def test_local_secret_target_is_restricted_to_current_loopback_site():
+    """Verify that local secret target is restricted to current loopback site."""
     assert module.validate_local_site_url("http://127.0.0.1:5000/cmk", "cmk") == (
         "http://127.0.0.1:5000/cmk"
     )
@@ -27,6 +28,7 @@ def test_local_secret_target_is_restricted_to_current_loopback_site():
 
 
 def test_view_parser_sorts_deduplicates_and_validates_os_tags():
+    """Verify that view parser sorts deduplicates and validates os tags."""
     data = [
         ["Host", "Model"],
         ["switch-b", "Device [junos]"],
@@ -42,6 +44,7 @@ def test_view_parser_sorts_deduplicates_and_validates_os_tags():
 
 
 def test_conflicting_duplicate_host_fails_closed():
+    """Verify that conflicting duplicate host fails closed."""
     with pytest.raises(module.ExportError, match="conflicting"):
         module.parse_oxidized_view(
             [["Host", "Model"], ["switch", "[ios]"], ["switch", "[junos]"]]
@@ -49,6 +52,7 @@ def test_conflicting_duplicate_host_fails_closed():
 
 
 def test_atomic_output_is_private_and_valid_json(tmp_path):
+    """Verify that atomic output is private and valid json."""
     output = tmp_path / "oxidized.json"
     inventory = [{"hostname": "switch", "os": "ios"}]
     module.atomic_write_json(output, inventory)
@@ -57,6 +61,7 @@ def test_atomic_output_is_private_and_valid_json(tmp_path):
 
 
 def test_failed_export_can_remove_active_stale_file(tmp_path):
+    """Verify that failed export can remove active stale file."""
     output = tmp_path / "oxidized.json"
     output.write_text("old", encoding="utf-8")
     stale = module.invalidate_output(output)
@@ -65,6 +70,7 @@ def test_failed_export_can_remove_active_stale_file(tmp_path):
 
 
 def test_secret_file_must_not_be_group_readable(tmp_path):
+    """Verify that secret file must not be group readable."""
     secret = tmp_path / "automation.secret"
     secret.write_text("secret", encoding="utf-8")
     os.chmod(secret, 0o640)
@@ -75,6 +81,7 @@ def test_secret_file_must_not_be_group_readable(tmp_path):
 
 
 def test_output_must_stay_below_omd_root(tmp_path):
+    """Verify that output must stay below omd root."""
     root = tmp_path / "site"
     root.mkdir()
     with pytest.raises(module.ExportError, match="below OMD_ROOT"):

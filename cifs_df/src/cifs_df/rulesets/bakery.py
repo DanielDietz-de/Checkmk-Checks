@@ -15,6 +15,7 @@ from cmk.rulesets.v1.rule_specs import AgentConfig, Topic
 
 
 def _agent_config_cifs_df() -> Dictionary:
+    """Handle agent config cifs df for this module's workflow."""
     return Dictionary(
         help_text=Help("The plugin <tt>cifs_df</tt> allows "
                        "monitoring of CIFS_FS Mount-Points on Linux Systemls"
@@ -55,7 +56,7 @@ def _agent_config_cifs_df() -> Dictionary:
 
 rule_spec_cifs_df = AgentConfig(
     name="cifs_df",
-    title=Title("Filesystemmonitoring of CIFS_FS via Plugin (Linux)"), 
+    title=Title("Filesystemmonitoring of CIFS_FS via Plugin (Linux)"),
     topic=Topic.OPERATING_SYSTEM,
     parameter_form=_agent_config_cifs_df,
 )

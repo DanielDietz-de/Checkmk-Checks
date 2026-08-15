@@ -26,11 +26,13 @@ agent_section_pure_hardware_nw = AgentSection(
 
 
 def discover_pure_hardware_nw(section):
+    """Discover pure hardware nw from the available input data."""
     for item, data in section.items():
         if "nw_speed" in data:
             yield Service(item=item)
 
 def check_pure_hardware_nw(item, section):
+    """Evaluate pure hardware nw and return its resulting state."""
     data = section[item]
 
     if data["status"].lower() == "ok":

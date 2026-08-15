@@ -8,6 +8,7 @@ from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
 
 def _parameter_form_dell_powermax() -> Dictionary:
+    """Handle parameter form dell powermax for this module's workflow."""
     return Dictionary(
         title=Title("Check state of Dell EMC PowerMax storage pools"),
         help_text=Help(

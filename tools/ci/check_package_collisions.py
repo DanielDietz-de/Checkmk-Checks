@@ -31,21 +31,25 @@ _LEGACY_REGISTRATIONS = {
 
 @dataclass(frozen=True, order=True)
 class Collision:
+    """Represent collision behavior and associated state."""
     kind: str
     identity: str
     packages: tuple[str, ...]
 
     def render(self) -> str:
+        """Handle render for this module's workflow."""
         return f"{self.kind} {self.identity!r} is owned by: {', '.join(self.packages)}"
 
 
 def _parse_args() -> argparse.Namespace:
+    """Handle parse args for this module's workflow."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--repository", type=Path, default=Path("."))
     return parser.parse_args()
 
 
 def _manifest(path: Path) -> dict[str, object]:
+    """Handle manifest for this module's workflow."""
     value = ast.literal_eval(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise ValueError(f"{path}: manifest must be a dictionary")
@@ -53,6 +57,7 @@ def _manifest(path: Path) -> dict[str, object]:
 
 
 def _active_packages(repository: Path) -> list[tuple[str, Path, dict[str, object]]]:
+    """Handle active packages for this module's workflow."""
     result: list[tuple[str, Path, dict[str, object]]] = []
     for info in sorted(repository.glob("*/src/info")):
         if info.is_file():
@@ -63,6 +68,7 @@ def _active_packages(repository: Path) -> list[tuple[str, Path, dict[str, object
 
 
 def _safe_manifest_path(package: str, component: str, entry: object) -> str:
+    """Handle safe manifest path for this module's workflow."""
     if not isinstance(entry, str) or not entry:
         raise ValueError(f"{package}: {component} contains a non-string or empty path")
     path = PurePosixPath(entry)
@@ -78,10 +84,12 @@ def _record(
     identity: str,
     package: str,
 ) -> None:
+    """Handle record for this module's workflow."""
     owners.setdefault((kind, identity), set()).add(package)
 
 
 def _call_name(node: ast.expr) -> str:
+    """Handle call name for this module's workflow."""
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
@@ -91,6 +99,7 @@ def _call_name(node: ast.expr) -> str:
 
 
 def _literal_name(call: ast.Call) -> str | None:
+    """Handle literal name for this module's workflow."""
     for keyword in call.keywords:
         if keyword.arg == "name" and isinstance(keyword.value, ast.Constant):
             value = keyword.value.value
@@ -99,6 +108,7 @@ def _literal_name(call: ast.Call) -> str | None:
 
 
 def _registration_kind(function_name: str) -> str | None:
+    """Handle registration kind for this module's workflow."""
     legacy = _LEGACY_REGISTRATIONS.get(function_name)
     if legacy is not None:
         return legacy
@@ -106,6 +116,7 @@ def _registration_kind(function_name: str) -> str | None:
 
 
 def _registration_identities(package_dir: Path) -> Iterable[tuple[str, str]]:
+    """Handle registration identities for this module's workflow."""
     seen: set[tuple[str, str]] = set()
     for path in sorted((package_dir / "src").rglob("*.py")):
         if not path.is_file() or path.name in {"info", "info.json"}:
@@ -132,6 +143,7 @@ def _registration_identities(package_dir: Path) -> Iterable[tuple[str, str]]:
 
 
 def find_collisions(repository: Path) -> list[Collision]:
+    """Handle find collisions for this module's workflow."""
     owners: dict[tuple[str, str], set[str]] = {}
     for package, package_dir, manifest in _active_packages(repository.resolve()):
         name = manifest.get("name")
@@ -165,6 +177,7 @@ def find_collisions(repository: Path) -> list[Collision]:
 
 
 def main() -> None:
+    """Run the command-line entry point and return its result."""
     args = _parse_args()
     collisions = find_collisions(args.repository)
     if collisions:

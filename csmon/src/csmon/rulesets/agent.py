@@ -7,6 +7,7 @@ from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
 
 def _form_special_agents_csmon() -> Dictionary:
+    """Handle form special agents csmon for this module's workflow."""
     return Dictionary(
         title=Title("CSMON Connection"),
         elements={

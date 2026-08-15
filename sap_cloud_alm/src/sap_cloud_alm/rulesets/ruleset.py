@@ -22,9 +22,7 @@ from cmk.rulesets.v1.rule_specs import (
 
 
 def _valuespec_special_agent_sap_cloud_alm():
-    """
-    Special Agent Konfiguration
-    """
+    """Handle valuespec special agent sap cloud alm for this module's workflow."""
 
     return Dictionary(
         title = Title("SAP Cloud ALM"),

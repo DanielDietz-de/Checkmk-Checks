@@ -25,10 +25,12 @@ agent_section_storcli2_enclosure_list = AgentSection(
 
 
 def discover_storcli2_enclosure_list(section):
+    """Discover storcli2 enclosure list from the available input data."""
     for eid in section.keys():
         yield Service(item=eid)
 
 def check_storcli2_enclosure_list(item, section):
+    """Evaluate storcli2 enclosure list and return its resulting state."""
     if item not in section.keys():
         yield Result(state=State.UNKNOWN, summary="Enclosure not found")
     else:

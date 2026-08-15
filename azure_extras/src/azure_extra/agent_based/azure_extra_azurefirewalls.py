@@ -128,9 +128,7 @@ def parse_properties(string_table):
 
 # Discovery functions for each resource type
 def discover_firewalls(section):
-    """
-    Discover Azure Firewalls
-    """
+    """Discover firewalls from the available input data."""
     firewalls = section.get('firewalls', {})
     for name in firewalls:
         yield Service(item=name)
@@ -182,7 +180,7 @@ def check_firewall(item, section):
         state = State.CRIT
     else:
         state = State.WARN
-    
+
     # Get main properties
     sku = data.get('sku', {})
     sku_name = sku.get('name', 'Unknown')
@@ -230,7 +228,7 @@ def check_ip_config(item, section):
         state = State.CRIT
     else:
         state = State.WARN
-    
+
     kind = data.get('kind', 'data')
     config_type = 'Management' if kind == 'management' else 'Data plane'
     private_ip = data.get('privateIPAddress')
@@ -280,13 +278,13 @@ def check_rule_collection(item, section):
         state = State.CRIT
     else:
         state = State.WARN
-    
+
     rule_type = data.get('type', 'Unknown')
     priority = data.get('priority', 'Unknown')
     action = data.get('action', {})
     action_type = action.get('type', 'Unknown') if isinstance(action, dict) else str(action)
     rules_count = len(data.get('rules', []))
-    
+
     summary_parts = [
         f"State: {provisioning_state}",
         f"Type: {rule_type}",

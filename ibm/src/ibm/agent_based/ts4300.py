@@ -17,6 +17,7 @@ from cmk.agent_based.v2 import (
 )
 
 def parse_ibm_ts4300(string_table):
+    """Parse ibm ts4300 into its normalized representation."""
     return string_table[0]
 
 snmp_section_ibm_ts4300 = SNMPSection(
@@ -38,10 +39,12 @@ snmp_section_ibm_ts4300 = SNMPSection(
 )
 
 def discover_ibm_ts4300(section):
+    """Discover ibm ts4300 from the available input data."""
     yield Service()
 
 def check_ibm_ts4300(section):
     # [['3573-TL', '3555L3A7800LH9', 'IBM', '1.2.1.0-A00', 'IBM TS4300 Tape Library']
+    """Evaluate ibm ts4300 and return its resulting state."""
     model, serial, vendor, version, description = section[0]
     yield Result(state=State.OK,  summary=f"Model: {model}, Serial: {serial}, Version: {version}, Description: {description}")
 

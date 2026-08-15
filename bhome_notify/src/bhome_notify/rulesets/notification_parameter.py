@@ -15,6 +15,7 @@ from cmk.rulesets.v1.rule_specs import NotificationParameters, Topic
 
 
 def _required_string(title: str, help_text: str) -> String:
+    """Handle required string for this module's workflow."""
     return String(
         title=Title(title),
         help_text=Help(help_text),
@@ -23,6 +24,7 @@ def _required_string(title: str, help_text: str) -> String:
 
 
 def _form_spec_bhome() -> Dictionary:
+    """Handle form spec bhome for this module's workflow."""
     return Dictionary(
         help_text=Help(
             "Sends Checkmk events to BMC Helix Operations Management by using "

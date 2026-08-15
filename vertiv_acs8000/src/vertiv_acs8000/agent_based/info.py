@@ -22,6 +22,7 @@ VERTIV_DETECT = startswith(".1.3.6.1.2.1.1.1.0", "Avocent ACS")
 
 
 def parse_vertiv_acs8000_info(string_table):
+    """Parse vertiv acs8000 info into its normalized representation."""
     if not string_table or not string_table[0]:
         return None
     row = string_table[0]
@@ -36,6 +37,7 @@ def parse_vertiv_acs8000_info(string_table):
 
 
 def host_label_vertiv_acs8000_info(section):
+    """Handle host label vertiv acs8000 info for this module's workflow."""
     yield HostLabel("cmk/vendor", "vertiv")
     yield HostLabel("cmk/device_type", "console_server")
     if section.get("model"):
@@ -43,10 +45,12 @@ def host_label_vertiv_acs8000_info(section):
 
 
 def discover_vertiv_acs8000_info(section):
+    """Discover vertiv acs8000 info from the available input data."""
     yield Service()
 
 
 def check_vertiv_acs8000_info(section):
+    """Evaluate vertiv acs8000 info and return its resulting state."""
     yield Result(
         state=State.OK,
         summary=f"Model: {section['model']}, Firmware: {section['firmware']}, Serial: {section['serial']}",

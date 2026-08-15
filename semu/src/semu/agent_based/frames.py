@@ -40,16 +40,12 @@ def parse_function(string_table):
 
 
 def discover_service(section):
-    '''
-    Discover
-    '''
+    """Discover service from the available input data."""
     yield Service()
 
 
 def check_service(params,section):
-    '''
-    Check single Service
-    '''
+    """Evaluate service and return its resulting state."""
     current_frames = int(section['frames_processed'])
     now = time.time()
     rate = get_rate(get_value_store(), 'frames', now, current_frames)

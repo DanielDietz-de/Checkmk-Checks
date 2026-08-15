@@ -24,6 +24,7 @@ from cmk.rulesets.v1.rule_specs import (
 
 
 def _valuespec_special_agent_pure():
+    """Handle valuespec special agent pure for this module's workflow."""
     return Dictionary(
         title = Title("Pure via WebAPI"),
         help_text = Help("This rule set selects the special agent for Pure"),

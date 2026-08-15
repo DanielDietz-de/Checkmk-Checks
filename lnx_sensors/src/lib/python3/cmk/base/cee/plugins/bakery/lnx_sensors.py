@@ -16,6 +16,7 @@ from .bakery_api.v1 import (
 
 
 def get_lnx_sensors_files():
+    """Return lnx sensors files for the supplied inputs."""
     yield Plugin(
         base_os=OS.LINUX,
         source=Path("lnx_sensors"),

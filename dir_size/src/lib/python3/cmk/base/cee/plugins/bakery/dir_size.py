@@ -12,6 +12,7 @@ from .bakery_api.v1 import (
 
 
 def _get_config_lines(conf):
+    """Handle get config lines for this module's workflow."""
     config = []
     for entry in conf.get('folders', []):
         if not entry.startswith('/'):
@@ -23,9 +24,7 @@ def _get_config_lines(conf):
 
 
 def get_dir_size(conf: Any) -> FileGenerator:
-    """
-    Dir Size
-    """
+    """Return dir size for the supplied inputs."""
     mode = conf.get('deployment', ("do_not_deploy", 0,0))
     match mode:
         case "do_not_deploy", _:

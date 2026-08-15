@@ -20,6 +20,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_form_postgres_replication() -> Dictionary:
+    """Handle parameter form postgres replication for this module's workflow."""
     return Dictionary(
         help_text=Help(
             "Upper levels for the replication lag (in bytes) of a PostgreSQL "

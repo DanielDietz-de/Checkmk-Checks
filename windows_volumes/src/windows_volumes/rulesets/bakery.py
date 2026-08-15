@@ -21,6 +21,7 @@ from cmk.rulesets.v1.rule_specs import AgentConfig, Topic
 
 
 def _agent_config_windows_volumes() -> Dictionary:
+    """Handle agent config windows volumes for this module's workflow."""
     return Dictionary(
         help_text=Help(
             "This will deploy the agent plug-in <tt>windows_volumes</tt>, which "

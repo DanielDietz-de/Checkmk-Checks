@@ -12,6 +12,7 @@ REPOSITORY = Path(__file__).resolve().parent
 
 
 def main() -> None:
+    """Run the command-line entry point and return its result."""
     output: list[dict[str, str]] = []
     for info_path in sorted(REPOSITORY.glob("*/src/info")):
         package_dir = info_path.parent.parent

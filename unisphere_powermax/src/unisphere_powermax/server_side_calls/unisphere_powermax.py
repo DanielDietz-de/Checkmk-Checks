@@ -14,6 +14,7 @@ from cmk.server_side_calls.v1 import (
 
 
 class AgentPowermaxUParams(BaseModel):
+    """Represent agentpowermaxuparams behavior and associated state."""
     username: str
     password: Secret
     port: Optional[int] = None
@@ -34,6 +35,7 @@ class AgentPowermaxUParams(BaseModel):
 
 
 def generate_powermanx_command(params: AgentPowermaxUParams, host_config: HostConfig):
+    """Generate powermanx command from the current source data."""
     args: list[str | Secret] = [
         "--user",
         params.username,

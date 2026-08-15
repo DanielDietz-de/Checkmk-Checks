@@ -50,6 +50,7 @@ _COMPONENT_SOURCE_ROOTS = {
 
 
 def _parse_args() -> argparse.Namespace:
+    """Handle parse args for this module's workflow."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--repository", type=Path, default=Path("."))
     parser.add_argument("--output", type=Path, default=Path("dist/repository-mkps"))
@@ -59,6 +60,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def discover_package_dirs(repository: Path, selected: list[str]) -> list[Path]:
+    """Discover package dirs from the available input data."""
     if selected:
         package_dirs = [repository / value for value in selected]
     else:
@@ -71,6 +73,7 @@ def discover_package_dirs(repository: Path, selected: list[str]) -> list[Path]:
 
 
 def read_manifest(package_dir: Path, packaged_version: str) -> dict[str, Any]:
+    """Read manifest from its configured source."""
     info_path = package_dir / "src" / "info"
     manifest = ast.literal_eval(info_path.read_text(encoding="utf-8"))
     if not isinstance(manifest, dict):
@@ -136,6 +139,7 @@ def read_manifest(package_dir: Path, packaged_version: str) -> dict[str, Any]:
 
 
 def _safe_relative_path(value: str) -> PurePosixPath:
+    """Handle safe relative path for this module's workflow."""
     relative = PurePosixPath(value)
     if relative.is_absolute() or ".." in relative.parts or value in {"", "."}:
         raise ValueError(f"Unsafe package path: {value!r}")
@@ -143,6 +147,7 @@ def _safe_relative_path(value: str) -> PurePosixPath:
 
 
 def _source_path(package_dir: Path, component: str, relative: str) -> Path:
+    """Handle source path for this module's workflow."""
     safe_relative = _safe_relative_path(relative)
     candidates: list[Path] = []
     for source_root in _COMPONENT_SOURCE_ROOTS[component]:
@@ -174,6 +179,7 @@ def _source_path(package_dir: Path, component: str, relative: str) -> Path:
 
 
 def _tarinfo_for(source: Path, arcname: str) -> tuple[tarfile.TarInfo, io.BufferedReader | None]:
+    """Handle tarinfo for for this module's workflow."""
     info = tarfile.TarInfo(arcname)
     st = source.lstat()
     info.mtime = 0
@@ -196,6 +202,7 @@ def _tarinfo_for(source: Path, arcname: str) -> tuple[tarfile.TarInfo, io.Buffer
 
 
 def _component_tar(package_dir: Path, component: str, files: list[str]) -> bytes:
+    """Handle component tar for this module's workflow."""
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w", format=tarfile.PAX_FORMAT) as archive:
         for relative in files:
@@ -210,6 +217,7 @@ def _component_tar(package_dir: Path, component: str, files: list[str]) -> bytes
 
 
 def _add_bytes(archive: tarfile.TarFile, name: str, content: bytes, mode: int = 0o644) -> None:
+    """Handle add bytes for this module's workflow."""
     info = tarfile.TarInfo(name)
     info.size = len(content)
     info.mode = mode
@@ -222,6 +230,7 @@ def _add_bytes(archive: tarfile.TarFile, name: str, content: bytes, mode: int = 
 
 
 def build_package(package_dir: Path, output_root: Path, manifest: dict[str, Any]) -> Path:
+    """Build package from the supplied inputs."""
     package_output = output_root / package_dir.name
     package_output.mkdir(parents=True, exist_ok=True)
     filename = f"{manifest['name']}-{manifest['version']}.mkp"
@@ -246,6 +255,7 @@ def build_package(package_dir: Path, output_root: Path, manifest: dict[str, Any]
 
 
 def verify_package(package_path: Path, expected: dict[str, Any]) -> None:
+    """Verify package satisfies the required invariants."""
     with tarfile.open(package_path, mode="r:gz") as outer:
         outer_members = outer.getmembers()
         outer_names = [member.name for member in outer_members]
@@ -296,6 +306,7 @@ def verify_package(package_path: Path, expected: dict[str, Any]) -> None:
 
 
 def main() -> None:
+    """Run the command-line entry point and return its result."""
     args = _parse_args()
     repository = args.repository.resolve()
     output_root = args.output.resolve()

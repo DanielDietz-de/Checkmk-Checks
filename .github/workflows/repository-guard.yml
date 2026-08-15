@@ -89,6 +89,9 @@ jobs:
       - name: Verify package module documentation
         run: python3 tools/ci/manage_module_docstrings.py
 
+      - name: Verify function-level code documentation
+        run: python tools/ci/check_function_documentation.py
+
       - name: Verify repository Python syntax
         run: python3 tools/ci/check_python_syntax.py
 

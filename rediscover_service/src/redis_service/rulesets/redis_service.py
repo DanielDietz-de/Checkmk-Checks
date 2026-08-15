@@ -19,6 +19,7 @@ from cmk.rulesets.v1.rule_specs import NotificationParameters, Topic
 
 
 def _parameters_redis_service():
+    """Handle parameters redis service for this module's workflow."""
     return Dictionary(
         title=Title("Create notification with the following parameters"),
         help_text=Help(

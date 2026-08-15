@@ -105,6 +105,7 @@ def _levels_upper(params: Mapping):
 
 
 def check_windows_volumes(item: str, params: Mapping, section: Section) -> CheckResult:
+    """Evaluate windows volumes and return its resulting state."""
     volume = section.get(item)
     if volume is None:
         return

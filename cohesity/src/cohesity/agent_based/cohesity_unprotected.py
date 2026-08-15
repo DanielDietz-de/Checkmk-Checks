@@ -14,6 +14,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_cohesity_unprotected(string_table):
+    """Parse cohesity unprotected into its normalized representation."""
     section = {}
 
     for row in string_table:
@@ -35,9 +36,11 @@ agent_section_cohesity_unprotected = AgentSection(
 
 
 def discovery_cohesity_unprotected(section):
+    """Handle discovery cohesity unprotected for this module's workflow."""
     yield Service()
 
 def check_cohesity_unprotected(section):
+    """Evaluate cohesity unprotected and return its resulting state."""
     failed = []
 
     if section["numObjectsUnprotected"] > 0:
@@ -61,4 +64,3 @@ check_plugin_cohesity_unprotected = CheckPlugin(
     discovery_function=discovery_cohesity_unprotected,
     check_function=check_cohesity_unprotected,
 )
-

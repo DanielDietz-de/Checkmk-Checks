@@ -7,6 +7,7 @@ https://kuhn-ruess.de
 """
 
 def parse_pure_hardware(string_table):
+    """Parse pure hardware into its normalized representation."""
     section = {}
 
     for row in string_table:

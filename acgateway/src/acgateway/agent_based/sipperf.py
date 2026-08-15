@@ -22,6 +22,7 @@ from cmk.agent_based.v2 import (
 from time import time
 
 def parse_acgateway_sipperf(string_table):
+    """Parse acgateway sipperf into its normalized representation."""
     return string_table
 
 snmp_section_acgateway_sipperf = SNMPSection(
@@ -63,10 +64,12 @@ snmp_section_acgateway_sipperf = SNMPSection(
 )
 
 def discover_acgateway_sipperf(section):
+    """Discover acgateway sipperf from the available input data."""
     if len(section) == 2 and len(section[0]) == 1 and len(section[1]) == 1:
         yield Service()
 
 def check_acgateway_sipperf(section):
+    """Evaluate acgateway sipperf and return its resulting state."""
     sipperf_info = {
         0:  ("sip_calls_attempted", "Number of Attempted SIP/H323 calls"),
         1:  ("sip_calls_established", "Number of established (connected and voice activated) SIP/H323 calls"),

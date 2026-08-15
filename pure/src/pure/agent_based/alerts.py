@@ -16,6 +16,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_pure_alerts(string_table):
+    """Parse pure alerts into its normalized representation."""
     section = {
         "crit": 0,
         "warn": 0,
@@ -46,9 +47,11 @@ agent_section_pure_alerts = AgentSection(
 
 
 def discover_pure_alerts(section):
+    """Discover pure alerts from the available input data."""
     yield Service()
 
 def check_pure_alerts(section):
+    """Evaluate pure alerts and return its resulting state."""
     if len(section["error"]) > 0:
         yield Result(
             state=State.UNKNOWN,

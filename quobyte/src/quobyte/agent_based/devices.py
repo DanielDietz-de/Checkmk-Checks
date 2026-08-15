@@ -40,9 +40,7 @@ def discover_quobyte_devices(section):
 
 
 def check_quobyte_devices(item, params, section):
-    """
-    Check single Device
-    """
+    """Evaluate quobyte devices and return its resulting state."""
     try:
         device = section[item]
     except:

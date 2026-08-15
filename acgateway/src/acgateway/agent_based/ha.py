@@ -54,6 +54,7 @@ _HA_STATUS = {
 
 
 def _to_percent(value):
+    """Handle to percent for this module's workflow."""
     if value is None:
         return None
     normalized = str(value).strip().lower()
@@ -67,16 +68,19 @@ def _to_percent(value):
 
 
 def _retained_max(rows, column):
+    """Handle retained max for this module's workflow."""
     values = [_to_percent(row[column]) for row in rows if len(row) > column]
     valid_values = [value for value in values if value is not None]
     return max(valid_values) if valid_values else None
 
 
 def _table(string_table, index):
+    """Handle table for this module's workflow."""
     return string_table[index] if len(string_table) > index else []
 
 
 def parse_acgateway_ha(string_table):
+    """Parse acgateway ha into its normalized representation."""
     current_table = _table(string_table, 0)
     history = _table(string_table, 1)
     module_rows = _table(string_table, 2)
@@ -149,10 +153,12 @@ snmp_section_acgateway_ha = SNMPSection(
 
 
 def _alarm_text(alarm):
+    """Handle alarm text for this module's workflow."""
     return " ".join(str(alarm.get(key, "")) for key in ("name", "desc", "source")).lower()
 
 
 def _ha_alarms(section_acgateway_alarms):
+    """Handle ha alarms for this module's workflow."""
     if not section_acgateway_alarms:
         return []
     return [
@@ -163,17 +169,20 @@ def _ha_alarms(section_acgateway_alarms):
 
 
 def discover_acgateway_ha(section_acgateway_ha, section_acgateway_alarms):
+    """Discover acgateway ha from the available input data."""
     del section_acgateway_alarms
     if section_acgateway_ha:
         yield Service()
 
 
 def _mapped_result(mapping, raw_value, label):
+    """Handle mapped result for this module's workflow."""
     name, state = mapping.get(raw_value, (f"Unknown ({raw_value})", State.UNKNOWN))
     return Result(state=state, notice=f"{label}: {name}")
 
 
 def _yield_loss(section, key, label, metric_name):
+    """Handle yield loss for this module's workflow."""
     value = section.get(key)
     if value is None:
         return
@@ -182,6 +191,7 @@ def _yield_loss(section, key, label, metric_name):
 
 
 def check_acgateway_ha(section_acgateway_ha, section_acgateway_alarms):
+    """Evaluate acgateway ha and return its resulting state."""
     modules = section_acgateway_ha.get("modules", [])
     if modules:
         ha_names = []

@@ -17,12 +17,15 @@ from cmk.plugins.lib.humidity import check_humidity
 
 
 def parse_querx_webtherm_humidity(string_table):
+    """Parse querx webtherm humidity into its normalized representation."""
     return float(string_table[0][0])
 
 def discover_querx_webtherm_humidity(section):
+    """Discover querx webtherm humidity from the available input data."""
     yield Service(item="Humidity Sensor")
 
 def check_querx_webtherm_humidity(item, params, section):
+    """Evaluate querx webtherm humidity and return its resulting state."""
     yield from check_humidity(section, params)
 
 

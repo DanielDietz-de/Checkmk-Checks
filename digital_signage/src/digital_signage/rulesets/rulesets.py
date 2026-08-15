@@ -25,6 +25,7 @@ from cmk.rulesets.v1.rule_specs import (
 )
 
 def _parameter_digital_signage() -> Dictionary:
+    """Handle parameter digital signage for this module's workflow."""
     return Dictionary(
             elements={
                 "GPU_Load_3D": DictElement(

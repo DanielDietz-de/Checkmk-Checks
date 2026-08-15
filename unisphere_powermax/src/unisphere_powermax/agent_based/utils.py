@@ -9,6 +9,7 @@ https://kuhn-ruess.de
 import json
 
 def parse_section(string_table):
+    """Parse section into its normalized representation."""
     data = {}
 
     for line in string_table:
@@ -16,4 +17,3 @@ def parse_section(string_table):
             data[line[0]] = json.loads(json_raw)
 
     return data
-    

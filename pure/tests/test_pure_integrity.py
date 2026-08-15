@@ -14,6 +14,7 @@ AGENT = SOURCE_ROOT / "pure/libexec/agent_pure"
 
 
 def _is_python_source(path: Path) -> bool:
+    """Handle is python source for this module's workflow."""
     if path.suffix == ".py":
         return True
     if path.parent.name == "checks" and path.suffix == "":
@@ -62,6 +63,7 @@ def test_shipped_python_sources_parse() -> None:
 
 
 def _flasharray_constructor() -> ast.Call:
+    """Handle flasharray constructor for this module's workflow."""
     tree = ast.parse(AGENT.read_text(encoding="utf-8"), filename=str(AGENT))
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):

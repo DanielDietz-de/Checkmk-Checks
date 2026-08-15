@@ -95,12 +95,14 @@ snmp_section_wago_datacenter = SimpleSNMPSection(
 
 
 def discover_wago_datacenter(section):
+    """Discover wago datacenter from the available input data."""
     for index, entry in section["signals"].items():
         description = entry["description"] or f"Signal {index}"
         yield Service(item=f"{index} {description}")
 
 
 def check_wago_datacenter(item, section):
+    """Evaluate wago datacenter and return its resulting state."""
     index = item.split(" ", 1)[0]
     entry = section["signals"].get(index)
     if entry is None:

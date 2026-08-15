@@ -21,6 +21,7 @@ from cmk.rulesets.v1.rule_specs import ActiveCheck, Topic
 
 
 def _form_active_check_videotext():
+    """Handle form active check videotext for this module's workflow."""
     return Dictionary(
         title = Title("Videotext timestamp monitoring"),
         elements = {

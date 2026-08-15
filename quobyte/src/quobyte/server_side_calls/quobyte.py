@@ -5,6 +5,7 @@ from cmk.server_side_calls.v1 import HostConfig, Secret, SpecialAgentCommand, Sp
 
 
 class QuobyteParams(BaseModel):
+    """Represent quobyteparams behavior and associated state."""
     api_url: str
     username: str
     password: Secret

@@ -17,6 +17,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_valuespec_alteon_memory():
+    """Handle parameter valuespec alteon memory for this module's workflow."""
     return Dictionary(
         elements={
             "alteon_memory_tresholds": DictElement(

@@ -16,6 +16,7 @@ from cmk.agent_based.v2 import (
 )
 
 def parse_exasol_services(string_table):
+    """Parse exasol services into its normalized representation."""
     services = {}
 
     for service, state in string_table:
@@ -31,10 +32,12 @@ agent_section_exasol_services = AgentSection(
 
 
 def discover_exasol_services(section):
+    """Discover exasol services from the available input data."""
     yield Service()
 
 
 def check_exasol_services(section):
+    """Evaluate exasol services and return its resulting state."""
     for service, state in section.items():
         text = f"{service}: {state}"
 

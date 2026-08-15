@@ -17,16 +17,13 @@ from cmk.agent_based.v2 import (
 
 
 def _sanitize_mac(string):
-    """
-    """
+    """Handle sanitize mac for this module's workflow."""
     hx_gen = ("%02s" % hex(ord(m))[2:] for m in string)
     return ":".join(hx_gen).replace(" ", "0")
 
 
 def parse_cisco_portsec(string_table):
-    """
-    Parse Function
-    """
+    """Parse cisco portsec into its normalized representation."""
     parsed = []
     # l[1] = Name, l[2] = Portstate
     names = {l[0]: (l[1], l[2], l[3]) for l in string_table[0]}
@@ -53,17 +50,13 @@ def parse_cisco_portsec(string_table):
 
 
 def discover_cisco_portsec(section):
-    """
-    Discovery Function
-    """
+    """Discover cisco portsec from the available input data."""
     if section:
         yield Service()
 
 
 def check_cisco_portsec(params, section):
-    """
-    Check Function
-    """
+    """Evaluate cisco portsec and return its resulting state."""
     exceptions = params['exceptions']
 
     at_least_one_problem = False

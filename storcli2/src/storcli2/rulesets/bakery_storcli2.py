@@ -21,6 +21,7 @@ from cmk.rulesets.v1.rule_specs import (
 
 
 def _valuespec_agent_storcli2():
+    """Handle valuespec agent storcli2 for this module's workflow."""
     return Dictionary(
         title = Title("LSI Raid Controller Status 2 (via StorCLI2)"),
         help_text = Help(

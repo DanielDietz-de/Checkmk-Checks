@@ -16,6 +16,7 @@ from cmk.agent_based.v2 import (
 
 
 def _to_int(value):
+    """Handle to int for this module's workflow."""
     if value is None:
         return None
     normalized = str(value).strip().lower()
@@ -28,12 +29,14 @@ def _to_int(value):
 
 
 def _retained_max(rows, column):
+    """Handle retained max for this module's workflow."""
     values = [_to_int(row[column]) for row in rows if len(row) > column]
     valid_values = [value for value in values if value is not None]
     return max(valid_values) if valid_values else None
 
 
 def parse_acgateway_call_capacity(string_table):
+    """Parse acgateway call capacity into its normalized representation."""
     current_table = string_table[0] if string_table else []
     current = current_table[0] if current_table else []
     history = string_table[1] if len(string_table) > 1 else []
@@ -80,10 +83,12 @@ snmp_section_acgateway_call_capacity = SNMPSection(
 
 
 def discover_acgateway_call_capacity(section):
+    """Discover acgateway call capacity from the available input data."""
     yield Service()
 
 
 def _yield_value(section, key, label, metric_name):
+    """Handle yield value for this module's workflow."""
     value = section.get(key)
     if value is None:
         return
@@ -92,6 +97,7 @@ def _yield_value(section, key, label, metric_name):
 
 
 def check_acgateway_call_capacity(section):
+    """Evaluate acgateway call capacity and return its resulting state."""
     yield from _yield_value(section, "active_calls_in", "Active calls in", "active_calls_in")
     yield from _yield_value(section, "active_calls_out", "Active calls out", "active_calls_out")
     yield from _yield_value(section, "active_sessions", "Active sessions", "active_sessions")

@@ -33,20 +33,27 @@ loader.exec_module(module)
 
 
 def _load_bakery_module(monkeypatch):
+    """Handle load bakery module for this module's workflow."""
     bakery_api = types.ModuleType("cmk.base.cee.plugins.bakery.bakery_api.v1")
 
     class OS:
+        """Represent os behavior and associated state."""
         LINUX = "linux"
 
     class GeneratedFile:
+        """Represent generatedfile behavior and associated state."""
         def __init__(self, **kwargs):
+            """Initialize the instance and its required state."""
             self.kwargs = kwargs
 
     class Register:
+        """Represent register behavior and associated state."""
         def __init__(self):
+            """Initialize the instance and its required state."""
             self.calls = []
 
         def bakery_plugin(self, **kwargs):
+            """Handle bakery plugin for this module's workflow."""
             self.calls.append(kwargs)
 
     register = Register()
@@ -84,6 +91,7 @@ def _load_bakery_module(monkeypatch):
 
 
 def test_json_config_is_data_not_shell(tmp_path):
+    """Verify that json config is data not shell."""
     config = tmp_path / "bacula_jobs.json"
     marker = tmp_path / "executed"
     config.write_text(
@@ -103,6 +111,7 @@ def test_json_config_is_data_not_shell(tmp_path):
 
 
 def test_mysql_credentials_file_must_be_private(tmp_path):
+    """Verify that mysql credentials file must be private."""
     credentials = tmp_path / "mysql.cnf"
     credentials.write_text("[client]\npassword=example\n", encoding="utf-8")
     os.chmod(credentials, 0o640)
@@ -113,6 +122,7 @@ def test_mysql_credentials_file_must_be_private(tmp_path):
 
 
 def test_mysql_command_uses_argument_list_without_shell(monkeypatch, tmp_path):
+    """Verify that mysql command uses argument list without shell."""
     credentials = tmp_path / "mysql.cnf"
     credentials.write_text("[client]\npassword=example\n", encoding="utf-8")
     os.chmod(credentials, 0o600)
@@ -138,6 +148,7 @@ def test_mysql_command_uses_argument_list_without_shell(monkeypatch, tmp_path):
 
 
 def test_postgresql_peer_auth_uses_runuser_without_shell(monkeypatch):
+    """Verify that postgresql peer auth uses runuser without shell."""
     monkeypatch.setattr(module, "executable", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(module.pwd, "getpwnam", lambda name: object())
     config = module.validate_config(
@@ -157,6 +168,7 @@ def test_postgresql_peer_auth_uses_runuser_without_shell(monkeypatch):
 
 
 def test_legacy_deployment_sentinels_are_migrated_safely(monkeypatch):
+    """Verify that legacy deployment sentinels are migrated safely."""
     bakery, register = _load_bakery_module(monkeypatch)
 
     disabled_mode, _ = bakery._normalize(
@@ -174,12 +186,14 @@ def test_legacy_deployment_sentinels_are_migrated_safely(monkeypatch):
 
 
 def test_ruleset_keeps_historical_agent_config_name():
+    """Verify that ruleset keeps historical agent config name."""
     source = RULESET_PATH.read_text(encoding="utf-8")
     assert 'name="bacula"' in source
     assert "_migrate_deployment" in source
 
 
 def test_database_output_is_stopped_at_the_configured_cap(monkeypatch):
+    """Verify that database output is stopped at the configured cap."""
     monkeypatch.setattr(module, "MAX_OUTPUT_BYTES", 1024)
     command = [
         sys.executable,
@@ -191,6 +205,7 @@ def test_database_output_is_stopped_at_the_configured_cap(monkeypatch):
 
 
 def test_package_metadata_representations_match():
+    """Verify that package metadata representations match."""
     python_info = ast.literal_eval(
         (PACKAGE_ROOT / "src" / "info").read_text(encoding="utf-8")
     )
@@ -201,6 +216,7 @@ def test_package_metadata_representations_match():
 
 
 def test_no_hardcoded_credential_or_config_paths():
+    """Verify that no hardcoded credential or config paths."""
     source = MODULE_PATH.read_text(encoding="utf-8")
     assert "/root/.my.cnf" not in source
     assert 'MK_CONFDIR="/etc/check_mk"' not in source

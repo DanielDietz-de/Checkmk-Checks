@@ -14,11 +14,13 @@ from cmk.agent_based.v2 import (
 
 
 class SidecoolerColdwater(NamedTuple):
+    """Represent sidecoolercoldwater behavior and associated state."""
     water_supply: float
     water_return: float
 
 
 def parse_sidecooler_coldwater(string_table):
+    """Parse sidecooler coldwater into its normalized representation."""
     if not string_table:
         return None
     values = [int(value) / 10 for value in string_table[0]]
@@ -26,10 +28,12 @@ def parse_sidecooler_coldwater(string_table):
 
 
 def discover_sidecooler_coldwater(section):
+    """Discover sidecooler coldwater from the available input data."""
     yield Service()
 
 
 def check_sidecooler_coldwater(params, section):
+    """Evaluate sidecooler coldwater and return its resulting state."""
     yield from check_levels(
         value=section.water_supply,
         levels_upper=params["water_supply"],

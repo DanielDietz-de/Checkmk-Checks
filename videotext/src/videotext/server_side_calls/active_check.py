@@ -15,6 +15,7 @@ from cmk.server_side_calls.v1 import (
 
 
 class VideotextParams(BaseModel):
+    """Represent videotextparams behavior and associated state."""
     url: str
     pattern: str
     timeout: Optional[float] = None
@@ -24,6 +25,7 @@ class VideotextParams(BaseModel):
 
 
 def videotext_arguments(params, host_params):
+    """Handle videotext arguments for this module's workflow."""
     yield ActiveCheckCommand(
         service_description = "Videotext",
         command_arguments = (

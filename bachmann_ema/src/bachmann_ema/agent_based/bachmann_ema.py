@@ -17,9 +17,7 @@ from cmk.agent_based.v2 import (
 )
 
 def parse_ema(string_table):
-    """
-    Parse function
-    """
+    """Parse ema into its normalized representation."""
     out = {}
     for line in string_table:
         in_1, in_2, mode_1, mode_2, state_1, state_2, switch_1, switch_2 = line
@@ -38,7 +36,7 @@ snmp_section_bluenet_ema = SimpleSNMPSection(
         base=".1.3.6.1.4.1.31770.2.2.5.3.1",
         oids=["5.1.4", # First 4 Input/Outputs
               "5.1.5", # Second 4 Input/Outputs
-              "8.1.4", # BlueNet2GPIOModes for Frist 
+              "8.1.4", # BlueNet2GPIOModes for Frist
               "8.1.5", # BlueNet2GPIOModes for Second
               "10.1.4", #GPIO State
               "10.1.5", #GPIO State
@@ -50,12 +48,13 @@ snmp_section_bluenet_ema = SimpleSNMPSection(
 )
 
 def discover_bluenet_ema(section):
-    """ Discover Function """
+    """Discover bluenet ema from the available input data."""
     for sensor, data in section.items():
         if data[0] in ['2', '6']:
             yield Service(item=sensor)
 
 def check_bluenet_ema(item, section):
+    """Evaluate bluenet ema and return its resulting state."""
     state = State.OK
     mode, switch, entity_state = section[item]
     gpio_mode = {

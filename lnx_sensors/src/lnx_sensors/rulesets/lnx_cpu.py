@@ -21,6 +21,7 @@ from cmk.rulesets.v1.rule_specs import (
 
 
 def _valuespec_discovery_rule_lnx_sensors():
+    """Handle valuespec discovery rule lnx sensors for this module's workflow."""
     return Dictionary(
         elements={
             "filters": DictElement(

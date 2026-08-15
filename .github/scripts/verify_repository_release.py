@@ -25,6 +25,7 @@ _SAFE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 
 def _parse_args() -> argparse.Namespace:
+    """Handle parse args for this module's workflow."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--repository", type=Path, default=Path("."))
     parser.add_argument("--source-dist", type=Path, required=True)
@@ -33,6 +34,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _load_index(dist: Path) -> list[dict[str, Any]]:
+    """Handle load index for this module's workflow."""
     value = json.loads((dist / "packages.json").read_text(encoding="utf-8"))
     if not isinstance(value, list) or not value:
         raise ValueError(f"{dist}: packages.json must contain a non-empty list")
@@ -42,6 +44,7 @@ def _load_index(dist: Path) -> list[dict[str, Any]]:
 
 
 def _identity(package: dict[str, Any]) -> tuple[str, str, str, str]:
+    """Handle identity for this module's workflow."""
     package_dir = str(package.get("package_dir", ""))
     package_name = str(package.get("name", ""))
     package_version = str(package.get("version", ""))
@@ -60,6 +63,7 @@ def _identity(package: dict[str, Any]) -> tuple[str, str, str, str]:
 
 
 def _validated_identities(dist: Path) -> list[tuple[str, str, str, str]]:
+    """Handle validated identities for this module's workflow."""
     identities = [_identity(item) for item in _load_index(dist)]
     if len(set(identities)) != len(identities):
         raise ValueError(f"{dist}: duplicate package index identity")
@@ -70,6 +74,7 @@ def _validated_identities(dist: Path) -> list[tuple[str, str, str, str]]:
 
 
 def _contained_file(root: Path, relative: str) -> Path:
+    """Handle contained file for this module's workflow."""
     pure = PurePosixPath(relative)
     if pure.is_absolute() or ".." in pure.parts:
         raise ValueError(f"unsafe relative path: {relative!r}")
@@ -86,6 +91,7 @@ def _contained_file(root: Path, relative: str) -> Path:
 
 
 def verify_artifacts(source_dist: Path, rebuilt_dist: Path) -> int:
+    """Verify artifacts satisfies the required invariants."""
     source_dist = source_dist.resolve()
     rebuilt_dist = rebuilt_dist.resolve()
     source = _validated_identities(source_dist)
@@ -103,6 +109,7 @@ def verify_artifacts(source_dist: Path, rebuilt_dist: Path) -> int:
 
 
 def _decode_nul_paths(data: bytes) -> set[str]:
+    """Handle decode nul paths for this module's workflow."""
     fields = data.decode("utf-8", errors="strict").split("\0")
     if fields and fields[-1] == "":
         fields.pop()
@@ -110,6 +117,7 @@ def _decode_nul_paths(data: bytes) -> set[str]:
 
 
 def _changed_paths(repository: Path) -> set[str]:
+    """Handle changed paths for this module's workflow."""
     tracked = subprocess.run(
         ["git", "diff", "--name-only", "--no-renames", "-z", "HEAD"],
         cwd=repository,
@@ -128,6 +136,7 @@ def _changed_paths(repository: Path) -> set[str]:
 
 
 def _active_package_dirs(repository: Path) -> set[str]:
+    """Handle active package dirs for this module's workflow."""
     package_dirs = {
         path.parent.parent.name
         for path in repository.glob("*/src/info")
@@ -139,6 +148,7 @@ def _active_package_dirs(repository: Path) -> set[str]:
 
 
 def _allowed_generated_path(path_text: str, active_packages: set[str]) -> bool:
+    """Handle allowed generated path for this module's workflow."""
     path = PurePosixPath(path_text)
     if path.is_absolute() or ".." in path.parts:
         return False
@@ -153,6 +163,7 @@ def _allowed_generated_path(path_text: str, active_packages: set[str]) -> bool:
 
 
 def verify_changed_paths(repository: Path) -> set[str]:
+    """Verify changed paths satisfies the required invariants."""
     changed = _changed_paths(repository)
     active_packages = _active_package_dirs(repository)
     unexpected = sorted(
@@ -166,6 +177,7 @@ def verify_changed_paths(repository: Path) -> set[str]:
 
 
 def verify_release_config(repository: Path) -> None:
+    """Verify release config satisfies the required invariants."""
     path = repository / ".github/repository-mkp-release.json"
     config = json.loads(path.read_text(encoding="utf-8"))
     if config.get("bump_versions") is not False or config.get("completed") is not True:
@@ -177,6 +189,7 @@ def verify_release(
     source_dist: Path,
     rebuilt_dist: Path,
 ) -> tuple[int, set[str]]:
+    """Verify release satisfies the required invariants."""
     repository = repository.resolve()
     verify_release_config(repository)
     changed = verify_changed_paths(repository)
@@ -192,6 +205,7 @@ def verify_release(
 
 
 def main() -> None:
+    """Run the command-line entry point and return its result."""
     args = _parse_args()
     count, changed = verify_release(args.repository, args.source_dist, args.rebuilt_dist)
     print(f"Verified deterministic publication for {count} packages")

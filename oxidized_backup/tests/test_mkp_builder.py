@@ -18,6 +18,7 @@ spec.loader.exec_module(module)
 
 
 def test_builds_deterministic_mkp_with_all_components(tmp_path: Path) -> None:
+    """Verify that builds deterministic mkp with all components."""
     first_dir = tmp_path / "first"
     second_dir = tmp_path / "second"
     first, first_checksum = module.build_package(
@@ -79,6 +80,7 @@ def test_builds_deterministic_mkp_with_all_components(tmp_path: Path) -> None:
 
 
 def test_rejects_invalid_version_and_repository(tmp_path: Path) -> None:
+    """Verify that rejects invalid version and repository."""
     for version, repository in (
         ("latest", "DanielDietz-de/Checkmk-Checks"),
         ("1.1.1", "not-a-repository"),

@@ -23,6 +23,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_palo_alto_sessions(string_table):
+    """Parse palo alto sessions into its normalized representation."""
     if not string_table or not string_table[0]:
         return None
     utilization, maximum, active, tcp, udp, icmp = string_table[0]
@@ -53,10 +54,12 @@ snmp_section_palo_alto_sessions = SimpleSNMPSection(
 
 
 def discover_palo_alto_sessions(section):
+    """Discover palo alto sessions from the available input data."""
     yield Service()
 
 
 def check_palo_alto_sessions(params, section):
+    """Evaluate palo alto sessions and return its resulting state."""
     yield from check_levels(
         value=section["utilization"],
         levels_upper=params["levels_utilization"],

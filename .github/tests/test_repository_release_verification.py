@@ -11,6 +11,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts/verify_repository_releas
 
 
 def _load():
+    """Handle load for this module's workflow."""
     spec = importlib.util.spec_from_file_location("verify_repository_release", SCRIPT)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -20,6 +21,7 @@ def _load():
 
 
 def _dist(path: Path, payload: bytes = b"package") -> Path:
+    """Handle dist for this module's workflow."""
     (path / "alpha").mkdir(parents=True)
     package = path / "alpha/alpha-1.0.0.mkp"
     package.write_bytes(payload)
@@ -40,11 +42,13 @@ def _dist(path: Path, payload: bytes = b"package") -> Path:
 
 
 def test_identical_artifacts_are_accepted(tmp_path: Path) -> None:
+    """Verify that identical artifacts are accepted."""
     module = _load()
     assert module.verify_artifacts(_dist(tmp_path / "a"), _dist(tmp_path / "b")) == 1
 
 
 def test_nondeterministic_artifacts_are_rejected(tmp_path: Path) -> None:
+    """Verify that nondeterministic artifacts are rejected."""
     module = _load()
     with pytest.raises(ValueError, match="nondeterministic"):
         module.verify_artifacts(
@@ -54,6 +58,7 @@ def test_nondeterministic_artifacts_are_rejected(tmp_path: Path) -> None:
 
 
 def test_unsafe_index_path_is_rejected(tmp_path: Path) -> None:
+    """Verify that unsafe index path is rejected."""
     module = _load()
     source = _dist(tmp_path / "a")
     rebuilt = _dist(tmp_path / "b")
@@ -81,11 +86,13 @@ def test_unsafe_index_path_is_rejected(tmp_path: Path) -> None:
     ],
 )
 def test_generated_path_allowlist(path: str, allowed: bool) -> None:
+    """Verify that generated path allowlist."""
     module = _load()
     assert module._allowed_generated_path(path, {"alpha"}) is allowed
 
 
 def test_nul_path_decoder_preserves_newlines() -> None:
+    """Verify that nul path decoder preserves newlines."""
     module = _load()
     assert module._decode_nul_paths(b"alpha/README.md\0alpha/line\nbreak.mkp\0") == {
         "alpha/README.md",
@@ -94,6 +101,7 @@ def test_nul_path_decoder_preserves_newlines() -> None:
 
 
 def test_release_config_must_be_finalized(tmp_path: Path) -> None:
+    """Verify that release config must be finalized."""
     module = _load()
     path = tmp_path / ".github"
     path.mkdir()

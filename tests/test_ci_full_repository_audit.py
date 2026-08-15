@@ -9,6 +9,7 @@ from pathlib import Path
 
 
 def load_module(path: Path, name: str):
+    """Load module from its configured source."""
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -23,7 +24,9 @@ audit = load_module(MODULE_PATH, "full_repository_audit_test")
 
 
 class FullRepositoryAuditTests(unittest.TestCase):
+    """Represent fullrepositoryaudittests behavior and associated state."""
     def make_root(self, temporary: str) -> Path:
+        """Handle make root for this module's workflow."""
         root = Path(temporary)
         for document in audit.REQUIRED_ROOT_DOCUMENTS:
             (root / document).write_text(
@@ -55,6 +58,7 @@ class FullRepositoryAuditTests(unittest.TestCase):
         return root
 
     def test_clean_repository_report(self):
+        """Verify that clean repository report."""
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_root(temporary)
             report = audit.build_report(root, set())
@@ -63,6 +67,7 @@ class FullRepositoryAuditTests(unittest.TestCase):
             self.assertEqual(report["summary"]["all"]["critical"], 0)
 
     def test_detects_dynamic_execution_tls_and_private_key(self):
+        """Verify that detects dynamic execution tls and private key."""
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_root(temporary)
             source = root / "example" / "src" / "example" / "plugin.py"
@@ -82,6 +87,7 @@ class FullRepositoryAuditTests(unittest.TestCase):
             self.assertIn("security.private-key-material", rules)
 
     def test_scans_non_script_files_for_credentials(self):
+        """Verify that scans non script files for credentials."""
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_root(temporary)
             certificate = root / "certificates" / "server.pem"
@@ -111,6 +117,7 @@ class FullRepositoryAuditTests(unittest.TestCase):
             self.assertGreater(report["credential_files"], report["source_files"])
 
     def test_detects_encrypted_and_dsa_private_key_headers(self):
+        """Verify that detects encrypted and dsa private key headers."""
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_root(temporary)
             key_directory = root / "certificates"
@@ -141,6 +148,7 @@ class FullRepositoryAuditTests(unittest.TestCase):
             )
 
     def test_benign_binary_file_is_scanned_without_false_positive(self):
+        """Verify that benign binary file is scanned without false positive."""
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_root(temporary)
             binary = root / "assets" / "image.bin"
@@ -154,6 +162,7 @@ class FullRepositoryAuditTests(unittest.TestCase):
             self.assertEqual(matching, [])
 
     def test_baseline_marks_existing_findings(self):
+        """Verify that baseline marks existing findings."""
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_root(temporary)
             source = root / "example" / "src" / "example" / "plugin.py"
@@ -166,6 +175,7 @@ class FullRepositoryAuditTests(unittest.TestCase):
             self.assertEqual(sum(report["summary"]["new"].values()), 0)
 
     def test_main_fails_only_for_new_threshold_findings(self):
+        """Verify that main fails only for new threshold findings."""
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_root(temporary)
             source = root / "example" / "src" / "example" / "plugin.py"
@@ -200,6 +210,7 @@ class FullRepositoryAuditTests(unittest.TestCase):
 
 
     def test_nullable_upper_compatibility_is_valid(self):
+        """Verify that nullable upper compatibility is valid."""
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_root(temporary)
             info = root / "example" / "src" / "info"
@@ -215,6 +226,7 @@ class FullRepositoryAuditTests(unittest.TestCase):
             self.assertEqual(incomplete, [])
 
     def test_detects_unbounded_network_call(self):
+        """Verify that detects unbounded network call."""
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_root(temporary)
             source = root / "example" / "src" / "example" / "plugin.py"
@@ -227,6 +239,7 @@ class FullRepositoryAuditTests(unittest.TestCase):
             self.assertIn("security.network-timeout-missing", rules)
 
     def test_detects_unbounded_urllib_calls(self):
+        """Verify that detects unbounded urllib calls."""
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_root(temporary)
             source = root / "example" / "src" / "example" / "plugin.py"
@@ -250,6 +263,7 @@ class FullRepositoryAuditTests(unittest.TestCase):
             self.assertEqual(len(findings), 2)
 
     def test_accepts_bounded_urllib_calls(self):
+        """Verify that accepts bounded urllib calls."""
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_root(temporary)
             source = root / "example" / "src" / "example" / "plugin.py"
@@ -267,6 +281,7 @@ class FullRepositoryAuditTests(unittest.TestCase):
             self.assertNotIn("security.network-timeout-missing", rules)
 
     def test_safe_secret_requires_agent_side_resolution(self):
+        """Verify that safe secret requires agent side resolution."""
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_root(temporary)
             package = root / "example"
@@ -294,6 +309,7 @@ class FullRepositoryAuditTests(unittest.TestCase):
             self.assertNotIn("security.secret-reference-unresolved", rules)
 
     def test_scans_standalone_source_and_detects_literal_credentials(self):
+        """Verify that scans standalone source and detects literal credentials."""
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_root(temporary)
             utility = root / "stuff" / "utility.py"
@@ -308,6 +324,7 @@ class FullRepositoryAuditTests(unittest.TestCase):
             self.assertGreaterEqual(report["source_files"], 2)
 
     def test_detects_unqualified_tls_warning_suppression(self):
+        """Verify that detects unqualified tls warning suppression."""
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_root(temporary)
             source = root / "example" / "src" / "example" / "plugin.py"

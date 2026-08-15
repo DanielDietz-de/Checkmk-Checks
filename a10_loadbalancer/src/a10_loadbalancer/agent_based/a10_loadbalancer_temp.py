@@ -18,6 +18,7 @@ from cmk.plugins.lib.temperature import check_temperature, TempParamDict
 
 
 def parse_a10_loadbalancer_temp(string_table: StringTable) -> StringTable:
+    """Parse a10 loadbalancer temp into its normalized representation."""
     return string_table
 
 
@@ -35,6 +36,7 @@ snmp_section_a10_loadbalancer_temp = SimpleSNMPSection(
 
 
 def discover_a10_loadbalancer_temp(section: StringTable) -> DiscoveryResult:
+    """Discover a10 loadbalancer temp from the available input data."""
     if section and section[0]:
         yield Service(item="System")
 
@@ -42,6 +44,7 @@ def discover_a10_loadbalancer_temp(section: StringTable) -> DiscoveryResult:
 def check_a10_loadbalancer_temp(
     item: str, params: TempParamDict, section: StringTable
 ) -> CheckResult:
+    """Evaluate a10 loadbalancer temp and return its resulting state."""
     if not section or not section[0]:
         return
     temp = int(section[0][0])

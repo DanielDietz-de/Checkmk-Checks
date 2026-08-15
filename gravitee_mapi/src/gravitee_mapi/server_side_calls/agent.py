@@ -5,6 +5,7 @@ from cmk.server_side_calls.v1 import HostConfig, Secret, SpecialAgentCommand, Sp
 
 
 class ConfigParser(BaseModel):
+    """Represent configparser behavior and associated state."""
     token: Secret
     environment: str = "DEFAULT"
     interval: int = 60
@@ -13,6 +14,7 @@ class ConfigParser(BaseModel):
 
 
 def agent_arguments(params: ConfigParser, host_config: HostConfig):
+    """Handle agent arguments for this module's workflow."""
     args: list[str | Secret] = [
         "--host-name", host_config.name,
         "--token-id", params.token,

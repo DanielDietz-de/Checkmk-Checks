@@ -14,6 +14,7 @@ from cmk.server_side_calls.v1 import (
 
 
 class SpringBootActuatorParams(BaseModel):
+    """Represent springbootactuatorparams behavior and associated state."""
     url: str
     username: Optional[str] = None
     password: Optional[Secret] = None
@@ -24,6 +25,7 @@ class SpringBootActuatorParams(BaseModel):
 def generate_spring_boot_actuator_command(
     params: SpringBootActuatorParams, host_config: HostConfig
 ):
+    """Generate spring boot actuator command from the current source data."""
     arguments: list[str | Secret] = ["--url", params.url]
     if params.username:
         arguments.extend(["--username", params.username])

@@ -20,6 +20,7 @@ from cmk.agent_based.v2 import (
 )
 
 class RuleState(StrEnum):
+    """Represent rulestate behavior and associated state."""
     INACTIVE = "inactive"
     FIRING = "firing"
     PENDING = "pending"
@@ -28,6 +29,7 @@ class RuleState(StrEnum):
 
 
 class Severity(StrEnum):
+    """Represent severity behavior and associated state."""
     INFO = "info"
     WARNING = "warning"
     ALERT = "alert"
@@ -38,10 +40,12 @@ class Severity(StrEnum):
 
     @classmethod
     def _missing_(cls, value):
+        """Handle missing for this module's workflow."""
         return Severity.NA
 
 
 class Rule(NamedTuple):
+    """Represent rule behavior and associated state."""
     rule_name: str
     group_name: str
     status: RuleState
@@ -56,22 +60,26 @@ StateMapping = dict[str, int]
 
 
 class GroupServices(TypedDict, total=False):
+    """Represent groupservices behavior and associated state."""
     min_amount_rules: int
     no_group_services: list[str]
 
 
 class DiscoveryParams(TypedDict, total=False):
     # Both keys remain optional to accept rules saved by older package versions.
+    """Represent discoveryparams behavior and associated state."""
     group_services: tuple[str, GroupServices]
     summary_service: bool
 
 
 class AlertRemapping(TypedDict):
+    """Represent alertremapping behavior and associated state."""
     rule_names: list[str]
     map: StateMapping
 
 
 class CheckParams(TypedDict, total=False):
+    """Represent checkparams behavior and associated state."""
     alert_remapping: list[AlertRemapping]
 
 
@@ -107,6 +115,7 @@ default_state_mapping = {
 
 
 def _get_summary_count(section: Section) -> int:
+    """Handle get summary count for this module's workflow."""
     return sum(len(group) for group in section.values())
 
 
@@ -118,7 +127,7 @@ def _get_mapping(rule: Rule, params: CheckParams) -> StateMapping | None:
     return None
 
 def _get_severity(params: CheckParams, severity: str) -> str:
-    """ Get individual Severity """
+    """Handle get severity for this module's workflow."""
     if mapping := params.get("severity_remapping"):
         severities = {y:x for x,y in mapping.items()}
         return Severity(severities.get(severity, 'uknown')).value
@@ -126,6 +135,7 @@ def _get_severity(params: CheckParams, severity: str) -> str:
 
 
 def _create_group_service(group_name: str, group: Group, params: DiscoveryParams) -> bool:
+    """Handle create group service for this module's workflow."""
     use_groups, group_config = params["group_services"]
     if use_groups == "one_service":
         return False
@@ -136,11 +146,13 @@ def _create_group_service(group_name: str, group: Group, params: DiscoveryParams
 
 
 def _get_rule_state(rule: Rule, params: CheckParams) -> State:
+    """Handle get rule state for this module's workflow."""
     mapping = _get_mapping(rule, params)
     return State(mapping[str(rule.status)]) if mapping else default_state_mapping.get(rule.status, State.OK)
 
 
 def parse_alertmanager(string_table: StringTable) -> Section:
+    """Parse alertmanager into its normalized representation."""
     section: Section = {}
     alertmanager_section = json.loads(string_table[0][0])
     for group, rules in alertmanager_section.items():
@@ -173,6 +185,7 @@ agent_section_alertmanager_custom = AgentSection(
 
 
 def discovery_alertmanager_rules(params: DiscoveryParams, section: Section) -> DiscoveryResult:
+    """Handle discovery alertmanager rules for this module's workflow."""
     for group_name, rules in section.items():
         if _create_group_service(group_name, rules, params):
             continue
@@ -182,6 +195,7 @@ def discovery_alertmanager_rules(params: DiscoveryParams, section: Section) -> D
 
 
 def check_alertmanager_rules(item: str, params: CheckParams, section: Section) -> CheckResult:
+    """Evaluate alertmanager rules and return its resulting state."""
     for group in section.values():
         rule = group.get(item)
         if rule:
@@ -239,12 +253,14 @@ check_plugin_alertmanager_rules = CheckPlugin(
 
 
 def discovery_alertmanager_groups(params: DiscoveryParams, section: Section) -> DiscoveryResult:
+    """Handle discovery alertmanager groups for this module's workflow."""
     for group_name, rules in section.items():
         if _create_group_service(group_name, rules, params):
             yield Service(item=group_name)
 
 
 def check_alertmanager_groups(item: str, params: CheckParams, section: Section) -> CheckResult:
+    """Evaluate alertmanager groups and return its resulting state."""
     group = section.get(item)
     if group:
         yield Result(state=State.OK, summary="Number of rules: %s" % len(group))
@@ -300,11 +316,13 @@ check_plugin_alertmanager_groups = CheckPlugin(
 
 
 def discovery_alertmanager_summary(params: DiscoveryParams, section: Section) -> DiscoveryResult:
+    """Handle discovery alertmanager summary for this module's workflow."""
     if params.get("summary_service"):
         yield Service()
 
 
 def check_alertmanager_summary(params: CheckParams, section: Section) -> CheckResult:
+    """Evaluate alertmanager summary and return its resulting state."""
     yield Result(state=State.OK, summary="Number of rules: %s" % _get_summary_count(section))
     for rules in section.values():
         for rule in rules.values():

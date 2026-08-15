@@ -36,10 +36,12 @@ snmp_section_sonicwall_conns = SimpleSNMPSection(
 )
 
 def discover_sonicwall_conns(section):
+    """Discover sonicwall conns from the available input data."""
     for entry in section:
         yield Service(item=entry["oid_end"])
 
 def check_sonicwall_conns(item, params, section):
+    """Evaluate sonicwall conns and return its resulting state."""
     data = next((e for e in section if e["oid_end"] == item), None)
     if not data:
         yield Result(state=State.UNKNOWN, summary=f"No connection data for {item}")

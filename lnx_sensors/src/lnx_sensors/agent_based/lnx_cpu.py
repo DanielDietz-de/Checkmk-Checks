@@ -20,9 +20,7 @@ from cmk.plugins.lib.temperature import check_temperature, TempParamDict
 
 
 def parse_lnx_sensors(string_table):
-    """
-    Parse lnx_sensors
-    """
+    """Parse lnx sensors into its normalized representation."""
     data = ""
     for entry in string_table:
         data += "".join(entry)
@@ -45,9 +43,7 @@ agent_section_lnx_sensors = AgentSection(
 
 
 def discover_lnx_cpus(params, section):
-    """
-    Discover CPUs
-    """
+    """Discover lnx cpus from the available input data."""
     searches = []
     if "filters" in params.keys():
         searches = params["filters"]
@@ -59,9 +55,7 @@ def discover_lnx_cpus(params, section):
 
 
 def check_lnx_cpus(item, params, section):
-    """
-    Check single CPU
-    """
+    """Evaluate lnx cpus and return its resulting state."""
     for _bus, data in section.items():
         if item in data.keys():
             value, warn, crit, _alarm = data[item].values()

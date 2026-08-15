@@ -31,6 +31,7 @@ CONFIGS = [
 ]
 
 def helper(path: Path):
+    """Handle helper for this module's workflow."""
     tree = ast.parse(path.read_text(encoding="utf-8"))
     node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_resolve_ca_bundle")
     namespace = {"os": os, "Path": Path}
@@ -38,7 +39,9 @@ def helper(path: Path):
     return namespace["_resolve_ca_bundle"]
 
 class PrivateCaPolicyTests(unittest.TestCase):
+    """Represent privatecapolicytests behavior and associated state."""
     def test_all_external_sessions_preserve_ca_fallbacks(self):
+        """Verify that all external sessions preserve ca fallbacks."""
         for relative in AGENTS:
             text = (ROOT / relative).read_text(encoding="utf-8")
             with self.subTest(relative=relative):
@@ -48,11 +51,13 @@ class PrivateCaPolicyTests(unittest.TestCase):
                 self.assertIn("def _resolve_ca_bundle", text)
 
     def test_rules_expose_custom_ca_bundle(self):
+        """Verify that rules expose custom ca bundle."""
         for relative in CONFIGS:
             with self.subTest(relative=relative):
                 self.assertIn("ca_file", (ROOT / relative).read_text(encoding="utf-8"))
 
     def test_helper_precedence_and_failure_modes(self):
+        """Verify that helper precedence and failure modes."""
         old_requests = os.environ.pop("REQUESTS_CA_BUNDLE", None)
         old_curl = os.environ.pop("CURL_CA_BUNDLE", None)
         try:

@@ -35,7 +35,7 @@ def _migrate(value):
         value['cache_time'] = value.pop('cache-time')
     if 'useIP' in value:
         value['use_ip'] = value.pop('useIP')
-    
+
     # CamelCase to snake_case parameter migrations
     camel_to_snake_mappings = {
         'disablegetSrpInfo': 'disable_get_srp_info',
@@ -48,14 +48,15 @@ def _migrate(value):
         'disablegetMaskingViewInfo': 'disable_get_masking_view_info',
         "enableRemoteSymChecks": 'enable_remote_sym_checks'
     }
-    
+
     for old_key, new_key in camel_to_snake_mappings.items():
         if old_key in value:
             value[new_key] = value.pop(old_key)
-    
+
     return value
 
 def _valuespec_special_agent_unisphere_powermax():
+    """Handle valuespec special agent unisphere powermax for this module's workflow."""
     return Dictionary(
             title = Title("Unisphere Powermax"),
             help_text = Help("This rules activates the special agent for Unisphere Powermax"),
@@ -204,6 +205,7 @@ rule_spec_semu_agent = SpecialAgent(
 
 
 def _parameter_valuespec_unisphere_powermax_srp_effective_used():
+    """Handle parameter valuespec unisphere powermax srp effective used for this module's workflow."""
     return Dictionary(
         elements={
             "levels": DictElement(
@@ -229,6 +231,7 @@ rule_spec_srp_effective_used = CheckParameters(
 
 
 def _parameter_valuespec_unisphere_powermax_srp_physical_used():
+    """Handle parameter valuespec unisphere powermax srp physical used for this module's workflow."""
     return Dictionary(
         elements = {
             "levels": DictElement(
@@ -254,6 +257,7 @@ rule_spec_srp_physical_used = CheckParameters(
 
 
 def _parameter_valuespec_unisphere_powermax_srp_data_reduction_ratio():
+    """Handle parameter valuespec unisphere powermax srp data reduction ratio for this module's workflow."""
     return Dictionary(
         elements = {
             "levels": DictElement(
@@ -278,6 +282,7 @@ rule_spec_srp_data_reduction_ratio = CheckParameters(
 )
 
 def _parameter_valuespec_unisphere_powermax_powermax_array_performance_wp_cache():
+    """Handle parameter valuespec unisphere powermax powermax array performance wp cache for this module's workflow."""
     return Dictionary(
         elements = {
             "average_levels": DictElement(
@@ -349,6 +354,7 @@ rule_spec_powermax_array_performnace_wp_cache = CheckParameters(
 
 
 def _parameter_valuespec_unisphere_powermax_health_score():
+    """Handle parameter valuespec unisphere powermax health score for this module's workflow."""
     return Dictionary(
         elements = {
             "levels": DictElement(
@@ -376,6 +382,7 @@ rule_spec_unisphere_powermax_health_score = CheckParameters(
 
 
 def _parameter_valuespec_unisphere_powermax_masking_view_port_summary():
+    """Handle parameter valuespec unisphere powermax masking view port summary for this module's workflow."""
     return Dictionary(
         elements = {
             "levels": DictElement(
@@ -402,6 +409,7 @@ rule_spec_unisphere_powermax_masking_view_port_summary = CheckParameters(
 
 
 def _parameter_valuespec_unisphere_powermax_masking_view_volume_summary():
+    """Handle parameter valuespec unisphere powermax masking view volume summary for this module's workflow."""
     return Dictionary(
         elements = {
             "levels": DictElement(
@@ -428,6 +436,7 @@ rule_spec_unisphere_powermax_masking_view_volume_summary = CheckParameters(
 
 
 def _parameter_valuespec_unisphere_powermax_port_group_state():
+    """Handle parameter valuespec unisphere powermax port group state for this module's workflow."""
     return Dictionary(
         elements = {
             "levels": DictElement(

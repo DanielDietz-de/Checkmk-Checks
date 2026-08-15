@@ -13,6 +13,7 @@ PLUGIN = PACKAGE / "src/aruba_central/agent_based/aruba_central_aps.py"
 
 
 class _State:
+    """Represent state behavior and associated state."""
     OK = "OK"
     WARN = "WARN"
     CRIT = "CRIT"
@@ -20,28 +21,36 @@ class _State:
 
 
 class _Result:
+    """Represent result behavior and associated state."""
     def __init__(self, state, summary, details=None):
+        """Initialize the instance and its required state."""
         self.state = state
         self.summary = summary
         self.details = details
 
 
 class _Metric:
+    """Represent metric behavior and associated state."""
     def __init__(self, name, value):
+        """Initialize the instance and its required state."""
         self.name = name
         self.value = value
 
 
 class _Service:
+    """Represent service behavior and associated state."""
     def __init__(self, item=None):
+        """Initialize the instance and its required state."""
         self.item = item
 
 
 def _check_levels(value, **kwargs):
+    """Handle check levels for this module's workflow."""
     yield _Metric(kwargs["metric_name"], value)
 
 
 def _load(monkeypatch):
+    """Handle load for this module's workflow."""
     api = types.ModuleType("cmk.agent_based.v2")
     api.AgentSection = lambda **kwargs: kwargs
     api.CheckPlugin = lambda **kwargs: kwargs
@@ -62,10 +71,12 @@ def _load(monkeypatch):
 
 
 def _row(value: dict) -> list[list[str]]:
+    """Handle row for this module's workflow."""
     return [[json.dumps(value, separators=(",", ":"))]]
 
 
 def _collector_payload() -> dict:
+    """Handle collector payload for this module's workflow."""
     return {
         "schema": 1,
         "kind": "collector",
@@ -90,6 +101,7 @@ def _collector_payload() -> dict:
 
 
 def _ap_payload() -> dict:
+    """Handle ap payload for this module's workflow."""
     return {
         "schema": 1,
         "kind": "ap",
@@ -137,6 +149,7 @@ def _ap_payload() -> dict:
 
 
 def test_collector_parser_and_stream_visibility(monkeypatch):
+    """Verify that collector parser and stream visibility."""
     plugin = _load(monkeypatch)
     section = plugin.parse_aruba_central_aps(_row(_collector_payload()))
     assert section.kind == "collector"
@@ -156,6 +169,7 @@ def test_collector_parser_and_stream_visibility(monkeypatch):
 
 
 def test_ap_and_radio_services(monkeypatch):
+    """Verify that ap and radio services."""
     plugin = _load(monkeypatch)
     section = plugin.parse_aruba_central_aps(_row(_ap_payload()))
     assert section.access_point.host_name == "AP_CNRPKV30C2"
@@ -176,6 +190,7 @@ def test_ap_and_radio_services(monkeypatch):
 
 
 def test_radio_service_keys_preserve_normalized_name_collisions(monkeypatch):
+    """Verify that radio service keys preserve normalized name collisions."""
     plugin = _load(monkeypatch)
     payload = _ap_payload()
     payload["ap"]["radios"] = [
@@ -199,6 +214,7 @@ def test_radio_service_keys_preserve_normalized_name_collisions(monkeypatch):
 
 
 def test_radio_service_fallback_key_is_rechecked_until_unique(monkeypatch):
+    """Verify that radio service fallback key is rechecked until unique."""
     plugin = _load(monkeypatch)
     payload = _ap_payload()
     payload["ap"]["radios"] = [
@@ -216,6 +232,7 @@ def test_radio_service_fallback_key_is_rechecked_until_unique(monkeypatch):
 
 
 def test_failed_collector_is_critical(monkeypatch):
+    """Verify that failed collector is critical."""
     plugin = _load(monkeypatch)
     payload = _collector_payload()
     payload["collector"].update(
@@ -232,6 +249,7 @@ def test_failed_collector_is_critical(monkeypatch):
 
 
 def test_invalid_document_does_not_discover(monkeypatch):
+    """Verify that invalid document does not discover."""
     plugin = _load(monkeypatch)
     section = plugin.parse_aruba_central_aps([["not-json"]])
     assert section.kind == "invalid"

@@ -21,6 +21,7 @@ Section = Mapping[str, Any]
 
 
 def parse_wp_instances(string_table: StringTable) -> Section:
+    """Parse wp instances into its normalized representation."""
     text = "".join(itertools.chain.from_iterable(string_table))
     if not text:
         return {"instances": [], "error": "WordPress agent returned an empty section"}
@@ -37,6 +38,7 @@ def parse_wp_instances(string_table: StringTable) -> Section:
 
 
 def discover_wp_instances(section: Section):
+    """Discover wp instances from the available input data."""
     for instance in section.get("instances", []):
         if isinstance(instance, Mapping):
             name = instance.get("name")
@@ -45,6 +47,7 @@ def discover_wp_instances(section: Section):
 
 
 def check_wp_instances(item: str, section: Section):
+    """Evaluate wp instances and return its resulting state."""
     for instance in section.get("instances", []):
         if not isinstance(instance, Mapping) or instance.get("name") != item:
             continue

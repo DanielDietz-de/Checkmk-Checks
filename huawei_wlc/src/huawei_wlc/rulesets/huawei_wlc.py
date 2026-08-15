@@ -19,6 +19,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_form_huawei_wlc():
+    """Handle parameter form huawei wlc for this module's workflow."""
     return Dictionary(
         title=Title("Huawei WLC access point"),
         elements={

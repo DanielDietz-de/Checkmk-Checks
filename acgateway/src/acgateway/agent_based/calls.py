@@ -23,6 +23,7 @@ from cmk.agent_based.v2 import (
 from time import time
 
 def parse_acgateway_calls(string_table):
+    """Parse acgateway calls into its normalized representation."""
     section = None
     if len(string_table[0]) == 1:
         for active_calls, total_calls, asr, acd in string_table[0]:
@@ -52,9 +53,11 @@ snmp_section_acgateway_calls = SNMPSection(
 )
 
 def discover_acgateway_calls(section):
+    """Discover acgateway calls from the available input data."""
     yield Service()
 
 def check_acgateway_calls(section):
+    """Evaluate acgateway calls and return its resulting state."""
     vs = get_value_store()
     now = time()
     yield Result(state=State.OK,

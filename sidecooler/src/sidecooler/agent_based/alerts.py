@@ -18,10 +18,12 @@ from cmk.agent_based.v2 import (
 )
 
 class SidecoolerAlerts():
+    """Represent sidecooleralerts behavior and associated state."""
     num_alerts: int
     alerts: dict
 
     def __init__(self, num_alerts, alert1, alert2, alert3, alert4, alert5, alert6, alert7, alert8, alert9, alert10):
+        """Initialize the instance and its required state."""
         self.num_alerts = int(num_alerts)
         self.alerts = {
             "1": alert1,
@@ -38,6 +40,7 @@ class SidecoolerAlerts():
 
 
 def parse_sidecooler_alerts(string_table):
+    """Parse sidecooler alerts into its normalized representation."""
     if not string_table:
         return None
 
@@ -47,10 +50,12 @@ def parse_sidecooler_alerts(string_table):
 
 
 def discover_sidecooler_alerts(section):
+    """Discover sidecooler alerts from the available input data."""
     yield Service()
 
 
 def check_sidecooler_alerts(section):
+    """Evaluate sidecooler alerts and return its resulting state."""
     yield Metric("alerts", section.num_alerts)
 
     summary = f"Current amount of failures: {section.num_alerts}"

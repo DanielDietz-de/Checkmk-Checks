@@ -17,14 +17,17 @@ loader.exec_module(module)
 
 
 def public_dns(*args, **kwargs):
+    """Handle public dns for this module's workflow."""
     return [(module.socket.AF_INET, module.socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443))]
 
 
 def private_dns(*args, **kwargs):
+    """Handle private dns for this module's workflow."""
     return [(module.socket.AF_INET, module.socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443))]
 
 
 def test_requires_public_https(monkeypatch):
+    """Verify that requires public https."""
     monkeypatch.setattr(module.socket, "getaddrinfo", public_dns)
     target = module.validate_public_https_url("https://status.example/data")
     assert target.url == "https://status.example/data"
@@ -38,35 +41,44 @@ def test_requires_public_https(monkeypatch):
 
 
 def test_dns_result_is_pinned_with_original_tls_hostname(monkeypatch):
+    """Verify that dns result is pinned with original tls hostname."""
     dns_calls = []
     pool_calls = {}
 
     def counted_dns(*args, **kwargs):
+        """Handle counted dns for this module's workflow."""
         dns_calls.append((args, kwargs))
         return public_dns(*args, **kwargs)
 
     class RawResponse:
+        """Represent rawresponse behavior and associated state."""
         status = 200
         headers = {}
 
         def stream(self, amt, decode_content):
+            """Handle stream for this module's workflow."""
             yield b""
 
         def release_conn(self):
+            """Handle release conn for this module's workflow."""
             pool_calls["released"] = True
 
     class Pool:
+        """Represent pool behavior and associated state."""
         def __init__(self, host, **kwargs):
+            """Initialize the instance and its required state."""
             pool_calls["host"] = host
             pool_calls["kwargs"] = kwargs
 
         def urlopen(self, method, target, **kwargs):
+            """Handle urlopen for this module's workflow."""
             pool_calls["method"] = method
             pool_calls["target"] = target
             pool_calls["request"] = kwargs
             return RawResponse()
 
         def close(self):
+            """Handle close for this module's workflow."""
             pool_calls["closed"] = True
 
     monkeypatch.setattr(module.socket, "getaddrinfo", counted_dns)
@@ -93,6 +105,7 @@ def test_dns_result_is_pinned_with_original_tls_hostname(monkeypatch):
 
 
 def test_overlong_url_is_rejected_without_truncation(monkeypatch):
+    """Verify that overlong url is rejected without truncation."""
     monkeypatch.setattr(module.socket, "getaddrinfo", public_dns)
     url = "https://status.example/" + "x" * module.MAX_URL_LENGTH
     with pytest.raises(module.EndpointError, match="must not exceed"):
@@ -100,20 +113,25 @@ def test_overlong_url_is_rejected_without_truncation(monkeypatch):
 
 
 def test_json_path_is_bounded_and_safe():
+    """Verify that json path is bounded and safe."""
     data = {"items": [{"updated": "2026-01-01T00:00:00Z"}]}
     assert module.lookup_json_path(data, "items[0].updated") == "2026-01-01T00:00:00Z"
     assert module.lookup_json_path(data, "x" * 600) is None
 
 
 def test_custom_headers_are_not_part_of_runtime_spec():
+    """Verify that custom headers are not part of runtime spec."""
     source = MODULE_PATH.read_text(encoding="utf-8")
     assert "extra_headers" not in source
     assert "add_header" not in source
 
 
 def test_response_size_is_bounded():
+    """Verify that response size is bounded."""
     class Response:
+        """Represent response behavior and associated state."""
         def iter_content(self, chunk_size=65536):
+            """Handle iter content for this module's workflow."""
             yield b"x" * (module.MAX_RESPONSE_BYTES + 1)
 
     with pytest.raises(module.EndpointError, match="1 MiB"):
@@ -121,6 +139,7 @@ def test_response_size_is_bounded():
 
 
 def test_package_metadata_representations_match():
+    """Verify that package metadata representations match."""
     python_info = ast.literal_eval(
         (PACKAGE_ROOT / "src" / "info").read_text(encoding="utf-8")
     )

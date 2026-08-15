@@ -7,6 +7,7 @@ from unittest import mock
 
 
 def load_module(path: Path, name: str):
+    """Load module from its configured source."""
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -22,7 +23,9 @@ guard = load_module(GUARD_MODULE_PATH, "repository_guard_test")
 
 
 class SupplyChainPinningTests(unittest.TestCase):
+    """Represent supplychainpinningtests behavior and associated state."""
     def test_pinning_is_idempotent_and_retains_source_tags(self):
+        """Verify that pinning is idempotent and retains source tags."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             workflow_dir = root / ".github" / "workflows"
@@ -58,6 +61,7 @@ class SupplyChainPinningTests(unittest.TestCase):
             )
 
     def test_existing_tagged_digest_is_immutable_and_idempotent(self):
+        """Verify that existing tagged digest is immutable and idempotent."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             workflow_dir = root / ".github" / "workflows"
@@ -84,6 +88,7 @@ class SupplyChainPinningTests(unittest.TestCase):
             )
 
     def test_nested_action_path_is_preserved_and_pinned(self):
+        """Verify that nested action path is preserved and pinned."""
         with tempfile.TemporaryDirectory() as temporary:
             workflow = Path(temporary) / "workflow.yml"
             workflow.write_text(
@@ -101,6 +106,7 @@ class SupplyChainPinningTests(unittest.TestCase):
             self.assertEqual(entry["action_path"], "/upload-sarif")
 
     def test_mutable_dependencies_are_reported(self):
+        """Verify that mutable dependencies are reported."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             workflow_dir = root / ".github" / "workflows"
@@ -117,7 +123,9 @@ class SupplyChainPinningTests(unittest.TestCase):
 
 
 class RepositoryGuardTests(unittest.TestCase):
+    """Represent repositoryguardtests behavior and associated state."""
     def test_pull_request_diff_uses_merge_base(self):
+        """Verify that pull request diff uses merge base."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             with mock.patch.object(
@@ -137,6 +145,7 @@ class RepositoryGuardTests(unittest.TestCase):
             self.assertEqual(paths, [root / "example/src/plugin.py"])
 
     def test_changed_source_rejects_eval_shell_and_verify_false(self):
+        """Verify that changed source rejects eval shell and verify false."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source = root / "package" / "src" / "plugin.py"
@@ -154,6 +163,7 @@ class RepositoryGuardTests(unittest.TestCase):
             self.assertTrue(any("verify=False" in error for error in errors))
 
     def test_inline_reviewed_exception_is_honored_by_ast_check(self):
+        """Verify that inline reviewed exception is honored by ast check."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source = root / "package" / "src" / "plugin.py"
@@ -168,6 +178,7 @@ class RepositoryGuardTests(unittest.TestCase):
             self.assertEqual(guard.validate_changed_source(root, [source]), [])
 
     def test_extensionless_shebang_source_is_scanned_and_requires_tests(self):
+        """Verify that extensionless shebang source is scanned and requires tests."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             package = root / "example"
@@ -201,6 +212,7 @@ class RepositoryGuardTests(unittest.TestCase):
             self.assertEqual(len(test_errors), 1)
 
     def test_changed_package_source_requires_tests(self):
+        """Verify that changed package source requires tests."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             package = root / "example"
@@ -227,6 +239,7 @@ class RepositoryGuardTests(unittest.TestCase):
             )
 
     def test_metadata_consistency_is_enforced_only_for_touched_packages(self):
+        """Verify that metadata consistency is enforced only for touched packages."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             package = root / "example"

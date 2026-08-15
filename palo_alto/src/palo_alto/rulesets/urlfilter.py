@@ -20,6 +20,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, Topic
 
 
 def _formspec_palo_alto_urlfilter():
+    """Handle formspec palo alto urlfilter for this module's workflow."""
     return Dictionary(
         title=Title("Age for URL-Filtering database updates"),
         help_text=Help(

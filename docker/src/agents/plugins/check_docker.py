@@ -21,9 +21,7 @@ except ImportError:
 
 
 def process_containers(docker_containers, label_whitelist, label_replacements, piggyback):
-    """
-    Process Containers
-    """
+    """Handle process containers for this module's workflow."""
     #pprint(docker_containers)
     # [{u'Command': u"nginx -g 'daemon off;'",
     #   u'Created': 1499762426,
@@ -105,9 +103,7 @@ def process_containers(docker_containers, label_whitelist, label_replacements, p
 
 
 def process_images(docker_images):
-    """
-    Process Docker Images
-    """
+    """Handle process images for this module's workflow."""
     # [{u'Containers': -1,
     #   u'Created': 1499283368,
     #   u'Id': u'sha256:2f7f7bce89290f69233351416b0cc8d0c8d4800c825ba92e70de5b1cc048a50a',
@@ -138,9 +134,7 @@ def process_images(docker_images):
 
 
 def main():
-    """
-    Main
-    """
+    """Run the command-line entry point and return its result."""
     timeout = 30
     piggyback = False
     label_whitelist = []

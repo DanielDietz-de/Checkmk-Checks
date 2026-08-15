@@ -108,6 +108,7 @@ _HOST_STATS_PARAMS = [
 
 
 def _make_elements() -> dict:
+    """Handle make elements for this module's workflow."""
     elements = {}
     for key, title, unit in _HOST_STATS_PARAMS:
         elements[key] = DictElement(
@@ -123,6 +124,7 @@ def _make_elements() -> dict:
 
 
 def _parameter_form() -> Dictionary:
+    """Handle parameter form for this module's workflow."""
     return Dictionary(
         help_text=Help("The levels for the Open-iSCSI host statistics values."),
         elements=_make_elements(),

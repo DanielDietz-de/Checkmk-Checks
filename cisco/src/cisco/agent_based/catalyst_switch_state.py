@@ -56,6 +56,7 @@ SWITCH_STATE = {
 
 
 def parse_catalyst_switch_state(string_table):
+    """Parse catalyst switch state into its normalized representation."""
     return {
         row[0]: {"switch_role": row[1], "switch_state": row[2]}
         for row in string_table
@@ -77,6 +78,7 @@ snmp_section_catalyst_switch_state = SimpleSNMPSection(
 
 
 def discover_catalyst_switch_state(section):
+    """Discover catalyst switch state from the available input data."""
     for switch_number, info in section.items():
         yield Service(
             item=switch_number,
@@ -85,6 +87,7 @@ def discover_catalyst_switch_state(section):
 
 
 def check_catalyst_switch_state(item, params, section):
+    """Evaluate catalyst switch state and return its resulting state."""
     data = section.get(item)
     if data is None:
         return

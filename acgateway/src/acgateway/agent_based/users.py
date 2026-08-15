@@ -18,6 +18,7 @@ from cmk.agent_based.v2 import (
 )
 
 def parse_acgateway_users(string_table):
+    """Parse acgateway users into its normalized representation."""
     section = None
     if len(string_table[0]) == 1:
         for tx_trans, rx_trans, users in string_table[0]:
@@ -45,9 +46,11 @@ snmp_section_acgateway_users = SNMPSection(
 )
 
 def discover_acgateway_users(section):
+    """Discover acgateway users from the available input data."""
     yield Service()
 
 def check_acgateway_users(section):
+    """Evaluate acgateway users and return its resulting state."""
     yield Result(state=State.OK,
                  summary="Transactions RX: %d/s" % section['rx_trans'])
     yield Metric('rx_trans', section['rx_trans'])

@@ -24,6 +24,7 @@ COLS = [
 
 
 def parse_era_bvim(string_table):
+    """Parse era bvim into its normalized representation."""
     section = {}
     for tp_idx, table in enumerate(string_table, start=1):
         for entry in table:
@@ -37,11 +38,13 @@ def parse_era_bvim(string_table):
 
 
 def discover_era_bvim(section):
+    """Discover era bvim from the available input data."""
     for item in section:
         yield Service(item=item)
 
 
 def check_era_bvim(item, section):
+    """Evaluate era bvim and return its resulting state."""
     data = section.get(item)
     if not data:
         return

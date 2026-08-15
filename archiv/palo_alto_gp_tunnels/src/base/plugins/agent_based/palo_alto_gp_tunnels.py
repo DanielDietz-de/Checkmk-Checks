@@ -24,10 +24,12 @@ from .agent_based_api.v1 import (
 
 
 class PaloAtoTunnels(NamedTuple):
+    """Represent paloatotunnels behavior and associated state."""
     active_tunnels: int
     max_tunnels: int
 
 def parse_palo_alto_tunnels(string_table: StringTable) -> Optional[PaloAtoTunnels]:
+    """Parse palo alto tunnels into its normalized representation."""
     if not string_table:
         return None
     snmp_data = [int(s) for s in string_table[0]]
@@ -50,10 +52,12 @@ register.snmp_section(
 
 
 def discover_palo_alto_tunnels(section: PaloAtoTunnels) -> DiscoveryResult:
+    """Discover palo alto tunnels from the available input data."""
     yield Service()
 
 
 def check_palo_alto_tunnels(section: PaloAtoTunnels) -> CheckResult:
+    """Evaluate palo alto tunnels and return its resulting state."""
     yield Metric('active_gp_tunnels',
                  section.active_tunnels,
                  boundaries=(0, section.max_tunnels))

@@ -19,6 +19,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_form_sidecooler_temp():
+    """Handle parameter form sidecooler temp for this module's workflow."""
     return Dictionary(
         title = Title("Sidecooler temperatures"),
         elements = {

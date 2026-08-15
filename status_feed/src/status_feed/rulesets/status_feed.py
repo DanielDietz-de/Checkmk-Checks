@@ -22,6 +22,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_form():
+    """Handle parameter form for this module's workflow."""
     magnitudes = [
         TimeMagnitude.SECOND,
         TimeMagnitude.MINUTE,

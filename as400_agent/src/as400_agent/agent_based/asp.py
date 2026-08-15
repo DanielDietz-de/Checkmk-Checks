@@ -44,11 +44,13 @@ def parse_function(string_table):
 
 
 def discover_service(section):
+    """Discover service from the available input data."""
     for item in section:
         yield Service(item=item)
 
 
 def _to_int(value):
+    """Handle to int for this module's workflow."""
     try:
         return int(value)
     except (TypeError, ValueError):
@@ -56,6 +58,7 @@ def _to_int(value):
 
 
 def check_service(item, params, section):
+    """Evaluate service and return its resulting state."""
     data = section.get(item)
     if not data:
         return

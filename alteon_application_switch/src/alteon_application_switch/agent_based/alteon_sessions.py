@@ -3,7 +3,7 @@
 
 
 from cmk.agent_based.v2 import (
-    SNMPTree, 
+    SNMPTree,
     startswith,
     Service,
     Result,
@@ -16,6 +16,7 @@ from cmk.agent_based.v2 import (
 
 def parse_alteon_sessions(string_table): # [[[u'17889', u'17919', u'17727'], [u'18715', u'18714', u'18527']]]
     # session per SP-Core
+    """Parse alteon sessions into its normalized representation."""
     sessions = {}
     for core_id, core_sessions in enumerate(string_table):
         values = {}
@@ -45,6 +46,7 @@ snmp_section_alteon_sessions = SNMPSection(
 
 
 def discover_alteon_sessions(section):
+    """Discover alteon sessions from the available input data."""
     for core, sessions in section.items():
         tresholds = {}
         tresholds["alteon_session_tresholds"] = (80, 90)
@@ -52,6 +54,7 @@ def discover_alteon_sessions(section):
 
 
 def check_alteon_sessions(item, params, section):
+    """Evaluate alteon sessions and return its resulting state."""
     warn_treshold, crit_treshold = params["alteon_session_tresholds"] # in percent
     values = section[item]
     max_sessions = values["max"]
@@ -62,7 +65,7 @@ def check_alteon_sessions(item, params, section):
 
     yield Result(state=State.OK, summary="Sessions {}: ".format(item))
     for duration, value in values.items():
-        yield Metric(duration, value, levels=(warn_treshold, crit_treshold), 
+        yield Metric(duration, value, levels=(warn_treshold, crit_treshold),
                         boundaries=(0, max_sessions))
         if value >= crit_treshold:
             yield Result(state=State.CRIT, summary="{}:{},".format(duration, value))
@@ -70,11 +73,11 @@ def check_alteon_sessions(item, params, section):
             yield Result(state=State.WARN, summary="{}:{},".format(duration, value))
         else:
             yield Result(state=State.OK, summary="{}:{},".format(duration, value))
-    
+
     yield Result(state=State.OK, summary="(Limit: {})".format(max_sessions))
 
 
-check_plugin_alteon_sessions = CheckPlugin(     
+check_plugin_alteon_sessions = CheckPlugin(
     name='alteon_sessions',
     service_name='Sessions %s',
     discovery_function=discover_alteon_sessions,

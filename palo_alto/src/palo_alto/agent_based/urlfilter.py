@@ -25,6 +25,7 @@ from cmk.agent_based.v2.render import timespan
 
 
 def parse_palo_alto_urlfilter(string_table):
+    """Parse palo alto urlfilter into its normalized representation."""
     if not string_table or not string_table[0]:
         return None
     return string_table[0][0]
@@ -45,10 +46,12 @@ snmp_section_palo_alto_urlfilter = SimpleSNMPSection(
 
 
 def discover_palo_alto_urlfilter(section):
+    """Discover palo alto urlfilter from the available input data."""
     yield Service()
 
 
 def check_palo_alto_urlfilter(params, section):
+    """Evaluate palo alto urlfilter and return its resulting state."""
     value_store = get_value_store()
     now = time()
 

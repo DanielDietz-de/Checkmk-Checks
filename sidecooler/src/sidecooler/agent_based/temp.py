@@ -14,12 +14,15 @@ from cmk.agent_based.v2 import (
 
 
 class SidecoolerTemp:
+    """Represent sidecoolertemp behavior and associated state."""
     def __init__(self, warm: dict[str, float], cold: dict[str, float]) -> None:
+        """Initialize the instance and its required state."""
         self.warm = warm
         self.cold = cold
 
 
 def parse_sidecooler_temp(string_table):
+    """Parse sidecooler temp into its normalized representation."""
     if not string_table:
         return None
 
@@ -30,6 +33,7 @@ def parse_sidecooler_temp(string_table):
 
 
 def discover_sidecooler_temp(section):
+    """Discover sidecooler temp from the available input data."""
     if section.warm:
         yield Service(item="warm")
     if section.cold:
@@ -37,6 +41,7 @@ def discover_sidecooler_temp(section):
 
 
 def check_sidecooler_temp(item, params, section):
+    """Evaluate sidecooler temp and return its resulting state."""
     data = section.warm if item == "warm" else section.cold
     metric_prefix = "temp_warm_" if item == "warm" else "temp_cold_"
 

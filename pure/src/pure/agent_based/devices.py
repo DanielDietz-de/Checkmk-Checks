@@ -19,6 +19,7 @@ from cmk.agent_based.v2.render import (
 
 
 def parse_pure_drives(string_table):
+    """Parse pure drives into its normalized representation."""
     section = {}
 
     for row in string_table:
@@ -46,10 +47,12 @@ agent_section_pure_drives = AgentSection(
 
 
 def discover_pure_drives(section):
+    """Discover pure drives from the available input data."""
     for item in section.keys():
         yield Service(item=item)
 
 def check_pure_drives(item, section):
+    """Evaluate pure drives and return its resulting state."""
     failed = []
 
     if item not in section.keys():

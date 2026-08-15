@@ -20,6 +20,7 @@ Import-Module (Join-Path $agentRoot 'bin\s2d_hci_common.psm1') -Force -ErrorActi
 $config = Get-S2DHciConfig -AgentRoot $agentRoot
 $context = New-S2DHciRunContext -Collector 'virtualization' -Config $config
 
+# Handle test-s2dhcicommandavailable for this module's workflow.
 function Test-S2DHciCommandAvailable {
     <#
     .SYNOPSIS
@@ -34,6 +35,7 @@ function Test-S2DHciCommandAvailable {
     return $null -ne (Get-Command -Name $Name -ErrorAction SilentlyContinue)
 }
 
+# Handle get-s2dhcivmpiggybackhost for this module's workflow.
 function Get-S2DHciVmPiggybackHost {
     <#
     .SYNOPSIS
@@ -48,6 +50,7 @@ function Get-S2DHciVmPiggybackHost {
     return ConvertTo-S2DHciHostName -Value ("s2d-vm-" + $VmId.Guid)
 }
 
+# Handle write-s2dhcivmsections for this module's workflow.
 function Write-S2DHciVmSections {
     <#
     .SYNOPSIS

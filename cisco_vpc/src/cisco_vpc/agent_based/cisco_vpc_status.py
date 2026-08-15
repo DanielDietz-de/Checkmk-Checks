@@ -15,6 +15,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_cisco_vpc_status(string_table: StringTable) -> StringTable:
+    """Parse cisco vpc status into its normalized representation."""
     return string_table
 
 
@@ -32,11 +33,13 @@ snmp_section_cisco_vpc_status = SimpleSNMPSection(
 
 
 def discover_cisco_vpc_status(section: StringTable):
+    """Discover cisco vpc status from the available input data."""
     if section:
         yield Service()
 
 
 def check_cisco_vpc_status(section: StringTable):
+    """Evaluate cisco vpc status and return its resulting state."""
     status_names = {
         "1": "disabled",
         "2": "alive",

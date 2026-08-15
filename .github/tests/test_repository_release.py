@@ -12,6 +12,7 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 
 
 def _load(name: str, path: Path):
+    """Handle load for this module's workflow."""
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -21,6 +22,7 @@ def _load(name: str, path: Path):
 
 
 def _minimal_manifest(name: str = "safe_package") -> dict[str, object]:
+    """Handle minimal manifest for this module's workflow."""
     return {
         "name": name,
         "title": "Test",
@@ -33,11 +35,13 @@ def _minimal_manifest(name: str = "safe_package") -> dict[str, object]:
 
 
 def _write_manifest(package: Path, manifest: dict[str, object]) -> None:
+    """Handle write manifest for this module's workflow."""
     (package / "src").mkdir(parents=True, exist_ok=True)
     (package / "src/info").write_text(repr(manifest), encoding="utf-8")
 
 
 def test_manifest_rejects_output_path_injection(tmp_path: Path) -> None:
+    """Verify that manifest rejects output path injection."""
     build = _load(
         "build_repository_mkps",
         REPOSITORY / ".github/scripts/build_repository_mkps.py",
@@ -49,6 +53,7 @@ def test_manifest_rejects_output_path_injection(tmp_path: Path) -> None:
 
 
 def test_manifest_preserves_explicit_usable_until(tmp_path: Path) -> None:
+    """Verify that manifest preserves explicit usable until."""
     build = _load(
         "build_repository_mkps_explicit_cap",
         REPOSITORY / ".github/scripts/build_repository_mkps.py",
@@ -64,6 +69,7 @@ def test_manifest_preserves_explicit_usable_until(tmp_path: Path) -> None:
 
 
 def test_manifest_preserves_unasserted_upper_bound(tmp_path: Path) -> None:
+    """Verify that manifest preserves unasserted upper bound."""
     build = _load(
         "build_repository_mkps_default_cap",
         REPOSITORY / ".github/scripts/build_repository_mkps.py",
@@ -77,6 +83,7 @@ def test_manifest_preserves_unasserted_upper_bound(tmp_path: Path) -> None:
 
 
 def test_symlink_target_must_stay_in_package(tmp_path: Path) -> None:
+    """Verify that symlink target must stay in package."""
     build = _load(
         "build_repository_mkps_symlink",
         REPOSITORY / ".github/scripts/build_repository_mkps.py",
@@ -92,6 +99,7 @@ def test_symlink_target_must_stay_in_package(tmp_path: Path) -> None:
 
 
 def test_archive_modes_strip_special_bits(tmp_path: Path) -> None:
+    """Verify that archive modes strip special bits."""
     build = _load(
         "build_repository_mkps_mode",
         REPOSITORY / ".github/scripts/build_repository_mkps.py",
@@ -110,6 +118,7 @@ def test_archive_modes_strip_special_bits(tmp_path: Path) -> None:
 def test_release_inventory_is_derived_from_canonical_manifests(
     tmp_path: Path,
 ) -> None:
+    """Verify that release inventory is derived from canonical manifests."""
     prepare = _load(
         "prepare_repository_mkp_release_inventory",
         REPOSITORY / ".github/scripts/prepare_repository_mkp_release.py",
@@ -127,6 +136,7 @@ def test_release_inventory_is_derived_from_canonical_manifests(
 def test_alertmanager_source_normalization_keeps_custom_rule_namespace(
     tmp_path: Path,
 ) -> None:
+    """Verify that alertmanager source normalization keeps custom rule namespace."""
     normalize = _load(
         "normalize_package_sources_alertmanager",
         REPOSITORY / "tools/ci/normalize_package_sources.py",
@@ -170,6 +180,7 @@ def test_alertmanager_source_normalization_keeps_custom_rule_namespace(
 
 
 def test_hci_choice_identifiers_are_valid() -> None:
+    """Verify that hci choice identifiers are valid."""
     source = (
         REPOSITORY / "hci_cluster/src/hci_cluster/rulesets/bakery.py"
     ).read_text(encoding="utf-8")
@@ -197,6 +208,7 @@ def test_hci_choice_identifiers_are_valid() -> None:
 
 
 def test_workflow_dependencies_are_immutable() -> None:
+    """Verify that workflow dependencies are immutable."""
     workflow = (
         REPOSITORY / ".github/workflows/repository-mkp-ci.yml"
     ).read_text(encoding="utf-8")

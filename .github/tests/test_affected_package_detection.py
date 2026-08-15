@@ -10,6 +10,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts/detect_affected_packages
 
 
 def _load():
+    """Handle load for this module's workflow."""
     spec = importlib.util.spec_from_file_location("detect_affected_packages", SCRIPT)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -19,6 +20,7 @@ def _load():
 
 
 def _repository(tmp_path: Path) -> Path:
+    """Handle repository for this module's workflow."""
     for name in ("alpha", "beta"):
         (tmp_path / name / "src").mkdir(parents=True)
         (tmp_path / name / "src/info").write_text("{}", encoding="utf-8")
@@ -26,6 +28,7 @@ def _repository(tmp_path: Path) -> Path:
 
 
 def test_package_local_changes_are_targeted(tmp_path: Path) -> None:
+    """Verify that package local changes are targeted."""
     module = _load()
     result = module.classify_changes(
         _repository(tmp_path),
@@ -49,6 +52,7 @@ def test_package_local_changes_are_targeted(tmp_path: Path) -> None:
     ],
 )
 def test_shared_inputs_force_full_validation(tmp_path: Path, path: str) -> None:
+    """Verify that shared inputs force full validation."""
     module = _load()
     result = module.classify_changes(
         _repository(tmp_path),
@@ -59,6 +63,7 @@ def test_shared_inputs_force_full_validation(tmp_path: Path, path: str) -> None:
 
 @pytest.mark.parametrize("path", ["alpha/src/info", "alpha/src/info.json"])
 def test_package_manifest_changes_force_full_validation(tmp_path: Path, path: str) -> None:
+    """Verify that package manifest changes force full validation."""
     module = _load()
     result = module.classify_changes(
         _repository(tmp_path),
@@ -69,6 +74,7 @@ def test_package_manifest_changes_force_full_validation(tmp_path: Path, path: st
 
 
 def test_new_active_package_manifest_forces_full_validation(tmp_path: Path) -> None:
+    """Verify that new active package manifest forces full validation."""
     module = _load()
     repository = _repository(tmp_path)
     (repository / "gamma/src").mkdir(parents=True)
@@ -81,6 +87,7 @@ def test_new_active_package_manifest_forces_full_validation(tmp_path: Path) -> N
 
 
 def test_documentation_only_change_skips_expensive_matrix(tmp_path: Path) -> None:
+    """Verify that documentation only change skips expensive matrix."""
     module = _load()
     result = module.classify_changes(
         _repository(tmp_path),
@@ -95,6 +102,7 @@ def test_documentation_only_change_skips_expensive_matrix(tmp_path: Path) -> Non
 
 @pytest.mark.parametrize("status", ["D", "R100", "C100", "U"])
 def test_rename_delete_copy_and_unknown_status_fail_safe(tmp_path: Path, status: str) -> None:
+    """Verify that rename delete copy and unknown status fail safe."""
     module = _load()
     paths = (
         ("alpha/src/old.py", "alpha/src/new.py")
@@ -109,6 +117,7 @@ def test_rename_delete_copy_and_unknown_status_fail_safe(tmp_path: Path, status:
 
 
 def test_unmapped_or_ambiguous_paths_fail_safe(tmp_path: Path) -> None:
+    """Verify that unmapped or ambiguous paths fail safe."""
     module = _load()
     repository = _repository(tmp_path)
     assert module.classify_changes(
@@ -122,6 +131,7 @@ def test_unmapped_or_ambiguous_paths_fail_safe(tmp_path: Path) -> None:
 
 
 def test_newline_path_fails_safe_without_output_injection(tmp_path: Path) -> None:
+    """Verify that newline path fails safe without output injection."""
     module = _load()
     result = module.classify_changes(
         _repository(tmp_path),
@@ -137,6 +147,7 @@ def test_newline_path_fails_safe_without_output_injection(tmp_path: Path) -> Non
 
 
 def test_all_output_values_are_single_line(tmp_path: Path) -> None:
+    """Verify that all output values are single line."""
     module = _load()
     output = tmp_path / "github-output"
     module._write_github_output(
@@ -151,6 +162,7 @@ def test_all_output_values_are_single_line(tmp_path: Path) -> None:
 
 
 def test_non_pull_request_events_are_always_full(tmp_path: Path) -> None:
+    """Verify that non pull request events are always full."""
     module = _load()
     result = module.select_for_event(
         _repository(tmp_path),
@@ -163,6 +175,7 @@ def test_non_pull_request_events_are_always_full(tmp_path: Path) -> None:
 
 
 def test_name_status_parser_handles_renames() -> None:
+    """Verify that name status parser handles renames."""
     module = _load()
     changes = module.parse_name_status(
         b"M\0alpha/src/a.py\0R100\0alpha/src/old.py\0alpha/src/new.py\0"
@@ -174,6 +187,7 @@ def test_name_status_parser_handles_renames() -> None:
 
 
 def test_truncated_name_status_is_rejected() -> None:
+    """Verify that truncated name status is rejected."""
     module = _load()
     with pytest.raises(ValueError, match="truncated"):
         module.parse_name_status(b"R100\0alpha/src/old.py\0")

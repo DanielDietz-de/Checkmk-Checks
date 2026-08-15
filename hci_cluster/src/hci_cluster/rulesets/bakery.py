@@ -24,6 +24,7 @@ _LEGACY_FILTER_TYPES = {
 
 
 def _migrate_deployment_parameters(raw_value: object) -> dict[str, object]:
+    """Handle migrate deployment parameters for this module's workflow."""
     if not isinstance(raw_value, dict):
         raise TypeError("HCI Cluster deployment parameters must be a dictionary")
     migrated = dict(raw_value)
@@ -34,6 +35,7 @@ def _migrate_deployment_parameters(raw_value: object) -> dict[str, object]:
 
 
 def _deployment_parameters() -> Dictionary:
+    """Handle deployment parameters for this module's workflow."""
     return Dictionary(
         title=Title("Deploy HCI Cluster plug-in"),
         migrate=_migrate_deployment_parameters,
@@ -78,6 +80,7 @@ def _deployment_parameters() -> Dictionary:
 
 
 def _parameter_form_hci_cluster() -> Dictionary:
+    """Handle parameter form hci cluster for this module's workflow."""
     return Dictionary(
         help_text=Help(
             "Deploys the Windows HCI Cluster agent plug-in for monitoring cluster "

@@ -20,6 +20,7 @@ VERTIV_DETECT = startswith(".1.3.6.1.2.1.1.1.0", "Avocent ACS")
 
 
 def parse_vertiv_acs8000_cpu_temperature(string_table):
+    """Parse vertiv acs8000 cpu temperature into its normalized representation."""
     if not string_table or not string_table[0]:
         return None
     try:
@@ -29,10 +30,12 @@ def parse_vertiv_acs8000_cpu_temperature(string_table):
 
 
 def discover_vertiv_acs8000_cpu_temperature(section):
+    """Discover vertiv acs8000 cpu temperature from the available input data."""
     yield Service()
 
 
 def check_vertiv_acs8000_cpu_temperature(params, section):
+    """Evaluate vertiv acs8000 cpu temperature and return its resulting state."""
     yield from check_levels(
         value=float(section),
         levels_upper=params.get("levels"),

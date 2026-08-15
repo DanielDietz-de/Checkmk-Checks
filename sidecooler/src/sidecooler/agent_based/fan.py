@@ -20,6 +20,7 @@ from cmk.agent_based.v2 import (
 )
 
 class SidecoolerFan(NamedTuple):
+    """Represent sidecoolerfan behavior and associated state."""
     power_setpoint: int
     power_current: int
     rpm_current: int
@@ -28,9 +29,11 @@ class SidecoolerFan(NamedTuple):
 
 
 class SidecoolerFans():
+    """Represent sidecoolerfans behavior and associated state."""
     fans = {}
 
     def __init__(self, fan1, fan2, fan3, fan4, fan5, fan6):
+        """Initialize the instance and its required state."""
         self.fans["1"] = fan1
         self.fans["2"] = fan2
         self.fans["3"] = fan3
@@ -40,6 +43,7 @@ class SidecoolerFans():
 
 
 def parse_sidecooler_fans(string_table):
+    """Parse sidecooler fans into its normalized representation."""
     if not string_table:
         return None
 
@@ -54,12 +58,14 @@ def parse_sidecooler_fans(string_table):
 
 
 def discover_sidecooler_fans(section):
+    """Discover sidecooler fans from the available input data."""
     for fan in section.fans.keys():
         if section.fans[fan].status != 0:
             yield Service(item=fan)
 
 
 def check_sidecooler_fans(item, params, section):
+    """Evaluate sidecooler fans and return its resulting state."""
     fan_state = {
         0: "no fan",
         1: "off",
@@ -83,7 +89,7 @@ def check_sidecooler_fans(item, params, section):
             else:
                 yield Result(state=State.OK, summary=f"RPM current: {section.fans[item].rpm_current}U/min")
             yield Metric(name="fan", value=section.fans[item].rpm_current, levels=params["upper"])
-        
+
         if "lower" in params.keys():
             warn, crit = params["lower"]
             if section.fans[item].rpm_current < crit:

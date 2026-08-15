@@ -3,7 +3,7 @@
 
 
 from cmk.agent_based.v2 import (
-    SNMPTree, 
+    SNMPTree,
     startswith,
     Service,
     Result,
@@ -15,6 +15,7 @@ from cmk.agent_based.v2 import (
 
 #[[[u'2097126', u'35423', u'35386', u'35561']]]
 def parse_alteon_slb_sessions(string_table):
+    """Parse alteon slb sessions into its normalized representation."""
     values = {}
     values['max'] = int(string_table[0][0])
     values['current_sessions'] = int(string_table[0][1])
@@ -41,12 +42,13 @@ snmp_section_alteon_sessions_slb = SNMPSection(
 )
 
 #{
-#    '4sec': 34700, 
-#    'current sessions': 34656, 
-#    'max': 2097126, 
+#    '4sec': 34700,
+#    'current sessions': 34656,
+#    'max': 2097126,
 #    '64sec': 35008
 #}
 def discover_alteon_slb_sessions(section):
+    """Discover alteon slb sessions from the available input data."""
     if section['max'] > 0:
         tresholds = {}
         tresholds['alteon_slb_sessions_tresholds'] = (80, 90)
@@ -55,12 +57,13 @@ def discover_alteon_slb_sessions(section):
 #SLB Sessions
 #{'alteon_slb_sessions_tresholds': (1677680, 1887390)}
 #{
-#    '4sec': 34700, 
-#    'current sessions': 34656, 
-#    'max': 2097126, 
+#    '4sec': 34700,
+#    'current sessions': 34656,
+#    'max': 2097126,
 #    '64sec': 35008
 #}
 def check_alteon_slb_sessions(item, params, section):
+    """Evaluate alteon slb sessions and return its resulting state."""
     warn_treshold, crit_treshold = params["alteon_slb_sessions_tresholds"] # in precent
     max = section["max"]
     del section["max"]
@@ -81,7 +84,7 @@ def check_alteon_slb_sessions(item, params, section):
     yield Result(state=State.OK, summary="(Limit: {})".format(max))
 
 
-check_plugin_alteon_sessions_slb = CheckPlugin(     
+check_plugin_alteon_sessions_slb = CheckPlugin(
     name='alteon_sessions_slb',
     service_name='%s',
     discovery_function=discover_alteon_slb_sessions,

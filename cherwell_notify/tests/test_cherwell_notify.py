@@ -26,6 +26,7 @@ loader.exec_module(module)
 
 
 def base_context(**overrides):
+    """Handle base context for this module's workflow."""
     context = {
         "PARAMETER_API_URL": "https://cherwell.example/api/businessobject",
         "PARAMETER_TOKEN_URL": "https://cherwell.example/token",
@@ -54,6 +55,7 @@ def base_context(**overrides):
 
 
 def test_rejects_cleartext_and_embedded_credentials():
+    """Verify that rejects cleartext and embedded credentials."""
     with pytest.raises(module.CherwellError, match="HTTPS"):
         module.validate_https_url("http://cherwell.example/api", "API URL")
     with pytest.raises(module.CherwellError, match="embedded credentials"):
@@ -61,6 +63,7 @@ def test_rejects_cleartext_and_embedded_credentials():
 
 
 def test_field_mapping_parser_is_bounded_and_normalized():
+    """Verify that field mapping parser is bounded and normalized."""
     fields = module.parse_field_mappings(
         '[{"fieldId":"field-1","value":42,"dirty":false}]',
         "fields",
@@ -69,11 +72,13 @@ def test_field_mapping_parser_is_bounded_and_normalized():
 
 
 def test_event_id_is_initialized_when_context_has_no_ec_event():
+    """Verify that event id is initialized when context has no ec event."""
     notification = module.NotifyCherwell(base_context())
     assert notification.event_id is None
 
 
 def test_recovery_ignore_does_not_authenticate(monkeypatch):
+    """Verify that recovery ignore does not authenticate."""
     notification = module.NotifyCherwell(
         base_context(NOTIFICATIONTYPE="RECOVERY")
     )
@@ -86,6 +91,7 @@ def test_recovery_ignore_does_not_authenticate(monkeypatch):
 
 
 def test_payload_uses_configured_business_object_and_fields():
+    """Verify that payload uses configured business object and fields."""
     notification = module.NotifyCherwell(
         base_context(
             PARAMETER_INSERT_FIELDS_JSON='[{"fieldId":"tenant-field","value":"tenant-value"}]'
@@ -100,5 +106,6 @@ def test_payload_uses_configured_business_object_and_fields():
 
 
 def test_checkmk_server_cannot_contain_a_path():
+    """Verify that checkmk server cannot contain a path."""
     with pytest.raises(module.CherwellError, match="must not contain a path"):
         module.NotifyCherwell(base_context(PARAMETER_CMK_SERVER="monitoring.example/site"))

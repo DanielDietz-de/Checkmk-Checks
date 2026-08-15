@@ -39,11 +39,13 @@ agent_section_hitachi_hnas_rest_system_drives = AgentSection(
 
 
 def discover_hitachi_hnas_rest_system_drives(section):
+    """Discover hitachi hnas rest system drives from the available input data."""
     for drive_id in section:
         yield Service(item=drive_id)
 
 
 def check_hitachi_hnas_rest_system_drives(item, section):
+    """Evaluate hitachi hnas rest system drives and return its resulting state."""
     drive = section.get(item)
     if not drive:
         return

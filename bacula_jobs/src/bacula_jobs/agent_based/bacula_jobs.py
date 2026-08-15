@@ -61,6 +61,7 @@ def _max_age_levels(value):
 
 
 def parse_bacula_jobs(string_table: StringTable) -> dict:
+    """Parse bacula jobs into its normalized representation."""
     latest_state: dict = {}
     for line in string_table[1:]:
         if len(line) < 4:
@@ -86,11 +87,13 @@ agent_section_bacula_jobs = AgentSection(
 
 
 def discovery_bacula_jobs(section: dict) -> DiscoveryResult:
+    """Handle discovery bacula jobs for this module's workflow."""
     for job in section:
         yield Service(item=job)
 
 
 def check_bacula_jobs(item: str, params: dict, section: dict) -> CheckResult:
+    """Evaluate bacula jobs and return its resulting state."""
     if item not in section:
         return
     data = section[item]

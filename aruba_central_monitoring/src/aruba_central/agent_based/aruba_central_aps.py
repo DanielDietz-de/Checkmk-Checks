@@ -13,6 +13,7 @@ from cmk.agent_based.v2 import AgentSection, CheckPlugin, Metric, Result, Servic
 
 @dataclass(frozen=True)
 class Collector:
+    """Represent collector behavior and associated state."""
     status: str
     message: str
     generated_at: str
@@ -32,6 +33,7 @@ class Collector:
 
 @dataclass(frozen=True)
 class Radio:
+    """Represent radio behavior and associated state."""
     key: str
     index: int
     name: str
@@ -47,6 +49,7 @@ class Radio:
 
 @dataclass(frozen=True)
 class AccessPoint:
+    """Represent accesspoint behavior and associated state."""
     host_name: str
     name: str
     status: str
@@ -71,12 +74,14 @@ class AccessPoint:
 
 @dataclass(frozen=True)
 class Section:
+    """Represent section behavior and associated state."""
     kind: str
     collector: Collector | None
     access_point: AccessPoint | None
 
 
 def _optional_int(value: Any) -> int | None:
+    """Handle optional int for this module's workflow."""
     if value in (None, ""):
         return None
     try:
@@ -86,6 +91,7 @@ def _optional_int(value: Any) -> int | None:
 
 
 def _optional_float(value: Any) -> float | None:
+    """Handle optional float for this module's workflow."""
     if value in (None, ""):
         return None
     try:
@@ -95,10 +101,12 @@ def _optional_float(value: Any) -> float | None:
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:
+    """Handle mapping for this module's workflow."""
     return value if isinstance(value, Mapping) else {}
 
 
 def _collector(raw: Any) -> Collector | None:
+    """Handle collector for this module's workflow."""
     data = _mapping(raw)
     if not data:
         return None
@@ -122,6 +130,7 @@ def _collector(raw: Any) -> Collector | None:
 
 
 def _access_point(raw: Any) -> AccessPoint | None:
+    """Handle access point for this module's workflow."""
     data = _mapping(raw)
     if not data:
         return None
@@ -205,6 +214,7 @@ agent_section_aruba_central_aps = AgentSection(
 
 
 def _state(value: object, default: int) -> State:
+    """Handle state for this module's workflow."""
     try:
         numeric = int(value)
     except (TypeError, ValueError):
@@ -213,17 +223,20 @@ def _state(value: object, default: int) -> State:
 
 
 def _ratio(part: float | None, total: float | None) -> float | None:
+    """Handle ratio for this module's workflow."""
     if part is None or total is None or total <= 0:
         return None
     return part * 100.0 / total
 
 
 def discover_summary(section: Section):
+    """Discover summary from the available input data."""
     if section.kind == "collector" and section.collector is not None:
         yield Service()
 
 
 def check_summary(params: Mapping[str, object], section: Section):
+    """Evaluate summary and return its resulting state."""
     collector = section.collector
     if collector is None:
         yield Result(state=State.UNKNOWN, summary="No valid Aruba Central collector data")
@@ -279,11 +292,13 @@ def check_summary(params: Mapping[str, object], section: Section):
 
 
 def discover_access_point(section: Section):
+    """Discover access point from the available input data."""
     if section.kind == "ap" and section.access_point is not None:
         yield Service()
 
 
 def check_access_point(params: Mapping[str, object], section: Section):
+    """Evaluate access point and return its resulting state."""
     ap = section.access_point
     if ap is None:
         yield Result(state=State.UNKNOWN, summary="No Aruba Central access-point data")
@@ -351,6 +366,7 @@ def check_access_point(params: Mapping[str, object], section: Section):
 
 
 def discover_radio(section: Section):
+    """Discover radio from the available input data."""
     ap = section.access_point
     if section.kind == "ap" and ap is not None:
         for key in sorted(ap.radios):
@@ -358,6 +374,7 @@ def discover_radio(section: Section):
 
 
 def check_radio(item: str, params: Mapping[str, object], section: Section):
+    """Evaluate radio and return its resulting state."""
     ap = section.access_point
     radio = ap.radios.get(item) if ap else None
     if radio is None:

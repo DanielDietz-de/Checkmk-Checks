@@ -21,6 +21,7 @@ from cmk.rulesets.v1.rule_specs import AgentConfig, Topic
 
 
 def _agent_config_check_docker() -> Dictionary:
+    """Handle agent config check docker for this module's workflow."""
     return Dictionary(
         help_text=Help("Hosts configured via this rule get the <tt>docker.py</tt> plugin"),
         elements={

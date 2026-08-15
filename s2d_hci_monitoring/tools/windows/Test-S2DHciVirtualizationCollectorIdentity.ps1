@@ -17,6 +17,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Handle test-s2dhciaclrights for this module's workflow.
 function Test-S2DHciAclRights {
     <#
     .SYNOPSIS

@@ -18,14 +18,17 @@ from cmk.agent_based.v2 import (
 )
 
 def _item_acgateway_sipinterface(line):
+    """Handle item acgateway sipinterface for this module's workflow."""
     return "%s %s" % (line[0], line[10])
 
 def _find_line(idx, lines):
+    """Handle find line for this module's workflow."""
     for line in lines:
         if line[0] == idx:
             return line
 
 def parse_acgateway_sipinterface(string_table):
+    """Parse acgateway sipinterface into its normalized representation."""
     rowStatus = {
         '1': 'active',
         '2': 'notInService',
@@ -140,6 +143,7 @@ snmp_section_acgateway_sipinterface = SNMPSection(
 )
 
 def discover_acgateway_sipinterface(section):
+    """Discover acgateway sipinterface from the available input data."""
     for item, data in section.items():
         yield Service(item=item,
                       parameters={
@@ -149,6 +153,7 @@ def discover_acgateway_sipinterface(section):
                       })
 
 def check_acgateway_sipinterface(item, params, section):
+    """Evaluate acgateway sipinterface and return its resulting state."""
     if item in section:
         data = section[item]
         yield Result(state=State.OK,

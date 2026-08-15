@@ -142,6 +142,7 @@ ERROR_COUNTERS = {
 
 
 def parse_open_iscsi_host_stats(string_table: StringTable) -> dict:
+    """Parse open iscsi host stats into its normalized representation."""
     hosts: dict = {}
     mac_host = None
     for line in string_table:
@@ -155,11 +156,13 @@ def parse_open_iscsi_host_stats(string_table: StringTable) -> dict:
 
 
 def discover_open_iscsi_host_stats(section: dict) -> DiscoveryResult:
+    """Discover open iscsi host stats from the available input data."""
     for host in section:
         yield Service(item=host)
 
 
 def check_open_iscsi_host_stats(item: str, params: dict, section: dict) -> CheckResult:
+    """Evaluate open iscsi host stats and return its resulting state."""
     if item not in section:
         return
     counters = section[item]

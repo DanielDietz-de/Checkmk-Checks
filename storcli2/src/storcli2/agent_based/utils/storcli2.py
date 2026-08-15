@@ -12,6 +12,7 @@ from cmk.agent_based.v2 import (
 )
 
 def parse_storcli2_list(string_table):
+    """Parse storcli2 list into its normalized representation."""
     data = {}
     error = False
 
@@ -36,6 +37,7 @@ def parse_storcli2_list(string_table):
     return data
 
 def parse_storcli2_table(string_table):
+    """Parse storcli2 table into its normalized representation."""
     data = {}
     head = True
     start = False

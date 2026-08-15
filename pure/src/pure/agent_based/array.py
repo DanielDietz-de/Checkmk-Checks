@@ -16,6 +16,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_pure_array(string_table):
+    """Parse pure array into its normalized representation."""
     section = {}
 
     for row in string_table:
@@ -36,10 +37,12 @@ agent_section_pure_array = AgentSection(
 
 
 def discover_pure_array(section):
+    """Discover pure array from the available input data."""
     for item in section.keys():
         yield Service(item=item)
 
 def check_pure_array(item, section):
+    """Evaluate pure array and return its resulting state."""
     failed = []
 
     if item not in section.keys():

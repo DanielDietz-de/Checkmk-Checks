@@ -3,7 +3,7 @@
 
 
 from cmk.agent_based.v2 import (
-    SNMPTree, 
+    SNMPTree,
     startswith,
     Service,
     Result,
@@ -15,6 +15,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_alteon_throughput(string_table): # [[[u'3000']], [[u'2620639424', u'158306176']]]
+    """Parse alteon throughput into its normalized representation."""
     values = {}
     values['max_throughput'] = int(string_table[0][0][0])
     values['peak_throughput'] = int(string_table[1][0][0])
@@ -45,6 +46,7 @@ snmp_section_alteon_throughput = SNMPSection(
 
 
 def discover_alteon_throughput(section):
+    """Discover alteon throughput from the available input data."""
     max_throughput = section['max_throughput']
     if max_throughput > 0: # do not inventory if max_throughput is 0
         tresholds = {}
@@ -53,6 +55,7 @@ def discover_alteon_throughput(section):
 
 
 def get_traffic_human_readable(speed, in_unit, out_unit):
+    """Return traffic human readable for the supplied inputs."""
     base = 1024.0
     if speed == 0:
         return "{Speed not available}"
@@ -78,6 +81,7 @@ def get_traffic_human_readable(speed, in_unit, out_unit):
 
 
 def check_alteon_throughput(item, params, section):
+    """Evaluate alteon throughput and return its resulting state."""
     max_throughput = section['max_throughput'] # in Mbit/s
     peak_throughput = section['peak_throughput']
     current_throughput = section['current_throughput']
@@ -86,16 +90,16 @@ def check_alteon_throughput(item, params, section):
     warn_treshold = max / 100 * warn_treshold # in bit/s
     crit_treshold = max / 100 * crit_treshold # in bit/s
 
-    yield Metric("Peak", peak_throughput, 
+    yield Metric("Peak", peak_throughput,
                     levels=(warn_treshold, crit_treshold),
                     boundaries=(0, max))
-    yield Metric("Current", current_throughput, 
+    yield Metric("Current", current_throughput,
                     levels=(warn_treshold, crit_treshold),
                     boundaries=(0, max))
 
     infotext = "Throughput: Current:{}, Peak:{} (Limit:{}Mbps)".format(
-        get_traffic_human_readable(current_throughput, "Bit", "Bit"), 
-        get_traffic_human_readable(peak_throughput, "Bit", "Bit"), 
+        get_traffic_human_readable(current_throughput, "Bit", "Bit"),
+        get_traffic_human_readable(peak_throughput, "Bit", "Bit"),
         max_throughput
     )
 
@@ -107,7 +111,7 @@ def check_alteon_throughput(item, params, section):
         yield Result(state=State.OK, summary=infotext)
 
 
-check_plugin_alteon_throughput = CheckPlugin(     
+check_plugin_alteon_throughput = CheckPlugin(
     name='alteon_throughput',
     service_name='%s',
     discovery_function=discover_alteon_throughput,

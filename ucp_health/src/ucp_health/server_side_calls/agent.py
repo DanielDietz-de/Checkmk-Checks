@@ -18,18 +18,14 @@ class NodeConfig(BaseModel):
 
 
 class CollectionConfig(BaseModel):
-    """
-    Collection check configuration.
-    """
+    """Represent collectionconfig behavior and associated state."""
     service_name: str = "UCP Manager"
     warn_unhealthy: int | None = None
     crit_unhealthy: int = 2
 
 
 class ConfigParser(BaseModel):
-    """
-    Config Parser
-    """
+    """Represent configparser behavior and associated state."""
     nodes: list[NodeConfig] = []
     service_name: str = "UCP Healthy"
     piggyback: bool = False

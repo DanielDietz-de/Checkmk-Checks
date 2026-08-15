@@ -20,6 +20,7 @@ VERTIV_DETECT = startswith(".1.3.6.1.2.1.1.1.0", "Avocent ACS")
 
 
 def parse_vertiv_acs8000_sessions(string_table):
+    """Parse vertiv acs8000 sessions into its normalized representation."""
     if not string_table or not string_table[0]:
         return None
     try:
@@ -29,10 +30,12 @@ def parse_vertiv_acs8000_sessions(string_table):
 
 
 def discover_vertiv_acs8000_sessions(section):
+    """Discover vertiv acs8000 sessions from the available input data."""
     yield Service()
 
 
 def check_vertiv_acs8000_sessions(params, section):
+    """Evaluate vertiv acs8000 sessions and return its resulting state."""
     yield from check_levels(
         value=section,
         levels_upper=params.get("levels"),

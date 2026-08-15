@@ -34,9 +34,7 @@ def discover_quobyte_services(section):
 
 
 def check_quobyte_services(item, params, section):
-    """
-    Check single Service
-    """
+    """Evaluate quobyte services and return its resulting state."""
     state = State.OK
     status = section[item]
     if status != 'True':

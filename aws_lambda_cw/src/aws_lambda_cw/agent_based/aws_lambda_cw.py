@@ -22,6 +22,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_aws_lambda_cw(string_table):
+    """Parse aws lambda cw into its normalized representation."""
     section = {}
     for row in string_table:
         if not row:
@@ -38,11 +39,13 @@ def parse_aws_lambda_cw(string_table):
 
 
 def discover_aws_lambda_cw(section):
+    """Discover aws lambda cw from the available input data."""
     for name in section:
         yield Service(item=name)
 
 
 def check_aws_lambda_cw(item, params, section):
+    """Evaluate aws lambda cw and return its resulting state."""
     entry = section.get(item)
     if entry is None:
         return

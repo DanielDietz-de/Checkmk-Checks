@@ -23,6 +23,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_valuespec_mssql_counters_memory():
+    """Handle parameter valuespec mssql counters memory for this module's workflow."""
     return Dictionary(
         title = Title("MSSQL memory usage"),
         elements = {

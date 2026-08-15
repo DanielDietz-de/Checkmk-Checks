@@ -29,6 +29,7 @@ from cmk.agent_based.v2 import (
 
 
 def discover_mysql_performance(section: Mapping[str, Mapping[str, str]]) -> DiscoveryResult:
+    """Discover mysql performance from the available input data."""
     for instance, data in section.items():
         if "Threads_created" in data and "Connections" in data:
             yield Service(item=f"{instance} Thread Cache", parameters={"levels": (80, 90)})
@@ -37,6 +38,7 @@ def discover_mysql_performance(section: Mapping[str, Mapping[str, str]]) -> Disc
 def check_mysql_performance(
     item: str, params: Mapping[str, Any], section: Mapping[str, Mapping[str, str]]
 ) -> CheckResult:
+    """Evaluate mysql performance and return its resulting state."""
     splitted = item.split()
     instance = splitted[0]
     if instance not in section:

@@ -6,7 +6,7 @@ Consulting and Development
 https://kuhn-ruess.de
 """
 
-# 
+#
 # MSSQL_SQL2012T:Access_Methods workfiles_created/sec None 209728^M
 # MSSQL_SQL2012T:Access_Methods worktables_created/sec None 50631^M
 #
@@ -28,6 +28,7 @@ from cmk.agent_based.v2 import (
 
 def discover_mssql_work_files_tables(section):
     # instance is always "None" here
+    """Discover mssql work files tables from the available input data."""
     for (obj_id, instance), counters in iter(section.items()):
         if obj_id.endswith(":Access_Methods") and \
                 "workfiles_created/sec" in counters and \
@@ -36,6 +37,7 @@ def discover_mssql_work_files_tables(section):
 
 
 def check_mssql_work_files_tables(item, params, section):
+    """Evaluate mssql work files tables and return its resulting state."""
     if not section:
         return
 
@@ -62,7 +64,7 @@ def check_mssql_work_files_tables(item, params, section):
         warn, crit = levels[1]
         levelstext = " (warn/crit at %.2f/%.2f)" % levels[1]
         yield Metric("perf_WorkFiles", value, levels=levels[1])
-        if value >= crit: 
+        if value >= crit:
             yield Result(state=State.CRIT, summary=infotext+levelstext)
         elif value >= warn:
             yield Result(state=State.WARN, summary=infotext+levelstext)
@@ -87,7 +89,7 @@ def check_mssql_work_files_tables(item, params, section):
         warn, crit = levels[1]
         levelstext = " (warn/crit at %.2f/%.2f)" % levels[1]
         yield Metric("perf_WorkTables", value, levels=levels[1])
-        if value >= crit: 
+        if value >= crit:
             yield Result(state=State.CRIT, summary=infotext+levelstext)
         elif value >= warn:
             yield Result(state=State.WARN, summary=infotext+levelstext)

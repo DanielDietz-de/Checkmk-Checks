@@ -21,11 +21,13 @@ symmAlertSummary|0|0|0|0|0|0
 
 
 def discover_dellpmax_alerts(section):
+    """Discover dellpmax alerts from the available input data."""
     if section != []:
         yield Service()
 
 
 def check_dellpmax_alerts_array(section):
+    """Evaluate dellpmax alerts array and return its resulting state."""
     if section:
         array_warn_unack = int(section[0][1])
         array_crit_unack = int(section[0][2])
@@ -58,6 +60,7 @@ check_plugin_dell_pmax_symm_alerts_arrays = CheckPlugin(
 
 
 def check_dellpmax_alerts_perf(section):
+    """Evaluate dellpmax alerts perf and return its resulting state."""
     if section:
         perf_warn_unack = int(section[0][4])
         perf_crit_unack = int(section[0][5])

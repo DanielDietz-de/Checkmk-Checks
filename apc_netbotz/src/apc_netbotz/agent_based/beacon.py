@@ -19,6 +19,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_netbotz_beacon(string_table):
+    """Parse netbotz beacon into its normalized representation."""
     map_state = {
         "-1": (State.UNKNOWN, "undefined"),
         "0": (State.OK, "off"),
@@ -52,11 +53,13 @@ snmp_section_netbotz_beacon = SimpleSNMPSection(
 
 
 def discover_netbotz_beacon(section):
+    """Discover netbotz beacon from the available input data."""
     for item in section.keys():
         yield Service(item=item)
 
 
 def check_netbotz_beacon(item, section):
+    """Evaluate netbotz beacon and return its resulting state."""
     if item not in section.keys():
         yield Result(state=State.UNKNOWN, summary="Item not found")
 

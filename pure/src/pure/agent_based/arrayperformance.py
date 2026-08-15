@@ -20,6 +20,7 @@ from cmk.agent_based.v2.render import (
 
 
 def parse_pure_arrayperformance(string_table):
+    """Parse pure arrayperformance into its normalized representation."""
     section = {}
 
     for row in string_table:
@@ -44,10 +45,12 @@ agent_section_pure_arrayperformance = AgentSection(
 
 
 def discover_pure_arrayperformance(section):
+    """Discover pure arrayperformance from the available input data."""
     for item in section.keys():
         yield Service(item=item)
 
 def check_pure_arrayperformance(item, section):
+    """Evaluate pure arrayperformance and return its resulting state."""
     failed = []
 
     if item not in section.keys():

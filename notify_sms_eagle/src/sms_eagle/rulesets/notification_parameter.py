@@ -22,6 +22,7 @@ from cmk.rulesets.v1.rule_specs import (
 
 
 def _parameters_sms_eagle():
+    """Handle parameters sms eagle for this module's workflow."""
     return Dictionary(
         title=Title("SMS Eagle SMS Appliance"),
         elements={

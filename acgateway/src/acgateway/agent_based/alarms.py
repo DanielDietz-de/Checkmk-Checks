@@ -21,6 +21,7 @@ from cmk.agent_based.v2 import (
 from datetime import datetime
 
 def _convert_date_and_time(octet_string):
+    """Handle convert date and time for this module's workflow."""
     return datetime(
         year=ord(octet_string[0]) * 256 + ord(octet_string[1]),
         month=ord(octet_string[2]),
@@ -32,6 +33,7 @@ def _convert_date_and_time(octet_string):
     )
 
 def parse_acgateway_alarms(string_table):
+    """Parse acgateway alarms into its normalized representation."""
     map_severity = {
         "0": "cleared",
         "1": "indeterminate",
@@ -64,7 +66,7 @@ def parse_acgateway_alarms(string_table):
             'state': map_state.get(alarm[6], State.UNKNOWN),
         })
     return section
-    
+
 snmp_section_acgateway_alarms = SNMPSection(
     name = "acgateway_alarms",
     parse_function = parse_acgateway_alarms,
@@ -92,9 +94,11 @@ snmp_section_acgateway_alarms = SNMPSection(
 )
 
 def discover_acgateway_alarms(section):
+    """Discover acgateway alarms from the available input data."""
     yield Service()
 
 def check_acgateway_alarms(section):
+    """Evaluate acgateway alarms and return its resulting state."""
     if len(section['alarms']) == 0:
         yield Result(state=State.OK,
                      summary="No active alarms present")

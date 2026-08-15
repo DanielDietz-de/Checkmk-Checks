@@ -26,11 +26,13 @@ agent_section_pure_hardware = AgentSection(
 
 
 def discover_pure_hardware(section):
+    """Discover pure hardware from the available input data."""
     for item, data in section.items():
         if "default" in data:
             yield Service(item=item)
 
 def check_pure_hardware(item, section):
+    """Evaluate pure hardware and return its resulting state."""
     if item not in section.keys():
         yield Result(
             state=State.UNKNOWN,

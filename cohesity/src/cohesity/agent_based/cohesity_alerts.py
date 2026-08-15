@@ -12,6 +12,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_cohesity_alerts(string_table):
+    """Parse cohesity alerts into its normalized representation."""
     section = {}
     for row in string_table:
         item = row[0][3:4] + ''.join(map(lambda x: x if x.islower() else " "+x, row[0][4:]))
@@ -32,9 +33,11 @@ agent_section_cohesity_alerts = AgentSection(
 
 
 def discovery_cohesity_alerts(section):
+    """Handle discovery cohesity alerts for this module's workflow."""
     yield Service()
 
 def check_cohesity_alerts(section):
+    """Evaluate cohesity alerts and return its resulting state."""
     numCriticalAlerts = section['Critical Alerts']
     numWarningAlerts = section['Warning Alerts']
     numInfoAlerts = section['Info Alerts']
@@ -57,7 +60,7 @@ def check_cohesity_alerts(section):
     else:
         state=State.OK
         text=f"No alert: {text}"
-    
+
     yield Result(
         state=state,
         summary=text,
@@ -71,4 +74,3 @@ check_plugin_cohesity_alerts = CheckPlugin(
     discovery_function=discovery_cohesity_alerts,
     check_function=check_cohesity_alerts,
 )
-

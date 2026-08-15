@@ -79,6 +79,7 @@ NSTATE = {
 }
 
 def parse_sinal3(string_table):
+    """Parse sinal3 into its normalized representation."""
     parsed = {}
     if len(string_table[0]) != 0:
         parsed["temperature"] = string_table[0]
@@ -122,7 +123,7 @@ snmp_section_sinal3 = SNMPSection(
             oids=[
                 '1', # sensor nr
                 '2', # sensor name
-                '3', # sensor temp 
+                '3', # sensor temp
             ],
         ),
         SNMPTree(
@@ -133,7 +134,7 @@ snmp_section_sinal3 = SNMPSection(
             oids=[
                 '1', # sensor nr
                 '2', # sensor name
-                '3', # sensor Drehzahl^ 
+                '3', # sensor Drehzahl^
             ],
         ),
         SNMPTree(
@@ -144,7 +145,7 @@ snmp_section_sinal3 = SNMPSection(
             oids=[
                 '1', # sensor nr
                 '2', # sensor name
-                '3', # sensor volts 
+                '3', # sensor volts
             ],
         ),
         SNMPTree(
@@ -242,8 +243,8 @@ snmp_section_sinal3 = SNMPSection(
             base='.1.3.6.1.4.1.8299.4.3.2',
             oids=[
                 '2.1', # ipsec phase 1
-                '2.3', # peer count 
-                '3.1', # ipsec phase 
+                '2.3', # peer count
+                '3.1', # ipsec phase
                 '3.3', # connection count
             ],
         ),
@@ -275,14 +276,14 @@ def check_sinal3_system(params, section):
     if 'system' in section:
         hsb_mode, hsb_state, hsb_mode_peer, hsb_state_peer = section["system"][0]
         infotext = (
-            f"HSB: Mode: {HSB_MODE[int(hsb_mode)]}; State: {STATE[int(hsb_state)]}; " 
+            f"HSB: Mode: {HSB_MODE[int(hsb_mode)]}; State: {STATE[int(hsb_state)]}; "
             f"HSB peer: Mode {HSB_MODE[int(hsb_mode_peer)]}; State {STATE[int(hsb_state_peer)]}"
         )
         if (
             int(hsb_mode) == int(hsb_mode_peer) and int(hsb_state) == 1
         ) or (
             int(hsb_mode_peer) == 3 and int(hsb_state_peer) == 1
-        ): 
+        ):
             state = State.WARN
             infotext += " - Error HSB peer"
         elif int(hsb_mode) == int(hsb_mode_peer):
@@ -362,7 +363,7 @@ check_plugin_sinal3_fans = CheckPlugin(
         discovery_function=discover_sinal3_fans,
         check_function=check_sinal3_fans,
         check_default_parameters={
-            'lower': (0, 0), 
+            'lower': (0, 0),
             'output_metrics': True,
         },
         check_ruleset_name="hw_fans",
@@ -424,6 +425,7 @@ def check_sinal3_volts(item, params, section):
         def _to_fixed(levels):
             # The native "voltage" ruleset stores plain (warn, crit) float
             # tuples, but check_levels (v2) expects ("fixed", (warn, crit)).
+            """Handle to fixed for this module's workflow."""
             if levels and isinstance(levels, tuple) and not isinstance(levels[0], str):
                 return ("fixed", levels)
             return levels

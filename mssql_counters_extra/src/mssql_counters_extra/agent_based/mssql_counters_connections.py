@@ -6,7 +6,7 @@ Consulting and Development
 https://kuhn-ruess.de
 """
 
-# 
+#
 # MSSQL_SQL2012T:General_Statistics logins/sec None 5208^M
 # MSSQL_SQL2012T:General_Statistics logouts/sec None 5205^M
 # MSSQL_SQL2012T:General_Statistics user_connections None 3^M
@@ -28,10 +28,11 @@ from cmk.agent_based.v2 import (
     GetRateError,
     check_levels
 )
- 
+
 
 def discover_mssql_counters_connections(section):
     # instance is always "None" here
+    """Discover mssql counters connections from the available input data."""
     for (obj_id, instance), counters in iter(section.items()):
         if obj_id.endswith("General_Statistics") and "logins/sec" in counters and \
                 "logouts/sec" in counters and "user_connections" in counters:
@@ -39,6 +40,7 @@ def discover_mssql_counters_connections(section):
 
 
 def check_mssql_counters_connections(item, params, section):
+    """Evaluate mssql counters connections and return its resulting state."""
     if not section:
         return
 

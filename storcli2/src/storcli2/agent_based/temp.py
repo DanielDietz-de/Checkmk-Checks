@@ -27,6 +27,7 @@ agent_section_storcli2_hwcfg = AgentSection(
 
 
 def discover_storcli2_temp(section):
+    """Discover storcli2 temp from the available input data."""
     if "Chip temperature(C)" in section.keys():
         yield Service(item="Chip")
 
@@ -34,6 +35,7 @@ def discover_storcli2_temp(section):
         yield Service(item="Board")
 
 def check_storcli2_temp(item, params, section):
+    """Evaluate storcli2 temp and return its resulting state."""
     if "Chip" == item and "Chip temperature(C)" in section.keys():
         yield from check_temperature(
             reading=int(section["Chip temperature(C)"]),

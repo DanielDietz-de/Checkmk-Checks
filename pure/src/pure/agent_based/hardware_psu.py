@@ -26,12 +26,14 @@ agent_section_pure_hardware_psu = AgentSection(
 
 
 def discover_pure_hardware_psu(section):
+    """Discover pure hardware psu from the available input data."""
     for item, data in section.items():
         if "PSU" in data:
             yield Service(item=item)
 
 
 def check_pure_hardware_psu(item, section):
+    """Evaluate pure hardware psu and return its resulting state."""
     data = section[item]
 
     if data["status"].lower() == "ok":

@@ -21,6 +21,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_form_quobyte_devices() -> Dictionary:
+    """Handle parameter form quobyte devices for this module's workflow."""
     return Dictionary(
         title=Title("Quobyte device levels"),
         elements={

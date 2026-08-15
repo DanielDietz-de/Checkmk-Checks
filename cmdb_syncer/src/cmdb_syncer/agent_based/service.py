@@ -42,9 +42,7 @@ def discover_cmdb_syncer_service(section):
 
 
 def check_cmdb_syncer_service(item, params, section):
-    """
-    Check single Service
-    """
+    """Evaluate cmdb syncer service and return its resulting state."""
     data = section[item]
     # The agent now passes the real API failure reason (HTTP status,
     # rate-limit message, …) in ``message`` when ``has_error`` is set.
@@ -93,9 +91,7 @@ def discover_cmdb_syncer_cron(section):
         yield Service(item=cron_name)
 
 def check_cmdb_syncer_cron(item, params, section):
-    """
-    Check single Cron
-    """
+    """Evaluate cmdb syncer cron and return its resulting state."""
     state = State.OK
     data = section[item]
     if error := data.get('error'):

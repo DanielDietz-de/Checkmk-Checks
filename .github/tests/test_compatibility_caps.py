@@ -8,6 +8,7 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 
 
 def _load(name: str, path: Path):
+    """Handle load for this module's workflow."""
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -17,6 +18,7 @@ def _load(name: str, path: Path):
 
 
 def test_release_preparation_preserves_explicit_cap() -> None:
+    """Verify that release preparation preserves explicit cap."""
     prepare = _load(
         "prepare_repository_mkp_release_cap_test",
         REPOSITORY / ".github/scripts/prepare_repository_mkp_release.py",

@@ -32,9 +32,7 @@ def parse_multi_list(string_table):
     return entries
 
 def parse_list(string_table, field):
-    """
-    Parse Powershell lists
-    """
+    """Parse list into its normalized representation."""
     seperator = False
     entries = {}
     content = {}

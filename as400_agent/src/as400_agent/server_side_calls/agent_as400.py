@@ -17,6 +17,7 @@ from cmk.server_side_calls.v1 import (
 
 
 class AgentAs400Params(BaseModel):
+    """Represent agentas400params behavior and associated state."""
     driver: str
     system: str
     uid: str
@@ -24,6 +25,7 @@ class AgentAs400Params(BaseModel):
 
 
 def generate_as400_agent_command(params: AgentAs400Params, host_config: HostConfig):
+    """Generate as400 agent command from the current source data."""
     yield SpecialAgentCommand(
         command_arguments=[
             "--driver",

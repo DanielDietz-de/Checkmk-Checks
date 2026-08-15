@@ -22,11 +22,13 @@ from cmk.agent_based.v2 import (
 
 
 class PaloAltoTunnels(NamedTuple):
+    """Represent paloaltotunnels behavior and associated state."""
     active_tunnels: int
     max_tunnels: int
 
 
 def parse_palo_alto_gp_tunnels(string_table):
+    """Parse palo alto gp tunnels into its normalized representation."""
     if not string_table:
         return None
     return PaloAltoTunnels(*(int(s) for s in string_table[0]))
@@ -47,10 +49,12 @@ snmp_section_palo_alto_gp_tunnels = SimpleSNMPSection(
 
 
 def discover_palo_alto_gp_tunnels(section):
+    """Discover palo alto gp tunnels from the available input data."""
     yield Service()
 
 
 def check_palo_alto_gp_tunnels(params, section):
+    """Evaluate palo alto gp tunnels and return its resulting state."""
     yield Metric(
         "active_gp_tunnels",
         section.active_tunnels,

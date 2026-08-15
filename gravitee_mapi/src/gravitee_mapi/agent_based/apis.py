@@ -46,11 +46,13 @@ agent_section_gravitee_mapi = AgentSection(
 # ---------------------------------------------------------------------------
 
 def discover_gravitee_mapi_stats(section):
+    """Discover gravitee mapi stats from the available input data."""
     for api_name in section:
         yield Service(item=api_name)
 
 
 def check_gravitee_mapi_stats(item, section):
+    """Evaluate gravitee mapi stats and return its resulting state."""
     data = section.get(item)
     if not data:
         yield Result(state=State.UNKNOWN, summary=f"No data for API {item}")
@@ -133,11 +135,13 @@ def _parse_ranges(ranges_data):
 
 
 def discover_gravitee_mapi_errors(section):
+    """Discover gravitee mapi errors from the available input data."""
     for api_name in section:
         yield Service(item=api_name)
 
 
 def check_gravitee_mapi_errors(item, section):
+    """Evaluate gravitee mapi errors and return its resulting state."""
     data = section.get(item)
     if not data:
         yield Result(state=State.UNKNOWN, summary=f"No data for API {item}")
@@ -190,11 +194,13 @@ check_plugin_gravitee_mapi_errors = CheckPlugin(
 # ---------------------------------------------------------------------------
 
 def discover_gravitee_mapi_health(section):
+    """Discover gravitee mapi health from the available input data."""
     for api_name in section:
         yield Service(item=api_name)
 
 
 def check_gravitee_mapi_health(item, section):
+    """Evaluate gravitee mapi health and return its resulting state."""
     data = section.get(item)
     if not data:
         yield Result(state=State.UNKNOWN, summary=f"No data for API {item}")

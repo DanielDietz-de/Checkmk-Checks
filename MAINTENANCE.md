@@ -140,3 +140,7 @@ Repository-level green status is necessary but not sufficient for every vendor, 
 ## Test collection
 
 Full validation first executes all package tests in one pytest collection, then executes every package test directory independently so module-name collisions are caught and failures remain attributable to a package. Targeted validation applies the same two-stage model to the selected package set. Repository release, selector, staging, workflow-structure, publication-verification, and collision-guard tests run for every non-documentation MKP validation.
+
+## Function-level code documentation
+
+Every tracked function and class must have human-readable code-level documentation. Run `python tools/ci/check_function_documentation.py` before publication. The gate covers production code, tests, CI tooling, and retained reference source.

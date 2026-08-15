@@ -28,11 +28,13 @@ agent_section_pure_hardware_temp = AgentSection(
 
 
 def discover_pure_hardware_temp(section):
+    """Discover pure hardware temp from the available input data."""
     for item, data in section.items():
         if "temperature" in data:
             yield Service(item=item)
 
 def check_pure_hardware_temp(item, params, section):
+    """Evaluate pure hardware temp and return its resulting state."""
     value = int(section[item]["temperature"])
 
     yield from check_temperature(

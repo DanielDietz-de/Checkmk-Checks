@@ -47,6 +47,7 @@ COUNT_FIELDS = [
 
 
 def parse_era_rx(string_table):
+    """Parse era rx into its normalized representation."""
     section = {}
     for tp_idx, table in enumerate(string_table, start=1):
         for entry in table:
@@ -63,11 +64,13 @@ def parse_era_rx(string_table):
 
 
 def discover_era_rx(section):
+    """Discover era rx from the available input data."""
     for item in section:
         yield Service(item=item)
 
 
 def check_era_rx(item, params, section):
+    """Evaluate era rx and return its resulting state."""
     data = section.get(item)
     if data is None:
         return

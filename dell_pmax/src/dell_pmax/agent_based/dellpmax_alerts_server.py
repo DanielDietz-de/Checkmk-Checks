@@ -20,11 +20,13 @@ serverAlertSummary|0|0|0
 
 
 def discover_dellpmax_server_alerts(section):
+    """Discover dellpmax server alerts from the available input data."""
     if section != []:
         yield Service()
 
 
 def check_dellpmax_server_alerts(section):
+    """Evaluate dellpmax server alerts and return its resulting state."""
     if section:
         warn_unack = section[0][1]
         crit_unack = section[0][2]

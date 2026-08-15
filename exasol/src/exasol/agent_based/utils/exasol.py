@@ -14,6 +14,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_exasol_database(string_table):
+    """Parse exasol database into its normalized representation."""
     databases = {}
     last_db = False
     start = False
@@ -37,5 +38,6 @@ def parse_exasol_database(string_table):
 
 
 def discover_exasol_database(section):
+    """Discover exasol database from the available input data."""
     for database in section.keys():
         yield Service(item=database)

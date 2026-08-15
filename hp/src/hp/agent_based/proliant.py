@@ -25,6 +25,7 @@ from cmk.agent_based.v2 import (
 )
 
 def parse_hp_proliant_general(string_table):
+    """Parse hp proliant general into its normalized representation."""
     return string_table
 
 snmp_section_hp_proliant = SimpleSNMPSection(
@@ -49,11 +50,13 @@ snmp_section_hp_proliant = SimpleSNMPSection(
 )
 
 def discover_hp_proliant_general(section):
+    """Discover hp proliant general from the available input data."""
     if section and len(section[0]) > 1 and section[0][0]:
         yield Service()
 
 
 def check_hp_proliant_general(section):
+    """Evaluate hp proliant general and return its resulting state."""
     if not section:
         yield Result(state=State.UNKNOWN, summary="Data missing")
 

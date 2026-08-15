@@ -18,6 +18,7 @@ loader.exec_module(module)
 
 
 def test_accepts_current_site_on_loopback(monkeypatch):
+    """Verify that accepts current site on loopback."""
     monkeypatch.setenv("OMD_SITE", "cmk")
     assert module.local_site_base_url("http://127.0.0.1:5000/cmk/") == (
         "http://127.0.0.1:5000/cmk"
@@ -25,12 +26,14 @@ def test_accepts_current_site_on_loopback(monkeypatch):
 
 
 def test_rejects_remote_host_before_reading_secret(monkeypatch):
+    """Verify that rejects remote host before reading secret."""
     monkeypatch.setenv("OMD_SITE", "cmk")
     with pytest.raises(module.UnsafeSiteUrl, match="loopback"):
         module.local_site_base_url("https://monitoring.example/cmk")
 
 
 def test_rejects_other_local_site(monkeypatch):
+    """Verify that rejects other local site."""
     monkeypatch.setenv("OMD_SITE", "cmk")
     with pytest.raises(module.UnsafeSiteUrl, match="local site"):
         module.local_site_base_url("http://localhost/other")

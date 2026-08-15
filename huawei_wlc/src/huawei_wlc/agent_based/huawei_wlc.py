@@ -47,7 +47,9 @@ _WARN_STATES = {11, 12}
 
 
 class APInfo:
+    """Represent apinfo behavior and associated state."""
     def __init__(self, run_state, ip_address, up_traffic, down_traffic, num_users):
+        """Initialize the instance and its required state."""
         self.run_state = run_state
         self.ip_address = ip_address
         self.up_traffic = up_traffic
@@ -59,6 +61,7 @@ Section = dict[str, APInfo]
 
 
 def parse_huawei_wlc(string_table: StringTable) -> Section:
+    """Parse huawei wlc into its normalized representation."""
     section: Section = {}
     for line in string_table:
         name, run_state, ip_address, up_traffic, down_traffic, num_users = line
@@ -91,11 +94,13 @@ snmp_section_huawei_wlc = SimpleSNMPSection(
 
 
 def discover_huawei_wlc(section: Section) -> DiscoveryResult:
+    """Discover huawei wlc from the available input data."""
     for name in section:
         yield Service(item=name)
 
 
 def check_huawei_wlc(item: str, params: Mapping[str, Any], section: Section) -> CheckResult:
+    """Evaluate huawei wlc and return its resulting state."""
     ap = section.get(item)
     if ap is None:
         return

@@ -31,6 +31,7 @@ from cmk.rulesets.v1.rule_specs import (
 
 # introduced in version 2.3
 def migrate_non_identifier_key(raw_value: object) -> Mapping[str, object]:
+    """Handle migrate non identifier key for this module's workflow."""
     if not isinstance(raw_value, dict):
         raise TypeError("Invalid type. map should be a dict.")
 
@@ -41,6 +42,7 @@ def migrate_non_identifier_key(raw_value: object) -> Mapping[str, object]:
 
 
 def form_alert_remapping():
+    """Handle form alert remapping for this module's workflow."""
     return List(
         element_template=Dictionary(
             elements={
@@ -99,6 +101,7 @@ def form_alert_remapping():
     )
 
 def form_severity_remapping():
+    """Handle form severity remapping for this module's workflow."""
     return Dictionary(
         elements={
             "info": DictElement(
@@ -150,6 +153,7 @@ def form_severity_remapping():
     )
 
 def form_severity_state():
+    """Handle form severity state for this module's workflow."""
     return Dictionary(
         elements={
             "sev_state": DictElement(
@@ -163,6 +167,7 @@ def form_severity_state():
     )
 
 def _check_parameters_form_alertmanager():
+    """Handle check parameters form alertmanager for this module's workflow."""
     return Dictionary(
         title=Title("Alert manager rule state"),
         elements={

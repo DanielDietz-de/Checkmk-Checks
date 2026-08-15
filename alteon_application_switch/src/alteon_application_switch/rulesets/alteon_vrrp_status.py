@@ -17,6 +17,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_valuespec_alteon_vrrp_status():
+    """Handle parameter valuespec alteon vrrp status for this module's workflow."""
     return Dictionary(
         elements={
             "inventory_alteon_vrrp_state": DictElement(

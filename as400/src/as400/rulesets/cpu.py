@@ -27,6 +27,7 @@ from cmk.rulesets.v1.rule_specs import (
 
 
 def as400_cpu() -> Dictionary:
+    """Handle as400 cpu for this module's workflow."""
     return Dictionary(
         elements={
             "cpu_levels": DictElement(

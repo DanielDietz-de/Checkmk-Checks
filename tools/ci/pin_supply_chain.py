@@ -42,6 +42,7 @@ class PinError(RuntimeError):
 
 
 def request_json(url: str, *, headers: dict[str, str] | None = None) -> Any:
+    """Handle request json for this module's workflow."""
     request = urllib.request.Request(
         url,
         headers={"Accept": "application/vnd.github+json", **(headers or {})},
@@ -54,11 +55,13 @@ def request_json(url: str, *, headers: dict[str, str] | None = None) -> Any:
 
 
 def github_headers() -> dict[str, str]:
+    """Handle github headers for this module's workflow."""
     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     return {"Authorization": f"Bearer {token}"} if token else {}
 
 
 def resolve_action(repo: str, ref: str) -> str:
+    """Resolve action from the available context."""
     if FULL_SHA_RE.fullmatch(ref):
         return ref
     encoded_ref = urllib.parse.quote(ref, safe="")
@@ -82,6 +85,7 @@ def resolve_action(repo: str, ref: str) -> str:
 
 
 def docker_token(repository: str) -> str:
+    """Handle docker token for this module's workflow."""
     query = urllib.parse.urlencode(
         {
             "service": "registry.docker.io",
@@ -96,6 +100,7 @@ def docker_token(repository: str) -> str:
 
 
 def resolve_image(repository: str, tag: str) -> str:
+    """Resolve image from the available context."""
     token = docker_token(repository)
     request = urllib.request.Request(
         f"https://registry-1.docker.io/v2/{repository}/manifests/"
@@ -124,6 +129,7 @@ def resolve_image(repository: str, tag: str) -> str:
 
 
 def source_comment(suffix: str, fallback: str) -> str:
+    """Handle source comment for this module's workflow."""
     comment = suffix.strip()
     if comment.startswith("#"):
         value = comment[1:].strip()
@@ -133,10 +139,12 @@ def source_comment(suffix: str, fallback: str) -> str:
 
 
 def _inside_any_span(position: int, spans: list[tuple[int, int]]) -> bool:
+    """Handle inside any span for this module's workflow."""
     return any(start <= position < end for start, end in spans)
 
 
 def pin_workflow(path: Path, *, write: bool) -> tuple[dict[str, Any], bool]:
+    """Handle pin workflow for this module's workflow."""
     original = path.read_text(encoding="utf-8")
     lines: list[str] = []
     action_locks: dict[str, dict[str, str]] = {}
@@ -192,6 +200,7 @@ def pin_workflow(path: Path, *, write: bool) -> tuple[dict[str, Any], bool]:
             }
 
         def replace_image(match: re.Match[str]) -> str:
+            """Handle replace image for this module's workflow."""
             if _inside_any_span(match.start(), pinned_spans):
                 return match.group(0)
             repository = match.group("repo")
@@ -215,6 +224,7 @@ def pin_workflow(path: Path, *, write: bool) -> tuple[dict[str, Any], bool]:
 
 
 def workflow_files(root: Path) -> list[Path]:
+    """Handle workflow files for this module's workflow."""
     workflow_dir = root / ".github" / "workflows"
     return sorted(
         path
@@ -224,10 +234,12 @@ def workflow_files(root: Path) -> list[Path]:
 
 
 def canonical_lock(data: dict[str, Any]) -> str:
+    """Handle canonical lock for this module's workflow."""
     return json.dumps(data, indent=2, sort_keys=True) + "\n"
 
 
 def generate(root: Path, *, write: bool) -> tuple[dict[str, Any], list[Path]]:
+    """Handle generate for this module's workflow."""
     combined: dict[str, dict[str, Any]] = {"actions": {}, "images": {}}
     changed: list[Path] = []
     for workflow in workflow_files(root):
@@ -254,6 +266,7 @@ def generate(root: Path, *, write: bool) -> tuple[dict[str, Any], list[Path]]:
 
 
 def validate_locked_workflows(root: Path) -> list[str]:
+    """Validate locked workflows and reject invalid input."""
     errors: list[str] = []
     for path in workflow_files(root):
         text = path.read_text(encoding="utf-8")
@@ -277,6 +290,7 @@ def validate_locked_workflows(root: Path) -> list[str]:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse args into its normalized representation."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--write", action="store_true")
@@ -285,6 +299,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the command-line entry point and return its result."""
     args = parse_args(argv)
     root = args.root.resolve()
     try:

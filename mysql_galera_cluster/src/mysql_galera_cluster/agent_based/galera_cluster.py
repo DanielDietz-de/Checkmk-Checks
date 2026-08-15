@@ -19,7 +19,9 @@ from cmk.agent_based.v2 import (
 
 
 def parse_mysql_galera(string_table):
+    """Parse mysql galera into its normalized representation."""
     def parse_line(line):
+       """Parse line into its normalized representation."""
        if len(line) == 2:
            varname, value = line
            try:
@@ -54,9 +56,7 @@ def parse_mysql_galera(string_table):
 
 
 def discover_mysql_galera(section):
-    """
-    Discover Mysql Galera
-    """
+    """Discover mysql galera from the available input data."""
     for instance, values in section.items():
         if 'wsrep_provider_name' in values and values['wsrep_provider_name']:
             if 'galera' in values['wsrep_provider_name'].lower():
@@ -65,6 +65,7 @@ def discover_mysql_galera(section):
 
 # set ok_code checks if the ok_code is higher
 def set_ok_code(current_ok_code=int(), new_ok_code=int()):
+    """Set ok code from the supplied value."""
     ok_code = current_ok_code
     if new_ok_code > ok_code:
         ok_code = new_ok_code
@@ -73,9 +74,7 @@ def set_ok_code(current_ok_code=int(), new_ok_code=int()):
 
 
 def check_galera_cluster_state(item, params, section):
-    """
-    Check Galera Cluster
-    """
+    """Evaluate galera cluster state and return its resulting state."""
 
     levels = params['wsrep_cluster_size']
 

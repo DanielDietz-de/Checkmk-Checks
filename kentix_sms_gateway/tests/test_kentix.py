@@ -32,20 +32,25 @@ loader.exec_module(module)
 
 
 class Response:
+    """Represent response behavior and associated state."""
     is_redirect = False
 
     def __init__(self, status_code=202):
+        """Initialize the instance and its required state."""
         self.status_code = status_code
 
 
 class Session:
+    """Represent session behavior and associated state."""
     def __init__(self, error=None, status_code=202):
+        """Initialize the instance and its required state."""
         self.error = error
         self.status_code = status_code
         self.calls = []
         self.trust_env = True
 
     def post(self, url, **kwargs):
+        """Handle post for this module's workflow."""
         self.calls.append((url, kwargs))
         if self.error:
             raise self.error
@@ -53,6 +58,7 @@ class Session:
 
 
 def test_gateway_path_is_fixed_and_https():
+    """Verify that gateway path is fixed and https."""
     assert module.validate_gateway("gateway.example:8443") == (
         "https://gateway.example:8443/php/sms_gateway.php"
     )
@@ -61,6 +67,7 @@ def test_gateway_path_is_fixed_and_https():
 
 
 def test_sensitive_values_are_in_post_body_not_url():
+    """Verify that sensitive values are in post body not url."""
     session = Session()
     assert module.send_sms(
         gateway="gateway.example",
@@ -85,6 +92,7 @@ def test_sensitive_values_are_in_post_body_not_url():
 
 
 def test_transport_failure_is_not_retried():
+    """Verify that transport failure is not retried."""
     session = Session(error=module.requests.Timeout("timeout"))
     with pytest.raises(module.KentixError, match="request failed"):
         module.send_sms(
@@ -100,6 +108,7 @@ def test_transport_failure_is_not_retried():
 
 
 def test_phone_and_message_are_normalized_and_bounded():
+    """Verify that phone and message are normalized and bounded."""
     assert module.normalize_pager_number("+49 (123) 456-789") == "+49123456789"
     assert len(module.normalize_message("x" * 500)) == 320
     with pytest.raises(module.KentixError):
@@ -107,6 +116,7 @@ def test_phone_and_message_are_normalized_and_bounded():
 
 
 def test_all_successful_2xx_responses_are_accepted():
+    """Verify that all successful 2xx responses are accepted."""
     for status_code in (200, 203, 206, 226, 299):
         assert module.send_sms(
             gateway="gateway.example",
@@ -120,6 +130,7 @@ def test_all_successful_2xx_responses_are_accepted():
 
 
 def test_timeout_form_is_optional_and_matches_runtime_bounds():
+    """Verify that timeout form is optional and matches runtime bounds."""
     source = RULESET_PATH.read_text(encoding="utf-8")
     timeout_block = source.split('"timeout": DictElement(', 1)[1].split(
         '"ca_bundle": DictElement(', 1

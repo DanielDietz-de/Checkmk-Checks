@@ -33,6 +33,7 @@ agent_section_exasol_database = AgentSection(
 
 
 def check_exasol_database(item, params, section):
+    """Evaluate exasol database and return its resulting state."""
     if item not in section.keys():
         yield Result(state=State.UNKNOWN, summary="Item not fund")
 

@@ -22,6 +22,7 @@ from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
 
 def _form_special_agent_aws_lambda_cw():
+    """Handle form special agent aws lambda cw for this module's workflow."""
     return Dictionary(
         title=Title("AWS Lambda (CloudWatch)"),
         help_text=Help(

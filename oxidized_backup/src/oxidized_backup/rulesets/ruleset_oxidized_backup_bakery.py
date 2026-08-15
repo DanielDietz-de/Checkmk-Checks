@@ -32,6 +32,7 @@ from cmk.rulesets.v1.rule_specs import AgentConfig, Topic
 
 
 def _absolute_path(title: str, default: str | None = None) -> String:
+    """Handle absolute path for this module's workflow."""
     return String(
         title=Title(title),
         prefill=DefaultValue(default if default is not None else "/"),
@@ -46,6 +47,7 @@ def _absolute_path(title: str, default: str | None = None) -> String:
 
 
 def _authentication() -> CascadingSingleChoice:
+    """Handle authentication for this module's workflow."""
     return CascadingSingleChoice(
         title=Title("Authentication"),
         help_text=Help(
@@ -97,6 +99,7 @@ def _authentication() -> CascadingSingleChoice:
 
 
 def _endpoint(title: str, default_url: str, *, allow_file: bool) -> Dictionary:
+    """Handle endpoint for this module's workflow."""
     pattern = r"^(?:https?|file)://.+" if allow_file else r"^https?://.+"
     schemes = "HTTPS, HTTP, or file" if allow_file else "HTTPS or HTTP"
     return Dictionary(
@@ -161,6 +164,7 @@ def _endpoint(title: str, default_url: str, *, allow_file: bool) -> Dictionary:
 
 
 def _group_mapping() -> CascadingSingleChoice:
+    """Handle group mapping for this module's workflow."""
     return CascadingSingleChoice(
         title=Title("Oxidized group mapping"),
         elements=(
@@ -188,6 +192,7 @@ def _group_mapping() -> CascadingSingleChoice:
 
 
 def _repository() -> Dictionary:
+    """Handle repository for this module's workflow."""
     return Dictionary(
         title=Title("Oxidized Git repository"),
         elements={
@@ -268,6 +273,7 @@ def _repository() -> Dictionary:
 
 
 def _group_key(value: object) -> str:
+    """Handle group key for this module's workflow."""
     if isinstance(value, (tuple, list)) and value:
         mode = str(value[0])
         payload = value[1] if len(value) > 1 else None
@@ -276,6 +282,7 @@ def _group_key(value: object) -> str:
 
 
 def _validate_repositories(value: Sequence[Mapping[str, object]]) -> None:
+    """Handle validate repositories for this module's workflow."""
     if not value:
         raise ValidationError(Message("Configure at least one Git repository."))
     identifiers: list[str] = []
@@ -307,6 +314,7 @@ def _validate_repositories(value: Sequence[Mapping[str, object]]) -> None:
 
 
 def _validate_policy(value: Mapping[str, object]) -> None:
+    """Handle validate policy for this module's workflow."""
     warning = float(value.get("collection_warning_age_seconds", 0))
     critical = float(value.get("collection_critical_age_seconds", 0))
     if critical <= warning:
@@ -316,6 +324,7 @@ def _validate_policy(value: Mapping[str, object]) -> None:
 
 
 def _parameter_form() -> Dictionary:
+    """Handle parameter form for this module's workflow."""
     return Dictionary(
         title=Title("Oxidized backup verification"),
         help_text=Help(

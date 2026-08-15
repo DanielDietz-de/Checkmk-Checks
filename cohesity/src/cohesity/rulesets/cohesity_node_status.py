@@ -13,6 +13,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _formspec_cohesity_node_status():
+    """Handle formspec cohesity node status for this module's workflow."""
     return Dictionary(
         elements = {
             'services': DictElement(
@@ -37,4 +38,3 @@ rule_spec_cohesity_node_status = CheckParameters(
     parameter_form = _formspec_cohesity_node_status,
     title = Title("Cohesity node status ignored services"),
 )
-

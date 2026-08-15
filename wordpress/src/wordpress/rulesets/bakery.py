@@ -17,6 +17,7 @@ from cmk.rulesets.v1.rule_specs import AgentConfig, Topic
 
 
 def _agent_config_wordpress_instances() -> Dictionary:
+    """Handle agent config wordpress instances for this module's workflow."""
     return Dictionary(
         help_text=Help(
             "This will deploy the agent plug-in <tt>wordpress_instances</tt>. "
@@ -69,7 +70,7 @@ def _agent_config_wordpress_instances() -> Dictionary:
 
 rule_spec_passwort_age = AgentConfig(
     name="wordpress_instances",
-    title=Title("Wordpress Monitoring (Linux)"), 
+    title=Title("Wordpress Monitoring (Linux)"),
     topic=Topic.OPERATING_SYSTEM,
     parameter_form=_agent_config_wordpress_instances,
 )

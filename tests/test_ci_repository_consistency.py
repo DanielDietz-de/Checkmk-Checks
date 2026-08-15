@@ -12,6 +12,7 @@ from pathlib import Path
 
 
 def load_module(path: Path, name: str):
+    """Load module from its configured source."""
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -55,6 +56,7 @@ class RepositoryConsistencyTests(unittest.TestCase):
     """Exercise code-derived repository consistency mechanisms."""
 
     def make_package(self, temporary: str) -> Path:
+        """Handle make package for this module's workflow."""
         root = Path(temporary)
         package = root / "example"
         source = package / "src" / "example" / "agent_based"
@@ -81,6 +83,7 @@ class RepositoryConsistencyTests(unittest.TestCase):
         return root
 
     def test_metadata_mirror_is_exactly_regenerated(self):
+        """Verify that metadata mirror is exactly regenerated."""
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_package(temporary)
             self.assertTrue(metadata_sync.run(root, write=False))
@@ -95,6 +98,7 @@ class RepositoryConsistencyTests(unittest.TestCase):
             self.assertEqual(metadata_sync.run(root, write=False), [])
 
     def test_code_derived_reference_detects_and_repairs_staleness(self):
+        """Verify that code derived reference detects and repairs staleness."""
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_package(temporary)
             self.assertTrue(reference.run(root, write=False))
@@ -104,6 +108,7 @@ class RepositoryConsistencyTests(unittest.TestCase):
             self.assertIn(reference.START, readme.read_text(encoding="utf-8"))
 
     def test_reference_detects_non_python_network_clients(self):
+        """Verify that reference detects non python network clients."""
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_package(temporary)
             source = root / "example/src/example/agent_based"
@@ -128,6 +133,7 @@ class RepositoryConsistencyTests(unittest.TestCase):
             self.assertNotIn("No direct remote-network client", block)
 
     def test_reference_qualifies_negative_network_detection(self):
+        """Verify that reference qualifies negative network detection."""
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_package(temporary)
             package = root / "example"
@@ -142,6 +148,7 @@ class RepositoryConsistencyTests(unittest.TestCase):
             )
 
     def test_repository_facts_are_derived_from_manifests(self):
+        """Verify that repository facts are derived from manifests."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "docs").mkdir()
@@ -169,6 +176,7 @@ class RepositoryConsistencyTests(unittest.TestCase):
             )
 
     def test_module_docstring_gate_repairs_missing_docstring(self):
+        """Verify that module docstring gate repairs missing docstring."""
         with tempfile.TemporaryDirectory() as temporary:
             root = self.make_package(temporary)
             self.assertTrue(docstrings.run(root, write=False))
@@ -182,6 +190,7 @@ class RepositoryConsistencyTests(unittest.TestCase):
             )
 
     def test_repository_syntax_gate_covers_legacy_extensionless_checks(self):
+        """Verify that repository syntax gate covers legacy extensionless checks."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             checks = root / "archiv" / "legacy" / "src" / "checks"
@@ -197,6 +206,7 @@ class RepositoryConsistencyTests(unittest.TestCase):
             self.assertEqual(syntax.validate(root), [])
 
     def test_audit_includes_platform_suffix_and_shebang_scripts(self):
+        """Verify that audit includes platform suffix and shebang scripts."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             scripts = root / "package/src/package/agents/plugins"
@@ -220,6 +230,7 @@ class RepositoryConsistencyTests(unittest.TestCase):
             self.assertEqual(discovered, {linux, aix, solaris, windows})
 
     def test_audit_applies_python_rules_to_unknown_suffix_shebangs(self):
+        """Verify that audit applies python rules to unknown suffix shebangs."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             script = root / "agent.linux"
@@ -236,6 +247,7 @@ class RepositoryConsistencyTests(unittest.TestCase):
             )
 
     def test_all_manifest_sources_resolve(self):
+        """Verify that all manifest sources resolve."""
         for package in builder.discover_package_dirs(ROOT, []):
             manifest = builder.read_manifest(package, "2.5.0")
             for component, entries in manifest["files"].items():
@@ -244,6 +256,7 @@ class RepositoryConsistencyTests(unittest.TestCase):
                     self.assertTrue(source.exists(), source)
 
     def test_package_lib_directories_are_not_globally_ignored(self):
+        """Verify that package lib directories are not globally ignored."""
         ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
         self.assertNotIn("\nlib/\n", "\n" + ignore)
         self.assertTrue(

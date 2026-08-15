@@ -13,6 +13,7 @@ README = PACKAGE_ROOT / "README.md"
 
 
 def _is_python_source(path: Path) -> bool:
+    """Handle is python source for this module's workflow."""
     if path.suffix == ".py":
         return True
     if path.parent.name == "checks" and path.suffix == "":

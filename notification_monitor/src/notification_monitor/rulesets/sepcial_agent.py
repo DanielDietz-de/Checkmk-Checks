@@ -19,6 +19,7 @@ from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
 
 def _valuespec_special_agent_notification_monitor():
+    """Handle valuespec special agent notification monitor for this module's workflow."""
     return Dictionary(
         title=Title("Notification monitor"),
         help_text=Help(

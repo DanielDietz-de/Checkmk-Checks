@@ -16,6 +16,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameters():
+    """Handle parameters for this module's workflow."""
     return Dictionary(
         title=Title("ERA RX thresholds"),
         elements={

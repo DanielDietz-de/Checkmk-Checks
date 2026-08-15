@@ -7,6 +7,7 @@ from cmk.rulesets.v1.rule_specs import NotificationParameters, Topic
 
 
 def _parameter_form_df_mail() -> Dictionary:
+    """Handle parameter form df mail for this module's workflow."""
     return Dictionary(
         help_text=Help(
             "Uses the standard Checkmk mail notification settings. Before sending, "

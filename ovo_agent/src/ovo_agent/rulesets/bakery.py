@@ -15,6 +15,7 @@ from cmk.rulesets.v1.rule_specs import AgentConfig, Topic
 
 
 def _agent_config_ovo_agent() -> Dictionary:
+    """Handle agent config ovo agent for this module's workflow."""
     return Dictionary(
         help_text=Help("Monitor the Agents of HP Openview"),
         elements={
@@ -53,7 +54,7 @@ def _agent_config_ovo_agent() -> Dictionary:
 
 rule_spec_passwort_age = AgentConfig(
     name="ovo_agent",
-    title=Title("Monitoring the Agents of HP Openview"), 
+    title=Title("Monitoring the Agents of HP Openview"),
     topic=Topic.OPERATING_SYSTEM,
     parameter_form=_agent_config_ovo_agent,
 )

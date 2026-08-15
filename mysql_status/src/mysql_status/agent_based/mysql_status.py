@@ -69,12 +69,14 @@ MYSQL_QUERY_TYPES = ("Com_select", "Com_insert", "Com_update", "Com_delete", "Co
 
 
 def discover_mysql_status(section):
+    """Discover mysql status from the available input data."""
     for key, items in section.items():
         for item in items:
             if item in mysql_status_inventory.keys():
                 yield Service(item=f"{key} {item}")
 
 def check_mysql_status(item, params, section):
+    """Evaluate mysql status and return its resulting state."""
     instance, key = item.split()
 
     if instance not in section:
@@ -153,12 +155,14 @@ check_plugin_mysql_status = CheckPlugin(
 
 
 def discover_mysql_status_query_types(section):
+    """Discover mysql status query types from the available input data."""
     for instance, items in section.items():
         if any(qt in items for qt in MYSQL_QUERY_TYPES):
             yield Service(item=instance)
 
 
 def check_mysql_status_query_types(item, section):
+    """Evaluate mysql status query types and return its resulting state."""
     if item not in section:
         yield Result(state=State.UNKNOWN, summary="Instance data not found in output")
         return
@@ -202,12 +206,14 @@ check_plugin_mysql_status_query_types = CheckPlugin(
 
 
 def discover_mysql_innodb_buffer_pool_utilization(section):
+    """Discover mysql innodb buffer pool utilization from the available input data."""
     for instance, data in section.items():
         if "Innodb_buffer_pool_pages_total" in data and "Innodb_buffer_pool_pages_free" in data:
             yield Service(item=instance)
 
 
 def check_mysql_innodb_buffer_pool_utilization(item, params, section):
+    """Evaluate mysql innodb buffer pool utilization and return its resulting state."""
     if item not in section:
         yield Result(state=State.UNKNOWN, summary="Instance data not found in output")
         return

@@ -22,6 +22,7 @@ from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
 
 def _source_form():
+    """Handle source form for this module's workflow."""
     return CascadingSingleChoice(
         title=Title("Where to read the age from"),
         elements=(
@@ -54,6 +55,7 @@ def _source_form():
 
 
 def _endpoint_form():
+    """Handle endpoint form for this module's workflow."""
     return Dictionary(
         help_text=Help(
             "Only public HTTPS endpoints are accepted. URLs resolving to "
@@ -95,6 +97,7 @@ def _endpoint_form():
 
 
 def _form_special_agent_endpoint_age():
+    """Handle form special agent endpoint age for this module's workflow."""
     return Dictionary(
         title=Title("Endpoint age (public HTTPS freshness)"),
         help_text=Help(

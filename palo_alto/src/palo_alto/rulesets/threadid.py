@@ -20,6 +20,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, Topic
 
 
 def _formspec_palo_alto_threadid():
+    """Handle formspec palo alto threadid for this module's workflow."""
     return Dictionary(
         title=Title("Age for Threat database updates"),
         help_text=Help(

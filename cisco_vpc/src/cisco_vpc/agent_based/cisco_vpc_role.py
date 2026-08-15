@@ -15,6 +15,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_cisco_vpc_role(string_table: StringTable) -> StringTable:
+    """Parse cisco vpc role into its normalized representation."""
     return string_table
 
 
@@ -50,11 +51,13 @@ snmp_section_cisco_vpc_role = SimpleSNMPSection(
 
 
 def discover_cisco_vpc_role(section: StringTable):
+    """Discover cisco vpc role from the available input data."""
     if section and section[0]:
         yield Service(parameters={"switch_role": ROLE_VALUE_TO_NAME.get(section[0][0])})
 
 
 def check_cisco_vpc_role(params, section: StringTable):
+    """Evaluate cisco vpc role and return its resulting state."""
     if not section or not section[0]:
         return
 

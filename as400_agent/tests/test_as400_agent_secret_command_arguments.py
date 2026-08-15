@@ -7,6 +7,7 @@ SOURCE = Path(__file__).parents[1] / 'src/as400_agent/server_side_calls/agent_as
 
 
 def test_server_side_call_preserves_secret_object() -> None:
+    """Verify that server side call preserves secret object."""
     text = SOURCE.read_text(encoding="utf-8")
     tree = ast.parse(text)
     assert not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "unsafe" for node in ast.walk(tree))

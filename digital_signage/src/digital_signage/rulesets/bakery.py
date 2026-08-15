@@ -15,6 +15,7 @@ from cmk.rulesets.v1.rule_specs import AgentConfig, Topic
 
 
 def _agent_config_digital_signage() -> Dictionary:
+    """Handle agent config digital signage for this module's workflow."""
     return Dictionary(
         help_text=Help(
             "This will deploy the agent plug-in <tt>digital_signage</tt>. "
@@ -55,7 +56,7 @@ def _agent_config_digital_signage() -> Dictionary:
 
 rule_spec_passwort_age = AgentConfig(
     name="digital_signage",
-    title=Title("digital_sinage: Digital Signage Monitoring (Windows)"), 
+    title=Title("digital_sinage: Digital Signage Monitoring (Windows)"),
     topic=Topic.OPERATING_SYSTEM,
     parameter_form=_agent_config_digital_signage,
 )

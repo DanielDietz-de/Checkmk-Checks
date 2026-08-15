@@ -18,6 +18,7 @@ _MAX_MANIFEST_BYTES = 1024 * 1024
 
 
 def _parse_args() -> argparse.Namespace:
+    """Handle parse args for this module's workflow."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--repository", type=Path, default=Path("."))
     parser.add_argument("--dist", type=Path, required=True)
@@ -25,6 +26,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _active_package_dirs(repository: Path) -> set[str]:
+    """Handle active package dirs for this module's workflow."""
     package_dirs = {
         path.parent.parent.name
         for path in repository.glob("*/src/info")
@@ -36,6 +38,7 @@ def _active_package_dirs(repository: Path) -> set[str]:
 
 
 def _contained_file(root: Path, relative: str) -> Path:
+    """Handle contained file for this module's workflow."""
     pure = PurePosixPath(relative)
     if pure.is_absolute() or ".." in pure.parts:
         raise ValueError(f"unsafe relative path: {relative!r}")
@@ -52,6 +55,7 @@ def _contained_file(root: Path, relative: str) -> Path:
 
 
 def _read_manifest(archive_path: Path) -> tuple[dict[str, Any], bytes]:
+    """Handle read manifest for this module's workflow."""
     with tarfile.open(archive_path, mode="r:gz") as archive:
         members = [
             member
@@ -78,6 +82,7 @@ def _read_manifest(archive_path: Path) -> tuple[dict[str, Any], bytes]:
 
 
 def _load_packages(dist: Path) -> list[dict[str, Any]]:
+    """Handle load packages for this module's workflow."""
     value = json.loads((dist / "packages.json").read_text(encoding="utf-8"))
     if not isinstance(value, list) or not value:
         raise ValueError(f"{dist}: packages.json must contain a non-empty list")
@@ -87,6 +92,7 @@ def _load_packages(dist: Path) -> list[dict[str, Any]]:
 
 
 def stage_release(repository: Path, dist: Path) -> int:
+    """Handle stage release for this module's workflow."""
     repository = repository.resolve()
     dist = dist.resolve()
     packages = _load_packages(dist)
@@ -159,6 +165,7 @@ def stage_release(repository: Path, dist: Path) -> int:
 
 
 def main() -> None:
+    """Run the command-line entry point and return its result."""
     args = _parse_args()
     count = stage_release(args.repository, args.dist)
     print(f"Staged {count} validated packages")

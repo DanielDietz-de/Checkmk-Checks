@@ -12,6 +12,7 @@ from typing import Any
 
 
 class State(IntEnum):
+    """Represent state behavior and associated state."""
     OK = 0
     WARN = 1
     CRIT = 2
@@ -19,12 +20,14 @@ class State(IntEnum):
 
     @classmethod
     def worst(cls, *states: "State") -> "State":
+        """Handle worst for this module's workflow."""
         ranking = {cls.OK: 0, cls.WARN: 1, cls.UNKNOWN: 2, cls.CRIT: 3}
         return max(states, key=ranking.__getitem__)
 
 
 @dataclass
 class Result:
+    """Represent result behavior and associated state."""
     state: State
     summary: str | None = None
     details: str | None = None
@@ -32,23 +35,29 @@ class Result:
 
 @dataclass
 class Service:
+    """Represent service behavior and associated state."""
     item: str
 
 
 @dataclass
 class Metric:
+    """Represent metric behavior and associated state."""
     name: str
     value: float
     levels: tuple[float, float] | None = None
 
 
 class AgentSection:
+    """Represent agentsection behavior and associated state."""
     def __init__(self, **kwargs: Any) -> None:
+        """Initialize the instance and its required state."""
         self.kwargs = kwargs
 
 
 class CheckPlugin:
+    """Represent checkplugin behavior and associated state."""
     def __init__(self, **kwargs: Any) -> None:
+        """Initialize the instance and its required state."""
         self.kwargs = kwargs
 
 
@@ -78,6 +87,7 @@ spec.loader.exec_module(module)
 
 
 def device(**overrides: Any) -> dict[str, Any]:
+    """Handle device for this module's workflow."""
     now = int(time.time())
     payload: dict[str, Any] = {
         "schema_version": 1,
@@ -110,6 +120,7 @@ def device(**overrides: Any) -> dict[str, Any]:
 
 
 def central(**overrides: Any) -> dict[str, Any]:
+    """Handle central for this module's workflow."""
     payload: dict[str, Any] = {
         "schema_version": 1,
         "kind": "central",
@@ -149,14 +160,17 @@ def central(**overrides: Any) -> dict[str, Any]:
 
 
 def results(item: str, section: dict[str, Any]) -> list[Result | Metric]:
+    """Handle results for this module's workflow."""
     return list(module.check_oxidized_backup(item, section))
 
 
 def result_states(item: str, section: dict[str, Any]) -> list[State]:
+    """Handle result states for this module's workflow."""
     return [entry.state for entry in results(item, section) if isinstance(entry, Result)]
 
 
 def test_parser_and_discovery() -> None:
+    """Verify that parser and discovery."""
     payload = device()
     assert module.parse_oxidized_backup([[json.dumps(payload)]]) == payload
     assert [service.item for service in module.discover_oxidized_backup(payload)] == ["backup"]
@@ -168,11 +182,13 @@ def test_parser_and_discovery() -> None:
 
 
 def test_fresh_success_and_git_blob_are_ok() -> None:
+    """Verify that fresh success and git blob are ok."""
     states = result_states("backup", device())
     assert states == [State.OK, State.OK]
 
 
 def test_collection_age_warning_and_critical() -> None:
+    """Verify that collection age warning and critical."""
     now = int(time.time())
     warning_payload = device(
         oxidized={
@@ -197,6 +213,7 @@ def test_collection_age_warning_and_critical() -> None:
 
 
 def test_missing_from_oxidized_is_critical() -> None:
+    """Verify that missing from oxidized is critical."""
     payload = device(
         oxidized={
             "present": False,
@@ -209,6 +226,7 @@ def test_missing_from_oxidized_is_critical() -> None:
 
 
 def test_failed_and_never_collection_are_critical() -> None:
+    """Verify that failed and never collection are critical."""
     for status in ("never", "no_connection", "timelimit", "fail"):
         payload = device(
             oxidized={
@@ -222,6 +240,7 @@ def test_failed_and_never_collection_are_critical() -> None:
 
 
 def test_missing_or_empty_git_artifact_is_critical() -> None:
+    """Verify that missing or empty git artifact is critical."""
     missing = device(git={"exists": False, "repository_id": "default", "path": "switch-1"})
     assert State.CRIT in result_states("backup", missing)
     empty = device(git={"exists": True, "size": 0, "repository_id": "default", "path": "switch-1"})
@@ -229,11 +248,13 @@ def test_missing_or_empty_git_artifact_is_critical() -> None:
 
 
 def test_remote_failure_does_not_multiply_device_alerts() -> None:
+    """Verify that remote failure does not multiply device alerts."""
     payload = device(remote={"status": "mismatch", "state_hint": 2})
     assert result_states("backup", payload) == [State.OK, State.OK]
 
 
 def test_inventory_missing_node_is_critical() -> None:
+    """Verify that inventory missing node is critical."""
     payload = central()
     payload["inventory"] = {
         **payload["inventory"],
@@ -245,6 +266,7 @@ def test_inventory_missing_node_is_critical() -> None:
 
 
 def test_inventory_orphan_uses_configured_state_and_hook_missing_warns() -> None:
+    """Verify that inventory orphan uses configured state and hook missing warns."""
     payload = central()
     payload["inventory"] = {
         **payload["inventory"],
@@ -256,6 +278,7 @@ def test_inventory_orphan_uses_configured_state_and_hook_missing_warns() -> None
 
 
 def test_repository_missing_file_and_fsck_failure_are_critical() -> None:
+    """Verify that repository missing file and fsck failure are critical."""
     payload = central()
     payload["repositories"][0]["missing_files"] = ["switch-1"]
     assert result_states("Git repository", payload) == [State.CRIT]
@@ -265,6 +288,7 @@ def test_repository_missing_file_and_fsck_failure_are_critical() -> None:
 
 
 def test_remote_sync_states() -> None:
+    """Verify that remote sync states."""
     assert result_states("Git remote synchronization", central()) == [State.OK]
     payload = central()
     payload["repositories"][0]["remote"] = {
@@ -279,5 +303,6 @@ def test_remote_sync_states() -> None:
 
 
 def test_api_error_is_unknown() -> None:
+    """Verify that api error is unknown."""
     payload = device(api_error="connection refused")
     assert result_states("backup", payload) == [State.UNKNOWN, State.OK]

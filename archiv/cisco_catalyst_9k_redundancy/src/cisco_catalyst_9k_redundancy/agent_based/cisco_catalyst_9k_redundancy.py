@@ -15,6 +15,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_cisco_catalyst_9k_redundancy(string_table: StringTable) -> StringTable:
+    """Parse cisco catalyst 9k redundancy into its normalized representation."""
     return string_table
 
 
@@ -32,10 +33,12 @@ snmp_section_cisco_catalyst_9k_redundancy = SimpleSNMPSection(
 
 
 def discover_cisco_catalyst_9k_redundancy(section: StringTable):
+    """Discover cisco catalyst 9k redundancy from the available input data."""
     yield Service()
 
 
 def check_cisco_catalyst_9k_redundancy(section: StringTable):
+    """Evaluate cisco catalyst 9k redundancy and return its resulting state."""
     if section[0][0] == "1":
         yield Result(state=State.OK, summary="Stackports form a redundant ring")
     elif section[0][0] == "2":

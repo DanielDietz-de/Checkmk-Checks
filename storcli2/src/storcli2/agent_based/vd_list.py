@@ -25,10 +25,12 @@ agent_section_storcli2_vd_list = AgentSection(
 
 
 def discover_storcli2_vd_list(section):
+    """Discover storcli2 vd list from the available input data."""
     for item in section.keys():
         yield Service(item=item)
 
 def check_storcli2_vd_list(item, section):
+    """Evaluate storcli2 vd list and return its resulting state."""
     if item not in section.keys():
         yield Result(state=State.UNKNOWN, summary="Item not found")
 

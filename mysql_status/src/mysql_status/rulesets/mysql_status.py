@@ -26,6 +26,7 @@ from cmk.rulesets.v1.rule_specs import (
 
 
 def _valuespec_mysql_status():
+    """Handle valuespec mysql status for this module's workflow."""
     return Dictionary(
         title = Title("Settings for MySQL status check"),
         elements = {
@@ -66,6 +67,7 @@ rule_spec_mysql_status = CheckParameters(
 
 
 def _valuespec_mysql_innodb_buffer_pool_utilization():
+    """Handle valuespec mysql innodb buffer pool utilization for this module's workflow."""
     return Dictionary(
         title = Title("Settings for MySQL InnoDB buffer pool utilization check"),
         help_text = Help(

@@ -16,6 +16,7 @@ from cmk.agent_based.v2 import (
 
 
 def _to_float(value):
+    """Handle to float for this module's workflow."""
     if value is None:
         return None
     normalized = str(value).strip().lower()
@@ -28,12 +29,14 @@ def _to_float(value):
 
 
 def _retained_max(rows, column):
+    """Handle retained max for this module's workflow."""
     values = [_to_float(row[column]) for row in rows if len(row) > column]
     valid_values = [value for value in values if value is not None]
     return max(valid_values) if valid_values else None
 
 
 def _headroom(*values):
+    """Handle headroom for this module's workflow."""
     valid_values = [value for value in values if value is not None]
     if not valid_values:
         return None
@@ -41,6 +44,7 @@ def _headroom(*values):
 
 
 def parse_acgateway_license(string_table):
+    """Parse acgateway license into its normalized representation."""
     current_table = string_table[0] if string_table else []
     current = current_table[0] if current_table else []
     history = string_table[1] if len(string_table) > 1 else []
@@ -91,10 +95,12 @@ snmp_section_acgateway_license = SNMPSection(
 
 
 def discover_acgateway_license(section):
+    """Discover acgateway license from the available input data."""
     yield Service()
 
 
 def _yield_percent(section, key, label, metric_name):
+    """Handle yield percent for this module's workflow."""
     value = section.get(key)
     if value is None:
         return
@@ -103,6 +109,7 @@ def _yield_percent(section, key, label, metric_name):
 
 
 def check_acgateway_license(section):
+    """Evaluate acgateway license and return its resulting state."""
     yield from _yield_percent(section, "media_usage", "SBC media usage", "sbc_media_license_usage")
     yield from _yield_percent(
         section,

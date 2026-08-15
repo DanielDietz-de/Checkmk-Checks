@@ -9,6 +9,7 @@ from .bakery_api.v1 import register, Plugin, OS, FileGenerator
 
 
 def get_files(conf: Any) -> FileGenerator:
+    """Return files for the supplied inputs."""
     mode, interval = conf.get('deployment', ("do_not_deploy", 0))
     match mode:
         case "do_not_deploy":
@@ -17,19 +18,19 @@ def get_files(conf: Any) -> FileGenerator:
             interval: int | None = int(interval)
         case "sync":
             interval = None
-    
+
     yield Plugin(
         base_os=OS.LINUX,
         source=Path("discover_os_labels.linux"),
         interval=interval,
     )
-    
+
     yield Plugin(
         base_os=OS.SOLARIS,
         source=Path("discover_os_labels.solaris"),
         interval=interval,
     )
-    
+
     yield Plugin(
         base_os=OS.AIX,
         source=Path("discover_os_labels.aix"),

@@ -21,6 +21,7 @@ COLS = [
 
 
 def parse_era_musr(string_table):
+    """Parse era musr into its normalized representation."""
     section = {}
     for entry in string_table[0]:
         oid_end = entry[0]
@@ -32,11 +33,13 @@ def parse_era_musr(string_table):
 
 
 def discover_era_musr(section):
+    """Discover era musr from the available input data."""
     for item in section:
         yield Service(item=item)
 
 
 def check_era_musr(item, section):
+    """Evaluate era musr and return its resulting state."""
     data = section.get(item)
     if not data:
         return

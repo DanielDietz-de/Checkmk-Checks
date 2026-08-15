@@ -11,6 +11,7 @@ RULESET = PACKAGE / "src/ucp_health/rulesets/agent.py"
 
 
 def test_tls_verification_is_enabled_by_default() -> None:
+    """Verify that tls verification is enabled by default."""
     assert "no_verify_ssl: bool = False" in SERVER.read_text(encoding="utf-8")
     rules = RULESET.read_text(encoding="utf-8")
     assert "prefill=DefaultValue(False)" in rules
@@ -18,6 +19,7 @@ def test_tls_verification_is_enabled_by_default() -> None:
 
 
 def test_all_http_requests_have_timeouts() -> None:
+    """Verify that all http requests have timeouts."""
     tree = ast.parse(AGENT.read_text(encoding="utf-8"))
     calls = [
         node

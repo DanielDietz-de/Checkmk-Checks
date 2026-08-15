@@ -19,6 +19,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_valuespec_mssql_counters_work_files_tables():
+    """Handle parameter valuespec mssql counters work files tables for this module's workflow."""
     return Dictionary(
         title = Title("MSSQL work files and tables"),
         elements = {

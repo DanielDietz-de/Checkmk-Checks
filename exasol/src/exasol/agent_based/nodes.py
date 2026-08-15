@@ -15,6 +15,7 @@ from cmk.agent_based.v2 import (
 )
 
 def parse_exasol_nodes(string_table):
+    """Parse exasol nodes into its normalized representation."""
     nodes = {}
 
     for node, state in string_table:
@@ -30,11 +31,13 @@ agent_section_exasol_nodes = AgentSection(
 
 
 def discover_exasol_nodes(section):
+    """Discover exasol nodes from the available input data."""
     for node in section.keys():
         yield Service(item=node)
 
 
 def check_exasol_nodes(item, section):
+    """Evaluate exasol nodes and return its resulting state."""
     if item not in section.keys():
         yield Result(state.UNKNOWN, summary="Item not found")
 

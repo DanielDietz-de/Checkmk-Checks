@@ -10,6 +10,7 @@ sockets = [
 ]
 
 def prepare_request(what):
+    """Handle prepare request for this module's workflow."""
     data = "\n".join(what)
     data += "\n"
     data += "\n"
@@ -19,6 +20,7 @@ def prepare_request(what):
         return str(data)
 
 def call(peer, request):
+    """Handle call for this module's workflow."""
     try:
         if len(peer) == 2:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

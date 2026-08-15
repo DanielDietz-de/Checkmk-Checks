@@ -34,12 +34,14 @@ class MetadataError(RuntimeError):
 
 @dataclass(frozen=True)
 class PackageMetadata:
+    """Represent packagemetadata behavior and associated state."""
     directory: Path
     data: dict[str, Any]
     sources: tuple[Path, ...]
 
 
 def _load_python_metadata(path: Path) -> dict[str, Any]:
+    """Handle load python metadata for this module's workflow."""
     try:
         value = ast.literal_eval(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, SyntaxError, ValueError, TypeError) as exc:
@@ -50,6 +52,7 @@ def _load_python_metadata(path: Path) -> dict[str, Any]:
 
 
 def _load_json_metadata(path: Path) -> dict[str, Any]:
+    """Handle load json metadata for this module's workflow."""
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
@@ -60,6 +63,7 @@ def _load_json_metadata(path: Path) -> dict[str, Any]:
 
 
 def _validate_metadata(data: dict[str, Any], source: Path) -> None:
+    """Handle validate metadata for this module's workflow."""
     for field in ("name", "version"):
         value = data.get(field)
         if not isinstance(value, str) or not value.strip():
@@ -71,6 +75,7 @@ def _validate_metadata(data: dict[str, Any], source: Path) -> None:
 
 
 def load_package_metadata(package_dir: Path) -> PackageMetadata | None:
+    """Load package metadata from its configured source."""
     info = package_dir / "src" / "info"
     info_json = package_dir / "src" / "info.json"
     sources: list[Path] = []
@@ -98,6 +103,7 @@ def load_package_metadata(package_dir: Path) -> PackageMetadata | None:
 
 
 def discover_packages(root: Path) -> list[PackageMetadata]:
+    """Discover packages from the available input data."""
     packages: list[PackageMetadata] = []
     for directory in sorted(root.iterdir()):
         if not directory.is_dir() or directory.name.startswith("."):
@@ -109,6 +115,7 @@ def discover_packages(root: Path) -> list[PackageMetadata]:
 
 
 def badge(label: str, message: str, color: str) -> str:
+    """Handle badge for this module's workflow."""
     return (
         f"![{label}](https://img.shields.io/badge/"
         f"{quote(label)}-{quote(message)}-{color})"
@@ -116,6 +123,7 @@ def badge(label: str, message: str, color: str) -> str:
 
 
 def build_block(info: dict[str, Any]) -> str:
+    """Build block from the supplied inputs."""
     badges: list[str] = []
     minimum = info.get("version.min_required")
     packaged = info.get("version.packaged")
@@ -130,6 +138,7 @@ def build_block(info: dict[str, Any]) -> str:
 
 
 def inject(readme_text: str, block: str, title: str) -> str:
+    """Handle inject for this module's workflow."""
     start_index = readme_text.find(START)
     end_index = readme_text.find(END)
     if (start_index == -1) != (end_index == -1):
@@ -146,12 +155,14 @@ def inject(readme_text: str, block: str, title: str) -> str:
 
 
 def create(info: dict[str, Any], block: str) -> str:
+    """Handle create for this module's workflow."""
     title = info.get("title", info.get("name", "Plugin"))
     description = str(info.get("description", "")).rstrip()
     return f"# {title}\n\n{block}\n\n{description}\n"
 
 
 def validate_legacy_cap(metadata: PackageMetadata) -> list[str]:
+    """Validate legacy cap and reject invalid input."""
     files = metadata.data.get("files")
     if not isinstance(files, dict):
         return []
@@ -166,6 +177,7 @@ def validate_legacy_cap(metadata: PackageMetadata) -> list[str]:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse args into its normalized representation."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent)
     parser.add_argument("--check", action="store_true")
@@ -174,6 +186,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the command-line entry point and return its result."""
     args = parse_args(argv)
     created: list[str] = []
     updated: list[str] = []

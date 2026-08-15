@@ -8,6 +8,7 @@ from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
 
 def _required_string(title: str, help_text: str | None = None) -> String:
+    """Handle required string for this module's workflow."""
     return String(
         title=Title(title),
         help_text=Help(help_text) if help_text else None,
@@ -16,6 +17,7 @@ def _required_string(title: str, help_text: str | None = None) -> String:
 
 
 def _parameter_form() -> Dictionary:
+    """Handle parameter form for this module's workflow."""
     return Dictionary(
         title=Title("Switch port synchronization"),
         help_text=Help(

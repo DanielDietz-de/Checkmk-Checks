@@ -33,17 +33,13 @@ def parse_function(string_table):
 
 
 def discover_service(section):
-    """
-    Discover
-    """
+    """Discover service from the available input data."""
     for service_id in section:
         yield Service(item=service_id)
 
 
 def check_service(item, params, section):
-    """
-    Check single Service
-    """
+    """Evaluate service and return its resulting state."""
     data = section[item]
 
     for field_name, field_value in data.items():

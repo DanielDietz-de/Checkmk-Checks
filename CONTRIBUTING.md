@@ -100,3 +100,7 @@ A pull request should explain:
 - remaining live-system validation, if any.
 
 Keep review threads current and resolve findings only after the corresponding change and regression test are present.
+
+## Function-level code documentation
+
+Every tracked function and class must have human-readable code-level documentation. Run `python tools/ci/check_function_documentation.py` before publication. The gate covers production code, tests, CI tooling, and retained reference source.

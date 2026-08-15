@@ -19,6 +19,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_net_backup(string_table: StringTable) -> dict:
+    """Parse net backup into its normalized representation."""
     devices: dict = {}
     last_device = ""
     start = False
@@ -49,11 +50,13 @@ agent_section_net_backup = AgentSection(
 
 
 def discovery_net_backup(section: dict) -> DiscoveryResult:
+    """Handle discovery net backup for this module's workflow."""
     for device in section:
         yield Service(item=device)
 
 
 def check_net_backup(item: str, section: dict) -> CheckResult:
+    """Evaluate net backup and return its resulting state."""
     device = section.get(item)
     if not device:
         return

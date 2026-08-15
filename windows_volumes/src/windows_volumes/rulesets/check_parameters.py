@@ -19,6 +19,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_form_windows_volumes() -> Dictionary:
+    """Handle parameter form windows volumes for this module's workflow."""
     return Dictionary(
         help_text=Help(
             "Upper levels for the used space (in percent) of a folder mounted "

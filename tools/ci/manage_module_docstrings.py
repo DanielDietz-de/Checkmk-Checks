@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 def role(path: Path, package: str) -> str:
+    """Handle role for this module's workflow."""
     stem = path.stem.replace("_", " ")
     parts = set(path.parts)
     if "agent_based" in parts:
@@ -30,6 +31,7 @@ def role(path: Path, package: str) -> str:
 
 
 def insertion_index(lines: list[str]) -> int:
+    """Handle insertion index for this module's workflow."""
     index = 0
     if lines and lines[0].startswith("#!"):
         index = 1
@@ -42,6 +44,7 @@ EXCLUDED_PARTS = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", "dist
 
 
 def _is_python_source(path: Path) -> bool:
+    """Handle is python source for this module's workflow."""
     if path.suffix == ".py":
         return True
     if path.suffix:
@@ -51,6 +54,7 @@ def _is_python_source(path: Path) -> bool:
 
 
 def _component_name(root: Path, path: Path) -> str:
+    """Handle component name for this module's workflow."""
     relative = path.relative_to(root)
     if "src" in relative.parts:
         index = relative.parts.index("src")
@@ -60,6 +64,7 @@ def _component_name(root: Path, path: Path) -> str:
 
 
 def run(root: Path, *, write: bool) -> list[str]:
+    """Handle run for this module's workflow."""
     stale: list[str] = []
     candidates = [
         path
@@ -93,6 +98,7 @@ def run(root: Path, *, write: bool) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the command-line entry point and return its result."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--write", action="store_true")

@@ -28,6 +28,7 @@ agent_section_exasol_database = AgentSection(
 
 
 def check_exasol_database_backup(item, section):
+    """Evaluate exasol database backup and return its resulting state."""
     if item not in section.keys():
         yield Result(state=State.UNKNOWN, summary="Item not fund")
 

@@ -20,6 +20,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_valuespec_hitachi_hnas_rest_storage_pools():
+    """Handle parameter valuespec hitachi hnas rest storage pools for this module's workflow."""
     return Dictionary(
         elements={
             "levels_used": DictElement(

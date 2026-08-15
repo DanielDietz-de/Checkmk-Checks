@@ -25,9 +25,11 @@ agent_section_storcli2_tool = AgentSection(
 
 
 def discover_storcli2_tool(section):
+    """Discover storcli2 tool from the available input data."""
     yield Service()
 
 def check_storcli2_tool(section):
+    """Evaluate storcli2 tool and return its resulting state."""
     if "ERROR" in section.keys():
         yield Result(state=State.UNKNOWN, summary=f"{' '.join(section['ERROR'])}")
 

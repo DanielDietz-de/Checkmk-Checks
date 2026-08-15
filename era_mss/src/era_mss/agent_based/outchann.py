@@ -16,6 +16,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_era_outchann(string_table):
+    """Parse era outchann into its normalized representation."""
     section = {}
     for entry in string_table[0]:
         oid_end, state, enc1, enc2, bps, total = entry
@@ -35,11 +36,13 @@ def parse_era_outchann(string_table):
 
 
 def discover_era_outchann(section):
+    """Discover era outchann from the available input data."""
     for item in section:
         yield Service(item=item)
 
 
 def check_era_outchann(item, params, section):
+    """Evaluate era outchann and return its resulting state."""
     data = section.get(item)
     if not data:
         return

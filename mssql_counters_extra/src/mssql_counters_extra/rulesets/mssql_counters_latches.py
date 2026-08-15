@@ -19,6 +19,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_valuespec_mssql_counters_latches():
+    """Handle parameter valuespec mssql counters latches for this module's workflow."""
     return Dictionary(
         title = Title("MSSQL latches"),
         elements = {

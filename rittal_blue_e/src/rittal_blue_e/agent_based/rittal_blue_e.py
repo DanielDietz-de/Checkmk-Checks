@@ -151,6 +151,7 @@ def _parse_value(vtype, unit, constraints, value_str, value_int):
 
 
 def parse_rittal_blue_e(string_table):
+    """Parse rittal blue e into its normalized representation."""
     dev_rows, var_rows = string_table
 
     devices = {}
@@ -193,6 +194,7 @@ snmp_section_rittal_blue_e = SNMPSection(
 # --- helpers shared by the check functions ------------------------------
 
 def _num(variables, key):
+    """Handle num for this module's workflow."""
     var = variables.get(key)
     if var and var["kind"] == "num":
         return var["value"]
@@ -200,6 +202,7 @@ def _num(variables, key):
 
 
 def _status(variables, key):
+    """Handle status for this module's workflow."""
     var = variables.get(key)
     if var and var["kind"] == "status":
         return var["code"], var["text"]
@@ -207,6 +210,7 @@ def _status(variables, key):
 
 
 def _status_state(code, params):
+    """Handle status state for this module's workflow."""
     text = STATUS_TEXT.get(code, "")
     for entry in (params or {}).get("status_states", []):
         if entry.get("status") == text:
@@ -242,11 +246,13 @@ def _dev_suffix(section, dev):
 
 
 def discover_rittal_blue_e(section) -> DiscoveryResult:
+    """Discover rittal blue e from the available input data."""
     for item in section:
         yield Service(item=item)
 
 
 def check_rittal_blue_e(item, params, section):
+    """Evaluate rittal blue e and return its resulting state."""
     data = section.get(item)
     if data is None:
         return
@@ -320,11 +326,13 @@ def _temp_sensors(section):
 
 
 def discover_rittal_blue_e_temp(section) -> DiscoveryResult:
+    """Discover rittal blue e temp from the available input data."""
     for item, _dev, _key in _temp_sensors(section):
         yield Service(item=item)
 
 
 def check_rittal_blue_e_temp(item, params, section):
+    """Evaluate rittal blue e temp and return its resulting state."""
     for cand, dev, key in _temp_sensors(section):
         if cand != item:
             continue
@@ -380,6 +388,7 @@ _FANS = [
 
 
 def _fan_sensors(section):
+    """Handle fan sensors for this module's workflow."""
     for dev, data in section.items():
         variables = data["vars"]
         for key, field, label in _FANS:
@@ -392,11 +401,13 @@ def _fan_sensors(section):
 
 
 def discover_rittal_blue_e_fan(section) -> DiscoveryResult:
+    """Discover rittal blue e fan from the available input data."""
     for item, _dev, _key, _field in _fan_sensors(section):
         yield Service(item=item)
 
 
 def check_rittal_blue_e_fan(item, params, section):
+    """Evaluate rittal blue e fan and return its resulting state."""
     for cand, dev, key, field in _fan_sensors(section):
         if cand != item:
             continue

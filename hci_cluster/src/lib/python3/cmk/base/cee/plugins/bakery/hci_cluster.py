@@ -23,6 +23,7 @@ _FILTER_TYPE_TO_AGENT = {
 
 
 def _deployment_configuration(conf: Any) -> dict[str, Any] | None:
+    """Handle deployment configuration for this module's workflow."""
     if not isinstance(conf, dict):
         return None
 
@@ -40,14 +41,17 @@ def _deployment_configuration(conf: Any) -> dict[str, Any] | None:
 
 
 def _powershell_literal(value: Any) -> str:
+    """Handle powershell literal for this module's workflow."""
     return "'" + str(value).replace("'", "''") + "'"
 
 
 def _filter_type_for_agent(value: Any) -> str:
+    """Handle filter type for agent for this module's workflow."""
     return _FILTER_TYPE_TO_AGENT.get(str(value), "None")
 
 
 def _get_lines(conf: dict[str, Any]) -> list[str]:
+    """Handle get lines for this module's workflow."""
     return [
         f"$domain = {_powershell_literal(conf['domain'])}",
         f"$FilterTyp = {_powershell_literal(_filter_type_for_agent(conf.get('filter_type', 'none')))}",
@@ -56,6 +60,7 @@ def _get_lines(conf: dict[str, Any]) -> list[str]:
 
 
 def get_hci_cluster_files(conf: Any) -> FileGenerator:
+    """Return hci cluster files for the supplied inputs."""
     parameters = _deployment_configuration(conf)
     if parameters is None:
         return

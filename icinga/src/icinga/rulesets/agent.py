@@ -22,6 +22,7 @@ from cmk.rulesets.v1.form_specs import (
 from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
 def _form_special_agents_icinga() -> Dictionary:
+    """Handle form special agents icinga for this module's workflow."""
     return Dictionary(
         title=Title("Icinga Connection"),
         elements={

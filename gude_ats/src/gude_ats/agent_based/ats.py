@@ -18,6 +18,7 @@ from cmk.agent_based.v2 import (
 )
 
 def parse_gude_ats(string_table):
+    """Parse gude ats into its normalized representation."""
     return string_table[0]
 
 snmp_section_gude_ats = SNMPSection(
@@ -37,6 +38,7 @@ snmp_section_gude_ats = SNMPSection(
 )
 
 def discover_gude_ats(section):
+    """Discover gude ats from the available input data."""
     yield Service(
         parameters = {
             "inital" :section[0][2]
@@ -44,6 +46,7 @@ def discover_gude_ats(section):
     )
 
 def check_gude_ats(params, section):
+    """Evaluate gude ats and return its resulting state."""
     mapping = {
         '1': "Primary",
         '2': "Secondary",

@@ -18,6 +18,7 @@ spec.loader.exec_module(update_readmes)
 
 
 def write_info(package: Path, data: dict, *, json_only: bool = False):
+    """Write info to its configured destination."""
     (package / "src").mkdir(parents=True)
     if json_only:
         (package / "src" / "info.json").write_text(json.dumps(data), encoding="utf-8")
@@ -26,6 +27,7 @@ def write_info(package: Path, data: dict, *, json_only: bool = False):
 
 
 def metadata(**overrides):
+    """Handle metadata for this module's workflow."""
     data = {
         "name": "example",
         "version": "1.0.0",
@@ -38,6 +40,7 @@ def metadata(**overrides):
 
 
 def test_info_json_only_packages_are_discovered(tmp_path):
+    """Verify that info json only packages are discovered."""
     package = tmp_path / "example"
     write_info(package, metadata(), json_only=True)
     packages = update_readmes.discover_packages(tmp_path)
@@ -45,6 +48,7 @@ def test_info_json_only_packages_are_discovered(tmp_path):
 
 
 def test_upper_badge_is_rendered_only_when_explicit():
+    """Verify that upper badge is rendered only when explicit."""
     without_cap = update_readmes.build_block(metadata())
     with_cap = update_readmes.build_block(
         metadata(**{"version.usable_until": "2.5.99"})
@@ -54,6 +58,7 @@ def test_upper_badge_is_rendered_only_when_explicit():
 
 
 def test_conflicting_info_and_info_json_fail(tmp_path):
+    """Verify that conflicting info and info json fail."""
     package = tmp_path / "example"
     write_info(package, metadata())
     (package / "src" / "info.json").write_text(
@@ -65,6 +70,7 @@ def test_conflicting_info_and_info_json_fail(tmp_path):
 
 
 def test_legacy_layout_without_cap_is_reported(tmp_path):
+    """Verify that legacy layout without cap is reported."""
     package = tmp_path / "legacy"
     write_info(
         package,
@@ -77,6 +83,7 @@ def test_legacy_layout_without_cap_is_reported(tmp_path):
 
 
 def test_legacy_layout_with_cap_is_not_reported(tmp_path):
+    """Verify that legacy layout with cap is not reported."""
     package = tmp_path / "legacy"
     write_info(
         package,
@@ -91,6 +98,7 @@ def test_legacy_layout_with_cap_is_not_reported(tmp_path):
 
 
 def test_console_style_import_and_check_mode(tmp_path):
+    """Verify that console style import and check mode."""
     package = tmp_path / "example"
     write_info(package, metadata())
     readme = package / "README.md"

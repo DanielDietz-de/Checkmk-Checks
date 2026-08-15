@@ -19,6 +19,7 @@ $config = Get-S2DHciConfig -AgentRoot $agentRoot
 $context = New-S2DHciRunContext -Collector 'health' -Config $config
 $piggybackOpen = $false
 
+# Handle test-s2dhcicommandavailable for this module's workflow.
 function Test-S2DHciCommandAvailable {
     <#
     .SYNOPSIS
@@ -33,6 +34,7 @@ function Test-S2DHciCommandAvailable {
     return $null -ne (Get-Command -Name $Name -ErrorAction SilentlyContinue)
 }
 
+# Handle get-s2dhcipropertyvalue for this module's workflow.
 function Get-S2DHciPropertyValue {
     <#
     .SYNOPSIS
@@ -54,6 +56,7 @@ function Get-S2DHciPropertyValue {
     return $null
 }
 
+# Handle convertto-s2dhcistaterecord for this module's workflow.
 function ConvertTo-S2DHciStateRecord {
     <#
     .SYNOPSIS

@@ -19,6 +19,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, Topic
 
 
 def _formspec_palo_alto_gp_tunnels():
+    """Handle formspec palo alto gp tunnels for this module's workflow."""
     return Dictionary(
         title=Title("Palo Alto GlobalProtect Tunnels"),
         help_text=Help(

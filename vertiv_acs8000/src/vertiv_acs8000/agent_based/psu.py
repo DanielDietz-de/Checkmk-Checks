@@ -37,6 +37,7 @@ DEFAULT_STATE_MAPPING = {
 
 
 def parse_vertiv_acs8000_psu(string_table):
+    """Parse vertiv acs8000 psu into its normalized representation."""
     if not string_table or not string_table[0]:
         return None
     row = string_table[0]
@@ -54,15 +55,18 @@ def parse_vertiv_acs8000_psu(string_table):
 
 
 def _unprefix(mapping):
+    """Handle unprefix for this module's workflow."""
     return {k.removeprefix("value_"): v for k, v in mapping.items()}
 
 
 def discover_vertiv_acs8000_psu(section):
+    """Discover vertiv acs8000 psu from the available input data."""
     if section and section["psus"]:
         yield Service()
 
 
 def check_vertiv_acs8000_psu(params, section):
+    """Evaluate vertiv acs8000 psu and return its resulting state."""
     state_names = {**DEFAULT_STATE_NAMES, **_unprefix(params.get("state_names", {}))}
     state_mapping = {**DEFAULT_STATE_MAPPING, **_unprefix(params.get("state_mapping", {}))}
 

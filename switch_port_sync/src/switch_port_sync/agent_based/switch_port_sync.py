@@ -26,6 +26,7 @@ _REQUIRED_METADATA = ("pair_name", "host_a", "host_b", "service_regex")
 
 
 def parse_switch_port_sync(string_table: StringTable) -> Section:
+    """Parse switch port sync into its normalized representation."""
     text = "".join(itertools.chain.from_iterable(string_table))
     if not text:
         return {"records": [], "error": "Special agent returned an empty section"}
@@ -46,6 +47,7 @@ def parse_switch_port_sync(string_table: StringTable) -> Section:
 
 
 def _records(section: Section) -> Sequence[Mapping[str, Any]]:
+    """Handle records for this module's workflow."""
     records = section.get("records", [])
     if not isinstance(records, list):
         return []
@@ -53,6 +55,7 @@ def _records(section: Section) -> Sequence[Mapping[str, Any]]:
 
 
 def _configuration_error(section: Section) -> str | None:
+    """Handle configuration error for this module's workflow."""
     invalid = [
         key
         for key in _REQUIRED_METADATA
@@ -66,6 +69,7 @@ def _configuration_error(section: Section) -> str | None:
 
 
 def _record_state(record: Mapping[str, Any], member: str) -> str:
+    """Handle record state for this module's workflow."""
     member_data = record.get(member, {})
     if not isinstance(member_data, Mapping):
         return "unknown"
@@ -85,6 +89,7 @@ def _is_discovery_candidate(record: Mapping[str, Any]) -> bool:
 def discover_switch_port_sync(section: Section) -> DiscoveryResult:
     # The pair-level service keeps configuration and Livestatus failures visible
     # even when no port-level service can be discovered.
+    """Discover switch port sync from the available input data."""
     yield Service(item="Pair status")
 
     if section.get("error") or _configuration_error(section):
@@ -101,6 +106,7 @@ def discover_switch_port_sync(section: Section) -> DiscoveryResult:
 
 
 def _find_record(item: str, section: Section) -> Mapping[str, Any] | None:
+    """Handle find record for this module's workflow."""
     for record in _records(section):
         if record.get("item") == item:
             return record
@@ -108,6 +114,7 @@ def _find_record(item: str, section: Section) -> Mapping[str, Any] | None:
 
 
 def _pair_status(section: Section) -> CheckResult:
+    """Handle pair status for this module's workflow."""
     error = section.get("error")
     if error:
         yield Result(state=State.UNKNOWN, summary=str(error))
@@ -154,6 +161,7 @@ def _pair_status(section: Section) -> CheckResult:
 
 
 def check_switch_port_sync(item: str, section: Section) -> CheckResult:
+    """Evaluate switch port sync and return its resulting state."""
     if item == "Pair status":
         yield from _pair_status(section)
         return

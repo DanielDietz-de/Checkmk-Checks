@@ -31,11 +31,11 @@ snmp_section_as400_tcp_connections = SimpleSNMPSection(
 
 
 def discover_as400_tcp_connections(section):
-    """ Discover Function """
+    """Discover as400 tcp connections from the available input data."""
     yield Service()
 
 def check_as400_tcp_connections(params, section):
-    """ Check Function """
+    """Evaluate as400 tcp connections and return its resulting state."""
     warn, crit = params["connection_levels"][1]
     connections_num = section
 

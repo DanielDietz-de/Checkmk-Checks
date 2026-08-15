@@ -12,19 +12,17 @@ from cmk.agent_based.v2 import (
 )
 
 def parse(string_table):
-    """
-    Parse function
-    """
+    """Handle parse for this module's workflow."""
     print("Parsing digital signage section")
-    return {x[0]:int(x[1]) for x in string_table} 
+    return {x[0]:int(x[1]) for x in string_table}
 
 
 def discovery(section):
-    """ Discovery """
+    """Handle discovery for this module's workflow."""
     yield Service()
 
 def check(params, section):
-    """ Check """
+    """Handle check for this module's workflow."""
 
     for name, value in section.items():
         metric_name = name.replace(' ', '_')

@@ -28,6 +28,7 @@ class CheckmkApiError(RuntimeError):
 
 
 def _is_loopback(hostname: str | None) -> bool:
+    """Handle is loopback for this module's workflow."""
     if hostname is None:
         return False
     if hostname.lower() == "localhost":
@@ -56,6 +57,7 @@ def validate_site_url(value: str, *, allow_http: bool = False) -> tuple[str, str
 
 
 def _bounded_detail(response: requests.Response) -> str:
+    """Handle bounded detail for this module's workflow."""
     text = response.text.strip().replace("\r", " ").replace("\n", " ")
     if len(text) > MAX_ERROR_BODY:
         text = text[:MAX_ERROR_BODY] + "..."
@@ -74,6 +76,7 @@ class CheckmkClient:
         verify: bool | str = True,
         timeout: float = DEFAULT_TIMEOUT,
     ) -> None:
+        """Initialize the instance and its required state."""
         self.api_url = f"{site_url}/check_mk/api/1.0"
         self.timeout = timeout
         self.verify = verify
@@ -162,6 +165,7 @@ class CheckmkClient:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse args into its normalized representation."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--site-url", default=os.environ.get("CHECKMK_SITE_URL"))
     parser.add_argument("--user", default=os.environ.get("CHECKMK_USER"))
@@ -184,6 +188,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the command-line entry point and return its result."""
     args = parse_args(argv)
     site_url, inferred_site = validate_site_url(args.site_url, allow_http=args.allow_http)
     site = args.site or inferred_site

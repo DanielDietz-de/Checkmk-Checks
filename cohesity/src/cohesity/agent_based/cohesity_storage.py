@@ -14,6 +14,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_cohesity_storage(string_table):
+    """Parse cohesity storage into its normalized representation."""
     section = {}
     for row in string_table:
         item = row[0]
@@ -34,9 +35,11 @@ agent_section_cohesity_storage_usage = AgentSection(
 
 
 def discovery_cohesity_storage(section):
+    """Handle discovery cohesity storage for this module's workflow."""
     yield Service()
 
 def check_cohesity_storage(params, section):
+    """Evaluate cohesity storage and return its resulting state."""
     levels = params.get("levels", ('fixed', (None, None)))
     warn, crit = levels[1]
     levels_pct = params.get("levels_pct", ('fixed', (None, None)))
@@ -50,7 +53,7 @@ def check_cohesity_storage(params, section):
 
     if "totalCapacityBytes" in section.keys():
         total_storage = section["totalCapacityBytes"]
-    
+
     if used_storage is None or total_storage is None or total_storage == 0:
         yield Result(
             state=State.UNKNOWN,
@@ -98,4 +101,3 @@ check_plugin_cohesity_storage_usage = CheckPlugin(
     check_default_parameters={},
     check_ruleset_name="cohesity_storage",
 )
-

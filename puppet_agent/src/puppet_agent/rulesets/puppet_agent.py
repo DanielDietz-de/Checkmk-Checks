@@ -21,6 +21,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, Topic
 
 
 def _count_levels(title: str) -> DictElement:
+    """Handle count levels for this module's workflow."""
     return DictElement(
         required=True,
         parameter_form=SimpleLevels(
@@ -33,6 +34,7 @@ def _count_levels(title: str) -> DictElement:
 
 
 def _parameter_form_puppet_agent() -> Dictionary:
+    """Handle parameter form puppet agent for this module's workflow."""
     return Dictionary(
         help_text=Help("Levels for the status of the local Puppet agent."),
         elements={

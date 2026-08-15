@@ -77,6 +77,7 @@ def _normalize(conf: Any) -> tuple[str, dict[str, Any]]:
 
 
 def get_files(conf: Any) -> FileGenerator:
+    """Return files for the supplied inputs."""
     mode, normalized = _normalize(conf)
     if mode == "do_not_deploy":
         return

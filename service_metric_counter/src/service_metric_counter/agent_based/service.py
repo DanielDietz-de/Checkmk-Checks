@@ -8,6 +8,7 @@ Section = dict[str, dict[str, float | str]]
 
 
 def parse_function(string_table: list[list[str]]) -> Section:
+    """Parse function into its normalized representation."""
     parsed: Section = {}
     for line in string_table:
         if len(line) < 4:
@@ -21,11 +22,13 @@ def parse_function(string_table: list[list[str]]) -> Section:
 
 
 def discover_service(section: Section):
+    """Discover service from the available input data."""
     for service_id in section:
         yield Service(item=service_id)
 
 
 def check_service(item: str, params: dict, section: Section):
+    """Evaluate service and return its resulting state."""
     data = section.get(item)
     if data is None:
         return

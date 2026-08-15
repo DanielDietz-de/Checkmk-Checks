@@ -23,6 +23,7 @@ from cmk.rulesets.v1.rule_specs import (
 
 
 def _parameters_asterisk():
+    """Handle parameters asterisk for this module's workflow."""
     return Dictionary(
         title=Title("Create notification with the following parameters"),
         elements={

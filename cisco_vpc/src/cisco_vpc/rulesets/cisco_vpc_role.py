@@ -26,6 +26,7 @@ ROLE_VALUE_MIGRATION = {
 
 
 def _migrate_cisco_vpc_role(value):
+    """Handle migrate cisco vpc role for this module's workflow."""
     if not isinstance(value, dict):
         return value
 
@@ -38,6 +39,7 @@ def _migrate_cisco_vpc_role(value):
 
 
 def _parameter_valuespec_cisco_vpc_role():
+    """Handle parameter valuespec cisco vpc role for this module's workflow."""
     return Dictionary(
         migrate=_migrate_cisco_vpc_role,
         elements={

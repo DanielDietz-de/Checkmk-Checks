@@ -22,6 +22,7 @@ spec.loader.exec_module(module)
 
 
 def bakery_conf(**overrides: Any) -> dict[str, Any]:
+    """Handle bakery conf for this module's workflow."""
     value: dict[str, Any] = {
         "deployment": ("cached", 300.0),
         "inventory": {
@@ -73,6 +74,7 @@ def bakery_conf(**overrides: Any) -> dict[str, Any]:
 
 
 def test_normalizes_complete_bakery_configuration() -> None:
+    """Verify that normalizes complete bakery configuration."""
     mode, interval, config = module.normalize_rule(bakery_conf())
     assert mode == "cached"
     assert interval == 300
@@ -84,6 +86,7 @@ def test_normalizes_complete_bakery_configuration() -> None:
 
 
 def test_supports_bearer_and_basic_secret_file_authentication() -> None:
+    """Verify that supports bearer and basic secret file authentication."""
     config = bakery_conf()
     config["inventory"]["auth"] = (
         "bearer",
@@ -106,6 +109,7 @@ def test_supports_bearer_and_basic_secret_file_authentication() -> None:
 
 
 def test_group_choices_map_to_json_values() -> None:
+    """Verify that group choices map to json values."""
     config = bakery_conf()
     config["git"]["repositories"][0]["groups"] = [
         ("ungrouped", None),
@@ -116,6 +120,7 @@ def test_group_choices_map_to_json_values() -> None:
 
 
 def test_hook_uses_stable_package_managed_helper() -> None:
+    """Verify that hook uses stable package managed helper."""
     text = "\n".join(module.hook_lines())
     assert "/usr/bin/oxidized_backup_hook" in text
     assert "--config /etc/check_mk/oxidized_backup.json" in text
@@ -125,6 +130,7 @@ def test_hook_uses_stable_package_managed_helper() -> None:
 
 
 def test_state_directories_are_derived_from_configured_files() -> None:
+    """Verify that state directories are derived from configured files."""
     assert module.state_directories(bakery_conf()) == (
         "/var/lib/oxidized/oxidized_backup",
         "/var/lib/check_mk_agent/oxidized_backup",
@@ -133,6 +139,7 @@ def test_state_directories_are_derived_from_configured_files() -> None:
 
 
 def test_do_not_deploy_mode_is_preserved() -> None:
+    """Verify that do not deploy mode is preserved."""
     mode, interval, _config = module.normalize_rule(
         bakery_conf(deployment=("do_not_deploy", None))
     )
@@ -176,6 +183,7 @@ def test_rejects_unsafe_or_ambiguous_bakery_values(
     mutator: Any,
     message: str,
 ) -> None:
+    """Verify that rejects unsafe or ambiguous bakery values."""
     config = bakery_conf()
     mutator(config)
     with pytest.raises(ValueError, match=message):

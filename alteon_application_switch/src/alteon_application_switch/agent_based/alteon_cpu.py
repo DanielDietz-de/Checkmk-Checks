@@ -3,7 +3,7 @@
 
 
 from cmk.agent_based.v2 import (
-    SNMPTree, 
+    SNMPTree,
     startswith,
     Service,
     Result,
@@ -17,11 +17,12 @@ from cmk.agent_based.v2 import (
 
 # [[u'27', u'26', u'25'], [u'25', u'26', u'20']]
 def parse_cpu_cores(cpu_values, cpu_desc):
+    """Parse cpu cores into its normalized representation."""
     parsed_cpu_values = {}
     for core_id, core in zip(range(0, len(cpu_values)), cpu_values):
         # core ->  [u'6', u'5', u'6']
         values = {}
-        values["1sec"] = int(core[0]) # alternative for decimals float()  
+        values["1sec"] = int(core[0]) # alternative for decimals float()
         values["4sec"] = int(core[1])
         values["64sec"] = int(core[2])
         parsed_cpu_values["CPU {} Core {} Utilization".format(cpu_desc, core_id + 1)] = values
@@ -33,6 +34,7 @@ def parse_cpu_cores(cpu_values, cpu_desc):
 def parse_alteon_cpu(string_table):
     # 1. Array -> Values for MP
     # 2. Array -> Values for SP
+    """Parse alteon cpu into its normalized representation."""
     mp_values = string_table[0] # [[u'6', u'5', u'6'], [u'25', u'26', u'20']]
     sp_values = string_table[1] # [[u'27', u'26', u'25'], [u'25', u'26', u'20']]
 
@@ -69,6 +71,7 @@ snmp_section_alteon_cpu = SNMPSection(
 # Returnes dictionary of Services within this check and additional tresholds
 # parsed -> {'CPU MP Core 1 Utilization': {'1sec': 7, '64sec': 9, '4sec': 6}, 'CPU SP 2': {'1sec': 22, '64sec': 23, '4sec': 26}, 'CPU SP 1': {'1sec': 23, '64sec': 21, '4sec': 23}}
 def discover_alteon_cpu(section):
+    """Discover alteon cpu from the available input data."""
     for core_name, values in section.items():
         yield Service(item=core_name)
 
@@ -82,14 +85,15 @@ def discover_alteon_cpu(section):
 # {'alteon_cpu_utilization_tresholds': (33.0, 44)}
 # {'CPU_SP_Core_1_Utilization': {'1sec': 19, '64sec': 19, '4sec': 17}, 'CPU_MP_Core_1_Utilization': {'1sec': 5, '64sec': 6, '4sec': 5}, 'CPU_SP_Core_2_Utilization': {'1sec': 19, '64sec': 21, '4sec': 20}}
 def check_alteon_cpu(item, params, section):
+    """Evaluate alteon cpu and return its resulting state."""
     if item not in section:
         return
-    
+
     values = section[item]
     warn_threshold, crit_threshold = params["alteon_cpu_utilization_tresholds"]
-    
+
     yield Result(state=State.OK, summary=f"{item}")
-    
+
     for duration, value in values.items():
         yield from check_levels(
             value,
@@ -99,7 +103,7 @@ def check_alteon_cpu(item, params, section):
             render_func=lambda x: f"{x:.1f}%",
         )
 
-check_plugin_alteon_cpu = CheckPlugin(     
+check_plugin_alteon_cpu = CheckPlugin(
     name='alteon_cpu',
     service_name='%s',
     discovery_function=discover_alteon_cpu,

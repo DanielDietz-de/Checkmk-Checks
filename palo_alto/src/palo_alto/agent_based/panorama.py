@@ -20,6 +20,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_palo_alto_panorama(string_table):
+    """Parse palo alto panorama into its normalized representation."""
     if not string_table or not string_table[0]:
         return None
     connected_1, connected_2 = string_table[0]
@@ -41,6 +42,7 @@ snmp_section_palo_alto_panorama = SimpleSNMPSection(
 
 
 def discover_palo_alto_panorama(section):
+    """Discover palo alto panorama from the available input data."""
     for item, connected in section.items():
         # Only create a service for Panorama slots that report a state.
         if connected:
@@ -48,6 +50,7 @@ def discover_palo_alto_panorama(section):
 
 
 def check_palo_alto_panorama(item, params, section):
+    """Evaluate palo alto panorama and return its resulting state."""
     connected = section.get(item)
     if connected is None:
         return

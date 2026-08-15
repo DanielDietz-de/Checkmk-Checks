@@ -12,6 +12,7 @@ NORMALIZER = REPOSITORY / "tools/ci/normalize_package_sources.py"
 
 
 def test_validation_workflow_is_read_only() -> None:
+    """Verify that validation workflow is read only."""
     workflow = VALIDATION.read_text(encoding="utf-8")
     assert "\n  persist:\n" not in workflow
     assert "HEAD:master" not in workflow
@@ -19,6 +20,7 @@ def test_validation_workflow_is_read_only() -> None:
 
 
 def test_documentation_only_scope_preserves_required_check_names() -> None:
+    """Verify that documentation only scope preserves required check names."""
     workflow = VALIDATION.read_text(encoding="utf-8")
     tests_job = workflow.split("\n  tests:\n", maxsplit=1)[1].split("\n  build:\n", maxsplit=1)[0]
     build_job = workflow.split("\n  build:\n", maxsplit=1)[1].split("\n  validate:\n", maxsplit=1)[0]
@@ -33,6 +35,7 @@ def test_documentation_only_scope_preserves_required_check_names() -> None:
 
 
 def test_targeted_builds_use_release_manifest_preparation() -> None:
+    """Verify that targeted builds use release manifest preparation."""
     workflow = VALIDATION.read_text(encoding="utf-8")
     build_job = workflow.split("\n  build:\n", maxsplit=1)[1].split("\n  validate:\n", maxsplit=1)[0]
     preparation = build_job.split(
@@ -50,6 +53,7 @@ def test_targeted_builds_use_release_manifest_preparation() -> None:
 
 
 def test_release_preparation_cannot_modify_package_source_layout() -> None:
+    """Verify that release preparation cannot modify package source layout."""
     preparation = PREPARE.read_text(encoding="utf-8")
     normalizer = NORMALIZER.read_text(encoding="utf-8")
     assert "normalize_bakery" not in preparation
@@ -60,12 +64,14 @@ def test_release_preparation_cannot_modify_package_source_layout() -> None:
 
 
 def test_guard_rejects_pending_source_normalization() -> None:
+    """Verify that guard rejects pending source normalization."""
     workflow = GUARD.read_text(encoding="utf-8")
     assert "Verify package source normalization" in workflow
     assert "python3 tools/ci/normalize_package_sources.py" in workflow
 
 
 def test_full_pull_requests_exercise_publication_transaction() -> None:
+    """Verify that full pull requests exercise publication transaction."""
     workflow = VALIDATION.read_text(encoding="utf-8")
     dry_run = workflow.split("\n  publication-dry-run:\n", maxsplit=1)[1]
     ordered = (
@@ -83,6 +89,7 @@ def test_full_pull_requests_exercise_publication_transaction() -> None:
 
 
 def test_validation_and_guard_concurrency_are_isolated_by_event() -> None:
+    """Verify that validation and guard concurrency are isolated by event."""
     assert "${{ github.event_name }}" in VALIDATION.read_text(encoding="utf-8").split(
         "\nconcurrency:\n", maxsplit=1
     )[1].split("\nenv:\n", maxsplit=1)[0]
@@ -92,6 +99,7 @@ def test_validation_and_guard_concurrency_are_isolated_by_event() -> None:
 
 
 def test_publication_uses_release_branch_and_pull_request() -> None:
+    """Verify that publication uses release branch and pull request."""
     workflow = PUBLICATION.read_text(encoding="utf-8")
     assert "workflow_run:" in workflow
     assert "RELEASE_BRANCH: automation/repository-mkp-release" in workflow
@@ -102,6 +110,7 @@ def test_publication_uses_release_branch_and_pull_request() -> None:
 
 
 def test_publication_requires_exact_source_security_guard() -> None:
+    """Verify that publication requires exact source security guard."""
     workflow = PUBLICATION.read_text(encoding="utf-8")
     guard_step = workflow.split("- name: Require exact source security guard", maxsplit=1)[1].split(
         "- name: Download exact validated MKP artifacts", maxsplit=1
@@ -114,6 +123,7 @@ def test_publication_requires_exact_source_security_guard() -> None:
 
 
 def test_publication_aborts_stale_source_without_failing_or_pushing() -> None:
+    """Verify that publication aborts stale source without failing or pushing."""
     workflow = PUBLICATION.read_text(encoding="utf-8")
     current = workflow.split("- name: Verify source commit is still current", maxsplit=1)[1].split(
         "- name: Stage complete release", maxsplit=1
@@ -124,6 +134,7 @@ def test_publication_aborts_stale_source_without_failing_or_pushing() -> None:
 
 
 def test_second_stale_check_gates_pr_and_dispatch_steps() -> None:
+    """Verify that second stale check gates pr and dispatch steps."""
     workflow = PUBLICATION.read_text(encoding="utf-8")
     branch_step = workflow.split("- name: Update automation release branch", maxsplit=1)[1].split(
         "- name: Open or update release pull request", maxsplit=1
@@ -135,6 +146,7 @@ def test_second_stale_check_gates_pr_and_dispatch_steps() -> None:
 
 
 def test_workflow_created_release_pr_gets_explicit_exact_head_checks() -> None:
+    """Verify that workflow created release pr gets explicit exact head checks."""
     workflow = PUBLICATION.read_text(encoding="utf-8")
     assert "actions: write" in workflow
     dispatch = workflow.split("- name: Dispatch exact-head release validation", maxsplit=1)[1]
@@ -144,6 +156,7 @@ def test_workflow_created_release_pr_gets_explicit_exact_head_checks() -> None:
 
 
 def test_guard_supports_release_branch_workflow_dispatch() -> None:
+    """Verify that guard supports release branch workflow dispatch."""
     workflow = GUARD.read_text(encoding="utf-8")
     range_step = workflow.split("- name: Resolve comparison range", maxsplit=1)[1].split(
         "- name: Enforce changed-code policy", maxsplit=1
@@ -154,6 +167,7 @@ def test_guard_supports_release_branch_workflow_dispatch() -> None:
 
 
 def test_weekly_schedule_reuses_manual_full_validation_path() -> None:
+    """Verify that weekly schedule reuses manual full validation path."""
     workflow = SCHEDULE.read_text(encoding="utf-8")
     assert 'cron: "17 3 * * 0"' in workflow
     assert "actions: write" in workflow
@@ -163,6 +177,7 @@ def test_weekly_schedule_reuses_manual_full_validation_path() -> None:
 
 
 def test_master_and_manual_runs_force_full_selection() -> None:
+    """Verify that master and manual runs force full selection."""
     workflow = VALIDATION.read_text(encoding="utf-8")
     assert "--event-name \"$EVENT_NAME\"" in workflow
     selector = (

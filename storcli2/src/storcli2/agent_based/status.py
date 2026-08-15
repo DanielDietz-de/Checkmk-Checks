@@ -25,6 +25,7 @@ agent_section_storcli2_status = AgentSection(
 
 
 def discover_storcli2_status(params, section):
+    """Discover storcli2 status from the available input data."""
     data = {}
 
     for key, value in section.items():
@@ -45,6 +46,7 @@ def discover_storcli2_status(params, section):
     yield Service(item=None, parameters=data)
 
 def check_storcli2_status(params, section):
+    """Evaluate storcli2 status and return its resulting state."""
     for key, value in section.items():
         if key in params.keys():
             if value != params[key]:
