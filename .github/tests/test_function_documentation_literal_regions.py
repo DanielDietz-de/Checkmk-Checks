@@ -106,6 +106,25 @@ def test_shell_arithmetic_shift_does_not_start_heredoc(tmp_path, monkeypatch) ->
     )
 
 
+def test_shell_radix_shift_keeps_later_heredoc_literal(tmp_path, monkeypatch) -> None:
+    """Verify radix markers inside arithmetic do not corrupt later heredoc scanning."""
+    module = _load_policy_tool()
+    findings = _findings(
+        module,
+        tmp_path,
+        monkeypatch,
+        "helper.sh",
+        "#!/bin/bash\n"
+        "value=$((16#ff << 2))\n"
+        "cat <<'EOF'\n"
+        "function generated_helper() {\n"
+        "EOF\n"
+        "# Run the actual helper task safely.\n"
+        "real_helper() { :; }\n",
+    )
+    assert findings == []
+
+
 def test_shell_normalizer_survives_arithmetic_shift(tmp_path, monkeypatch) -> None:
     """Verify normalization still repairs functions after arithmetic shifts."""
     module = _load_normalizer_tool()
@@ -120,6 +139,37 @@ def test_shell_normalizer_survives_arithmetic_shift(tmp_path, monkeypatch) -> No
     assert "# Handle undocumented helper for this source file's runtime workflow." in source.read_text(
         encoding="utf-8"
     )
+
+
+def test_shell_escaped_left_angle_does_not_start_heredoc(tmp_path, monkeypatch) -> None:
+    """Verify an escaped left-angle character prevents a heredoc operator match."""
+    module = _load_policy_tool()
+    findings = _findings(
+        module,
+        tmp_path,
+        monkeypatch,
+        "helper.sh",
+        "#!/bin/bash\n"
+        "echo x\\<<END\n"
+        "undocumented_helper() { :; }\n",
+    )
+    assert any(
+        "undocumented_helper has no adjacent purpose comment" in item
+        for item in findings
+    )
+
+
+def test_shell_normalizer_survives_escaped_left_angle(tmp_path, monkeypatch) -> None:
+    """Verify normalization sees functions after escaped left-angle syntax."""
+    module = _load_normalizer_tool()
+    source = tmp_path / "helper.sh"
+    source.write_text(
+        "#!/bin/bash\necho x\\<<END\nundocumented_helper() { :; }\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module.policy, "tracked_files", lambda _root: [source])
+    counts = module.normalize_repository(tmp_path)
+    assert counts["shell"] == 1
 
 
 def test_powershell_here_string_function_shape_is_ignored(tmp_path, monkeypatch) -> None:
