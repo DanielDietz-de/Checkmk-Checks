@@ -112,6 +112,42 @@ def test_inline_shell_function_body_is_checked(tmp_path, monkeypatch) -> None:
     assert any("run_task has no adjacent purpose comment" in item for item in module.collect_findings(tmp_path))
 
 
+def test_decorative_comment_does_not_satisfy_policy(tmp_path, monkeypatch) -> None:
+    """Verify a decorative banner cannot masquerade as function purpose documentation."""
+    module = _load_policy_tool()
+    source = tmp_path / "helper.sh"
+    source.write_text("#!/bin/bash\n\n####################\n\ninpath() { :; }\n", encoding="utf-8")
+    monkeypatch.setattr(module, "tracked_files", lambda _root: [source])
+    assert any("inpath has no adjacent purpose comment" in item for item in module.collect_findings(tmp_path))
+
+
+def test_directive_comment_does_not_satisfy_policy(tmp_path, monkeypatch) -> None:
+    """Verify tooling directives cannot masquerade as function purpose documentation."""
+    module = _load_policy_tool()
+    source = tmp_path / "helper.sh"
+    source.write_text("#!/bin/bash\n\n# shellcheck disable=SC2317\nrun_task() { :; }\n", encoding="utf-8")
+    monkeypatch.setattr(module, "tracked_files", lambda _root: [source])
+    assert any("run_task has no adjacent purpose comment" in item for item in module.collect_findings(tmp_path))
+
+
+def test_meaningful_comment_satisfies_policy(tmp_path, monkeypatch) -> None:
+    """Verify genuine adjacent purpose text satisfies non-Python documentation policy."""
+    module = _load_policy_tool()
+    source = tmp_path / "helper.sh"
+    source.write_text("#!/bin/bash\n\n# Resolve a command from PATH safely.\ninpath() { :; }\n", encoding="utf-8")
+    monkeypatch.setattr(module, "tracked_files", lambda _root: [source])
+    assert module.collect_findings(tmp_path) == []
+
+
+def test_punctuated_bash_function_name_is_checked(tmp_path, monkeypatch) -> None:
+    """Verify Bash function names containing punctuation remain policy-visible."""
+    module = _load_policy_tool()
+    source = tmp_path / "helper.sh"
+    source.write_text("#!/bin/bash\n\nsync-state() { echo ready; }\n", encoding="utf-8")
+    monkeypatch.setattr(module, "tracked_files", lambda _root: [source])
+    assert any("sync-state has no adjacent purpose comment" in item for item in module.collect_findings(tmp_path))
+
+
 def test_normalizer_documents_shell_function_keyword_form(tmp_path, monkeypatch) -> None:
     """Verify the normalizer uses the same shell declaration policy as the checker."""
     module = _load_normalizer_tool()
@@ -122,3 +158,14 @@ def test_normalizer_documents_shell_function_keyword_form(tmp_path, monkeypatch)
     assert counts["shell"] == 1
     updated = source.read_text(encoding="utf-8")
     assert "# Handle waitmax for this source file's runtime workflow.\nfunction waitmax" in updated
+
+
+def test_normalizer_documents_punctuated_bash_name(tmp_path, monkeypatch) -> None:
+    """Verify the normalizer documents punctuated Bash names using the shared pattern."""
+    module = _load_normalizer_tool()
+    source = tmp_path / "helper.sh"
+    source.write_text("#!/bin/bash\n\nsync-state() { echo ready; }\n", encoding="utf-8")
+    monkeypatch.setattr(module.policy, "tracked_files", lambda _root: [source])
+    counts = module.normalize_repository(tmp_path)
+    assert counts["shell"] == 1
+    assert "# Handle sync state for this source file's runtime workflow." in source.read_text(encoding="utf-8")
