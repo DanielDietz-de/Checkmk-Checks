@@ -103,6 +103,15 @@ def test_shell_function_keyword_without_parentheses_is_checked(tmp_path, monkeyp
     assert any("waitmax has no adjacent purpose comment" in item for item in module.collect_findings(tmp_path))
 
 
+def test_inline_shell_function_body_is_checked(tmp_path, monkeypatch) -> None:
+    """Verify one-line shell function bodies remain covered by the policy checker."""
+    module = _load_policy_tool()
+    source = tmp_path / "helper.sh"
+    source.write_text("#!/bin/bash\n\nrun_task() { echo ready; }\n", encoding="utf-8")
+    monkeypatch.setattr(module, "tracked_files", lambda _root: [source])
+    assert any("run_task has no adjacent purpose comment" in item for item in module.collect_findings(tmp_path))
+
+
 def test_normalizer_documents_shell_function_keyword_form(tmp_path, monkeypatch) -> None:
     """Verify the normalizer uses the same shell declaration policy as the checker."""
     module = _load_normalizer_tool()
