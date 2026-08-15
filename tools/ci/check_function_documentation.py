@@ -22,6 +22,38 @@ def tracked_files(root: Path) -> list[Path]:
     return [root / raw.decode("utf-8") for raw in completed.stdout.split(b"\0") if raw]
 
 
+def source_kind(path: Path) -> str | None:
+    """Return the supported source language identified by extension or shebang."""
+    suffix = path.suffix.lower()
+    extension_kinds = {
+        ".py": "python",
+        ".ps1": "powershell",
+        ".psm1": "powershell",
+        ".sh": "shell",
+        ".php": "php",
+    }
+    if suffix in extension_kinds:
+        return extension_kinds[suffix]
+    if not path.is_file():
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            first_line = handle.readline(512).strip().lower()
+    except (OSError, UnicodeDecodeError):
+        return None
+    if not first_line.startswith("#!"):
+        return None
+    if re.search(r"(?:^|[/\s])python(?:\d+(?:\.\d+)*)?(?:\s|$)", first_line):
+        return "python"
+    if re.search(r"(?:^|[/\s])(?:pwsh|powershell)(?:\s|$)", first_line):
+        return "powershell"
+    if re.search(r"(?:^|[/\s])(?:ba|da|z|k)?sh(?:\s|$)", first_line):
+        return "shell"
+    if re.search(r"(?:^|[/\s])php(?:\s|$)", first_line):
+        return "php"
+    return None
+
+
 def check_python(path: Path) -> list[str]:
     """Return documentation findings for one Python source file."""
     findings: list[str] = []
@@ -68,17 +100,24 @@ def check_pattern_file(path: Path, pattern: re.Pattern[str]) -> list[str]:
 def collect_findings(root: Path) -> list[str]:
     """Collect documentation findings from all tracked supported source files."""
     findings: list[str] = []
-    ps_pattern = re.compile(r"^(?P<indent>\s*)function\s+(?P<name>[A-Za-z0-9_:-]+)\s*\{", re.I)
-    sh_pattern = re.compile(r"^(?P<indent>\s*)(?:function\s+)?(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(\)\s*\{")
-    php_pattern = re.compile(r"^(?P<indent>\s*)(?:(?:public|protected|private|static|final|abstract)\s+)*function\s+&?\s*(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(", re.I)
+    ps_pattern = re.compile(r"^(?P<indent>\s*)function\s+(?P<name>[A-Za-z0-9_:-]+)\b", re.I)
+    sh_pattern = re.compile(
+        r"^(?P<indent>\s*)(?:function\s+)?(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(\)\s*\{"
+    )
+    php_pattern = re.compile(
+        r"^(?P<indent>\s*)(?:(?:public|protected|private|static|final|abstract)\s+)*"
+        r"function\s+&?\s*(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(",
+        re.I,
+    )
     for path in tracked_files(root):
-        if path.suffix == ".py":
+        kind = source_kind(path)
+        if kind == "python":
             findings.extend(check_python(path))
-        elif path.suffix.lower() == ".ps1":
+        elif kind == "powershell":
             findings.extend(check_pattern_file(path, ps_pattern))
-        elif path.suffix.lower() == ".sh":
+        elif kind == "shell":
             findings.extend(check_pattern_file(path, sh_pattern))
-        elif path.suffix.lower() == ".php":
+        elif kind == "php":
             findings.extend(check_pattern_file(path, php_pattern))
     return findings
 
