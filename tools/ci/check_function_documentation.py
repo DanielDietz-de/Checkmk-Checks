@@ -116,8 +116,48 @@ def _strip_block_comment(lines: list[str], cursor: int) -> str | None:
     return " ".join(text_parts)
 
 
+def _clean_line_comment(raw: str, marker: str) -> str:
+    """Remove a line-comment marker and decorative trailing markers from one line."""
+    stripped = raw.lstrip()
+    if not stripped.startswith(marker):
+        return ""
+    cleaned = stripped[len(marker) :].strip()
+    if marker == "#":
+        cleaned = cleaned.rstrip("#").strip()
+    return cleaned
+
+
+def _comment_block_boundary(text: str) -> bool:
+    """Return whether comment text must stop purpose-block aggregation."""
+    if not text or not re.search(r"[A-Za-z0-9]", text):
+        return True
+    if DIRECTIVE_COMMENT_RE.match(text):
+        return True
+    return bool(re.fullmatch(r"https?://\S+", text, re.I))
+
+
+def _line_comment_block(lines: list[str], cursor: int, marker: str) -> str | None:
+    """Return a contiguous line-comment purpose block ending at ``cursor``."""
+    nearest = _clean_line_comment(lines[cursor], marker)
+    if _comment_block_boundary(nearest):
+        return nearest or None
+
+    parts = [nearest]
+    cursor -= 1
+    while cursor >= 0:
+        stripped = lines[cursor].lstrip()
+        if not stripped.startswith(marker) or stripped.startswith("#!"):
+            break
+        text = _clean_line_comment(lines[cursor], marker)
+        if _comment_block_boundary(text):
+            break
+        parts.append(text)
+        cursor -= 1
+    return " ".join(reversed(parts))
+
+
 def preceding_comment_text(lines: list[str], index: int) -> str | None:
-    """Return normalized text from the adjacent comment before a declaration."""
+    """Return normalized text from the adjacent purpose-comment block."""
     cursor = index - 1
     while cursor >= 0 and not lines[cursor].strip():
         cursor -= 1
@@ -127,9 +167,9 @@ def preceding_comment_text(lines: list[str], index: int) -> str | None:
     if stripped.startswith("#!"):
         return None
     if stripped.startswith("#"):
-        return stripped.lstrip("#").strip().rstrip("#").strip()
+        return _line_comment_block(lines, cursor, "#")
     if stripped.startswith("//"):
-        return stripped[2:].strip()
+        return _line_comment_block(lines, cursor, "//")
     if stripped.endswith("*/") or stripped.startswith("/*"):
         return _strip_block_comment(lines, cursor)
     return None
