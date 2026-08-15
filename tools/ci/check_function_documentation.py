@@ -254,6 +254,7 @@ def _scan_shell(
     comments: dict[int, str] = {}
     heredocs: list[tuple[str, bool]] = []
     quote: str | None = None
+    arithmetic_depth = 0
     for line_index, line in enumerate(text.splitlines()):
         if heredocs:
             delimiter, strip_tabs = heredocs[0]
@@ -283,13 +284,25 @@ def _scan_shell(
                 chars[cursor] = " "
                 cursor += 1
                 continue
+            if line.startswith("$((", cursor):
+                arithmetic_depth += 1
+                cursor += 3
+                continue
+            if line.startswith("((", cursor):
+                arithmetic_depth += 1
+                cursor += 2
+                continue
+            if arithmetic_depth > 0 and line.startswith("))", cursor):
+                arithmetic_depth -= 1
+                cursor += 2
+                continue
             if char == "#":
                 if cursor == first_nonspace:
                     comments[line_index] = line[cursor + 1 :].strip().rstrip("#").strip()
                 for index in range(cursor, len(chars)):
                     chars[index] = " "
                 break
-            if line.startswith("<<", cursor):
+            if arithmetic_depth == 0 and line.startswith("<<", cursor):
                 parsed = _parse_shell_heredoc_operator(line, cursor)
                 if parsed is not None:
                     delimiter, strip_tabs, end = parsed
@@ -332,7 +345,7 @@ def _scan_powershell(
     quote: str | None = None
     for line_index, line in enumerate(text.splitlines()):
         if here_string is not None:
-            if line.strip() == here_string + "@":
+            if line == here_string + "@":
                 here_string = None
             continue
 
