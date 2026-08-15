@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import ast
-from dataclasses import dataclass
 from pathlib import Path
 import re
 import subprocess
 import sys
+from typing import NamedTuple
 
 MIN_DOC_WORDS = 4
 PURPOSE_COMMENT_MIN_WORDS = 4
@@ -31,8 +31,7 @@ PHP_MODIFIERS = frozenset(
 )
 
 
-@dataclass(frozen=True)
-class PhpToken:
+class PhpToken(NamedTuple):
     """Represent one significant PHP lexical token and its source location."""
 
     kind: str
@@ -41,8 +40,7 @@ class PhpToken:
     line_index: int
 
 
-@dataclass(frozen=True)
-class PhpFunctionDeclaration:
+class PhpFunctionDeclaration(NamedTuple):
     """Represent one named PHP function declaration and its source location."""
 
     name: str
