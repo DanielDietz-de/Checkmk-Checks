@@ -211,10 +211,59 @@ def _purpose_from_line_comments(
     return meaningful_purpose_comment(" ".join(reversed(parts)))
 
 
+def _parse_shell_delimiter_word(line: str, cursor: int) -> tuple[str, int] | None:
+    """Return a quote-removed shell word used as a heredoc delimiter."""
+    parts: list[str] = []
+    quote: str | None = None
+    while cursor < len(line):
+        char = line[cursor]
+        if quote == "'":
+            if char == "'":
+                quote = None
+            else:
+                parts.append(char)
+            cursor += 1
+            continue
+        if quote == '"':
+            if char == '"':
+                quote = None
+                cursor += 1
+                continue
+            if char == "\\" and cursor + 1 < len(line):
+                following = line[cursor + 1]
+                if following in {'$', '`', '"', "\\"}:
+                    parts.append(following)
+                    cursor += 2
+                    continue
+                parts.append("\\")
+                cursor += 1
+                continue
+            parts.append(char)
+            cursor += 1
+            continue
+        if char in " \t;&|()<>\r\n":
+            break
+        if char == "\\":
+            if cursor + 1 >= len(line):
+                return None
+            parts.append(line[cursor + 1])
+            cursor += 2
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            cursor += 1
+            continue
+        parts.append(char)
+        cursor += 1
+    if quote is not None or not parts:
+        return None
+    return "".join(parts), cursor
+
+
 def _parse_shell_heredoc_operator(
     line: str, offset: int
 ) -> tuple[str, bool, int] | None:
-    """Return one shell heredoc delimiter parsed from an unquoted operator."""
+    """Return one heredoc delimiter after shell quote removal."""
     if not line.startswith("<<", offset) or line.startswith("<<<", offset):
         return None
     cursor = offset + 2
@@ -224,34 +273,11 @@ def _parse_shell_heredoc_operator(
         cursor += 1
     while cursor < len(line) and line[cursor] in " \t":
         cursor += 1
-    if cursor >= len(line):
+    parsed = _parse_shell_delimiter_word(line, cursor)
+    if parsed is None:
         return None
-    if line[cursor] in {"'", '"'}:
-        quote = line[cursor]
-        cursor += 1
-        start = cursor
-        while cursor < len(line) and line[cursor] != quote:
-            cursor += 1
-        if cursor >= len(line):
-            return None
-        delimiter = line[start:cursor]
-        return delimiter, strip_tabs, cursor + 1
-    start = cursor
-    while cursor < len(line) and line[cursor] not in " \t;&|()<>\r\n":
-        cursor += 1
-    raw = line[start:cursor]
-    delimiter = raw.replace("\\", "")
-    if not delimiter:
-        return None
-    return delimiter, strip_tabs, cursor
-
-
-def _shell_hash_starts_comment(line: str, offset: int) -> bool:
-    """Return whether an unquoted hash begins a shell comment at a word boundary."""
-    if offset == 0:
-        return True
-    previous = line[offset - 1]
-    return previous.isspace() or previous in ";&|()<>"
+    delimiter, end = parsed
+    return delimiter, strip_tabs, end
 
 
 def _scan_shell(
@@ -263,6 +289,7 @@ def _scan_shell(
     heredocs: list[tuple[str, bool]] = []
     quote: str | None = None
     arithmetic_depth = 0
+    continued_word = False
     for line_index, line in enumerate(text.splitlines()):
         if heredocs:
             delimiter, strip_tabs = heredocs[0]
@@ -273,15 +300,22 @@ def _scan_shell(
 
         chars = list(line)
         first_nonspace = len(line) - len(line.lstrip(" \t"))
+        word_started = continued_word
+        line_started_inside_word = continued_word
+        continued_word = False
         cursor = 0
         while cursor < len(line):
             char = line[cursor]
             if quote is not None:
                 chars[cursor] = " "
+                word_started = True
                 if quote in {'"', "`"} and char == "\\":
                     if cursor + 1 < len(line):
                         chars[cursor + 1] = " "
-                    cursor += 2
+                        cursor += 2
+                        continue
+                    continued_word = True
+                    cursor += 1
                     continue
                 if char == quote:
                     quote = None
@@ -291,30 +325,34 @@ def _scan_shell(
                 chars[cursor] = " "
                 if cursor + 1 < len(line):
                     chars[cursor + 1] = " "
-                cursor += 2
+                    word_started = True
+                    cursor += 2
+                    continue
+                continued_word = word_started
+                cursor += 1
                 continue
             if char in {"'", '"', "`"}:
                 quote = char
                 chars[cursor] = " "
+                word_started = True
                 cursor += 1
                 continue
             if line.startswith("$((", cursor):
                 arithmetic_depth += 1
+                word_started = True
                 cursor += 3
                 continue
             if line.startswith("((", cursor):
                 arithmetic_depth += 1
+                word_started = True
                 cursor += 2
                 continue
             if arithmetic_depth > 0 and line.startswith("))", cursor):
                 arithmetic_depth -= 1
+                word_started = True
                 cursor += 2
                 continue
-            if (
-                arithmetic_depth == 0
-                and char == "#"
-                and _shell_hash_starts_comment(line, cursor)
-            ):
+            if arithmetic_depth == 0 and char == "#" and not word_started:
                 if cursor == first_nonspace:
                     comments[line_index] = line[cursor + 1 :].strip().rstrip("#").strip()
                 for index in range(cursor, len(chars)):
@@ -325,17 +363,23 @@ def _scan_shell(
                 if parsed is not None:
                     delimiter, strip_tabs, end = parsed
                     heredocs.append((delimiter, strip_tabs))
+                    word_started = False
                     cursor = end
                     continue
+            if arithmetic_depth == 0 and (char.isspace() or char in ";&|()<> "):
+                word_started = False
+            else:
+                word_started = True
             cursor += 1
         sanitized = "".join(chars)
-        match = SHELL_FUNCTION_PATTERN.search(sanitized)
-        if match:
-            declarations.append(
-                LineFunctionDeclaration(
-                    match.group("name"), line_index, match.group("indent") or ""
+        if not line_started_inside_word:
+            match = SHELL_FUNCTION_PATTERN.search(sanitized)
+            if match:
+                declarations.append(
+                    LineFunctionDeclaration(
+                        match.group("name"), line_index, match.group("indent") or ""
+                    )
                 )
-            )
     return declarations, comments
 
 
