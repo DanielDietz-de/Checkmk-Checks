@@ -9,13 +9,20 @@ import subprocess
 import sys
 
 MIN_DOC_WORDS = 4
+PURPOSE_COMMENT_MIN_WORDS = 4
+DIRECTIVE_COMMENT_RE = re.compile(
+    r"^(?:shellcheck\b|noqa\b|ruff\b|pylint\b|mypy\b|pyright\b|"
+    r"type\s*:\s*ignore\b|pragma\b|fmt\s*:|region\b|endregion\b|debug\b)",
+    re.I,
+)
 POWERSHELL_FUNCTION_PATTERN = re.compile(
     r"^(?P<indent>\s*)function\s+(?P<name>[A-Za-z0-9_:-]+)\b", re.I
 )
+SHELL_FUNCTION_NAME = r"[^\s(){};=<>]+"
 SHELL_FUNCTION_PATTERN = re.compile(
     r"^(?P<indent>\s*)"
-    r"(?=(?:function\s+|[A-Za-z_][A-Za-z0-9_]*\s*\(\s*\)))"
-    r"(?:function\s+)?(?P<name>[A-Za-z_][A-Za-z0-9_]*)"
+    r"(?=(?:function\s+|" + SHELL_FUNCTION_NAME + r"\s*\(\s*\)))"
+    r"(?:function\s+)?(?P<name>" + SHELL_FUNCTION_NAME + r")"
     r"\s*(?:\(\s*\))?(?=\s|\{|$)"
 )
 PHP_FUNCTION_PATTERN = re.compile(
@@ -87,17 +94,62 @@ def check_python(path: Path) -> list[str]:
     return findings
 
 
-def preceding_comment(lines: list[str], index: int) -> bool:
-    """Return whether the nearest preceding non-empty line is a purpose comment."""
+def _strip_block_comment(lines: list[str], cursor: int) -> str | None:
+    """Return text from the block comment ending at ``cursor`` when one is complete."""
+    collected: list[str] = []
+    found_start = False
+    while cursor >= 0:
+        raw = lines[cursor].strip()
+        collected.append(raw)
+        if "/*" in raw:
+            found_start = True
+            break
+        cursor -= 1
+    if not found_start:
+        return None
+    text_parts: list[str] = []
+    for raw in reversed(collected):
+        cleaned = raw.replace("/*", " ").replace("*/", " ").strip()
+        cleaned = cleaned.lstrip("*").strip()
+        if cleaned:
+            text_parts.append(cleaned)
+    return " ".join(text_parts)
+
+
+def preceding_comment_text(lines: list[str], index: int) -> str | None:
+    """Return normalized text from the adjacent comment before a declaration."""
     cursor = index - 1
     while cursor >= 0 and not lines[cursor].strip():
         cursor -= 1
     if cursor < 0:
-        return False
-    stripped = lines[cursor].lstrip()
+        return None
+    stripped = lines[cursor].lstrip().strip()
     if stripped.startswith("#!"):
+        return None
+    if stripped.startswith("#"):
+        return stripped.lstrip("#").strip().rstrip("#").strip()
+    if stripped.startswith("//"):
+        return stripped[2:].strip()
+    if stripped.endswith("*/") or stripped.startswith("/*"):
+        return _strip_block_comment(lines, cursor)
+    return None
+
+
+def meaningful_purpose_comment(text: str | None) -> bool:
+    """Return whether adjacent comment text contains actual purpose documentation."""
+    if not text:
         return False
-    return stripped.startswith(("#", "//", "/*", "*")) or stripped.endswith("*/")
+    normalized = " ".join(text.split()).strip()
+    if not normalized or DIRECTIVE_COMMENT_RE.match(normalized):
+        return False
+    if re.fullmatch(r"https?://\S+", normalized, re.I):
+        return False
+    return len(re.findall(r"[A-Za-z0-9]+", normalized)) >= PURPOSE_COMMENT_MIN_WORDS
+
+
+def preceding_comment(lines: list[str], index: int) -> bool:
+    """Return whether a declaration has an adjacent meaningful purpose comment."""
+    return meaningful_purpose_comment(preceding_comment_text(lines, index))
 
 
 def check_pattern_file(path: Path, pattern: re.Pattern[str]) -> list[str]:
