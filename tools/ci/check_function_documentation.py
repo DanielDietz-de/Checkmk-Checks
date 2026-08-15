@@ -347,10 +347,14 @@ def php_tokens(text: str) -> list[PhpToken]:
         if text.startswith("//", offset) or (
             char == "#" and not text.startswith("#[", offset)
         ):
-            end = text.find("\n", offset)
-            if end < 0:
+            newline = text.find("\n", offset)
+            closing_tag = text.find("?>", offset + 1)
+            if closing_tag >= 0 and (newline < 0 or closing_tag < newline):
+                offset = closing_tag
+                continue
+            if newline < 0:
                 break
-            offset = end
+            offset = newline
             continue
         if text.startswith("/*", offset):
             end = text.find("*/", offset + 2)
