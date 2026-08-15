@@ -25,11 +25,15 @@ SHELL_FUNCTION_PATTERN = re.compile(
     r"(?:function\s+)?(?P<name>" + SHELL_FUNCTION_NAME + r")"
     r"\s*(?:\(\s*\))?(?=\s|\{|$)"
 )
+PHP_TRIVIA = (
+    r"(?:[ \t\r\n]+|/\*[\s\S]*?\*/|//[^\r\n]*(?:\r?\n|$)|\#[^\r\n]*(?:\r?\n|$))*"
+)
 PHP_FUNCTION_PATTERN = re.compile(
     r"^(?P<indent>[ \t]*)"
-    r"(?:(?:public|protected|private|static|final|abstract)[ \t\r\n]+)*"
-    r"function[ \t\r\n]+&?[ \t\r\n]*"
-    r"(?P<name>[A-Za-z_][A-Za-z0-9_]*)[ \t\r\n]*\(",
+    r"(?:(?:public|protected|private|static|final|abstract)\b" + PHP_TRIVIA + r")*"
+    r"function\b" + PHP_TRIVIA
+    + r"&?" + PHP_TRIVIA
+    + r"(?P<name>[A-Za-z_][A-Za-z0-9_]*)\b" + PHP_TRIVIA + r"\(",
     re.I | re.M,
 )
 
