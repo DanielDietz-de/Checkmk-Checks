@@ -18,6 +18,7 @@ REQUEST_TIMEOUT = (5.0, 15.0)
 
 
 def _as_bool(value: object, *, default: bool) -> bool:
+    """Handle as bool for this source file's runtime workflow."""
     if value is None:
         return default
     return str(value).strip().lower() not in {"0", "false", "no", "off"}
@@ -54,6 +55,7 @@ def _verification_for_api_host(
 
 
 def _is_loopback(hostname: str | None) -> bool:
+    """Handle is loopback for this source file's runtime workflow."""
     if hostname is None:
         return False
     if hostname.lower() == "localhost":
@@ -78,6 +80,7 @@ def validate_api_host(value: str, *, allow_insecure_http: bool) -> str:
 
 
 def _bounded_response_text(response: requests.Response) -> str:
+    """Handle bounded response text for this source file's runtime workflow."""
     data = response.raw.read(MAX_RESPONSE_BYTES + 1, decode_content=True)
     suffix = "..." if len(data) > MAX_RESPONSE_BYTES else ""
     return data[:MAX_RESPONSE_BYTES].decode("utf-8", errors="replace").strip() + suffix
@@ -87,6 +90,7 @@ class NotifyEagle:
     """Build and submit one SMS notification."""
 
     def __init__(self) -> None:
+        """Initialize the instance and its required runtime state."""
         context = utils.collect_context()
         allow_insecure_http = _as_bool(
             context.get("PARAMETER_ALLOW_INSECURE_HTTP"), default=False

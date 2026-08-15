@@ -23,9 +23,7 @@ def _resolve_secret_reference(reference: str) -> str:
 
 
 class AgentAs400():
-    """
-    Agent AS400
-    """
+    """Represent agentas400 behavior and its associated runtime state."""
 
     def __init__(self, driver: str, system: str, uid: str, password: str):
         """Open the configured IBM i ODBC connection."""
@@ -78,6 +76,7 @@ class AgentAs400():
 
 
 def parse_arguments():
+    """Parse arguments into its normalized representation."""
     parser = argparse.ArgumentParser(description="IBM i / AS400 special agent")
     parser.add_argument("--driver", required=True)
     parser.add_argument("--system", required=True)

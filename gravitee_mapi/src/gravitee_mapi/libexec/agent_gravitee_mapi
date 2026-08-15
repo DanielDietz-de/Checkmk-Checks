@@ -27,9 +27,7 @@ def _resolve_secret_reference(reference: str) -> str:
 
 
 class AgentGraviteeMapi:
-    """
-    Agent Gravitee MAPI
-    """
+    """Represent agentgraviteemapi behavior and its associated runtime state."""
     host_name = None
     token = None
     environment = "DEFAULT"
@@ -38,6 +36,7 @@ class AgentGraviteeMapi:
     proxy_url = None
 
     def _get(self, url, params=None):
+        """Handle get for this source file's runtime workflow."""
         headers = {"Authorization": f"Bearer {self.token}"}
         proxies = (
             {"http": self.proxy_url, "https": self.proxy_url}
@@ -55,6 +54,7 @@ class AgentGraviteeMapi:
         return resp.json()
 
     def get_apis(self):
+        """Return apis for the supplied inputs."""
         url = (
             f"https://{self.host_name}/management/v2"
             f"/environments/{self.environment}/apis/"
@@ -63,6 +63,7 @@ class AgentGraviteeMapi:
         return data.get("data", [])
 
     def get_stats(self, api_id, from_ts, to_ts):
+        """Return stats for the supplied inputs."""
         url = (
             f"https://{self.host_name}/management/v2"
             f"/environments/{self.environment}/apis/{api_id}/analytics"
@@ -76,6 +77,7 @@ class AgentGraviteeMapi:
         })
 
     def get_response_status_ranges(self, api_id, from_ts, to_ts):
+        """Return response status ranges for the supplied inputs."""
         url = (
             f"https://{self.host_name}/management/v2"
             f"/environments/{self.environment}/apis/{api_id}/analytics/response-status-ranges"
@@ -83,6 +85,7 @@ class AgentGraviteeMapi:
         return self._get(url, params={"from": from_ts, "to": to_ts})
 
     def get_health(self, api_id):
+        """Return health for the supplied inputs."""
         url = (
             f"https://{self.host_name}/management/v2"
             f"/environments/{self.environment}/apis/{api_id}/health/availability"
@@ -90,6 +93,7 @@ class AgentGraviteeMapi:
         return self._get(url)
 
     def run(self):
+        """Handle run for this source file's runtime workflow."""
         to_ts = int(time.time() * 1000)
         from_ts = to_ts - (self.interval * 1000)
 

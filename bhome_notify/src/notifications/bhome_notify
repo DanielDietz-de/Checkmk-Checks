@@ -34,6 +34,7 @@ def get_alarm_group(group_list: str | None) -> str | None:
 
 
 def validate_portal_domain(value: str) -> str:
+    """Validate portal domain and reject invalid input."""
     domain = value.strip().rstrip("/")
     if not DOMAIN_RE.fullmatch(domain):
         raise HelixNotificationError(
@@ -60,6 +61,7 @@ def validate_portal_domain(value: str) -> str:
 
 
 def validate_ca_bundle(value: str | None) -> bool | str:
+    """Validate ca bundle and reject invalid input."""
     if not value:
         return True
     path = Path(value)
@@ -71,6 +73,7 @@ def validate_ca_bundle(value: str | None) -> bool | str:
 
 
 def stable_problem_id(context: dict[str, str]) -> str:
+    """Handle stable problem id for this source file's runtime workflow."""
     what = context.get("WHAT", "HOST")
     if what == "SERVICE":
         problem_id = context.get("SERVICEPROBLEMID", "").strip()
@@ -87,6 +90,7 @@ def stable_problem_id(context: dict[str, str]) -> str:
 
 
 def build_payload(context: dict[str, str]) -> list[dict[str, Any]]:
+    """Build payload from the supplied inputs."""
     full_host = context.get("HOSTNAME", "unknown_host")
     short_host = full_host.split(".", 1)[0]
     notify_what = context.get("WHAT", "HOST")
@@ -127,6 +131,7 @@ def build_payload(context: dict[str, str]) -> list[dict[str, Any]]:
 
 
 def read_bounded_response(response: requests.Response) -> bytes:
+    """Read bounded response from its configured source."""
     declared = response.headers.get("Content-Length")
     if declared:
         try:
@@ -143,6 +148,7 @@ def read_bounded_response(response: requests.Response) -> bytes:
 
 
 def validate_api_response(response: requests.Response, body: bytes) -> dict[str, Any]:
+    """Validate api response and reject invalid input."""
     if not 200 <= response.status_code < 300:
         raise HelixNotificationError(
             f"BMC Helix returned HTTP {response.status_code}"
@@ -173,6 +179,7 @@ def send_event(
     *,
     session: requests.Session | None = None,
 ) -> int:
+    """Handle send event for this source file's runtime workflow."""
     url = validate_portal_domain(config["portal_domain"])
     api_key = f"{config['tenant_id']}::{config['access']}::{config['secret']}"
     client = requests.Session() if session is None else session
@@ -207,6 +214,7 @@ def send_event(
 
 
 def main() -> int:
+    """Run the command-line entry point and return its result."""
     context = utils.collect_context()
     try:
         timeout = float(context.get("PARAMETER_TIMEOUT", "10"))

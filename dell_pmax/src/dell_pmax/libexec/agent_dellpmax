@@ -45,6 +45,7 @@ def _resolve_ca_bundle(explicit_ca_file: str | None, no_cert_check: bool) -> str
 
 
 def parse_arguments(argv):
+    """Parse arguments into its normalized representation."""
     parser = argparse.ArgumentParser(description=__doc__)
 
     parser.add_argument(
@@ -95,7 +96,9 @@ def parse_arguments(argv):
 
 
 class PmaxAgent:
+    """Represent pmaxagent behavior and its associated runtime state."""
     def __init__(self, debug, address, port, username, secret, verify_ssl=True, timeout=30.0):
+        """Initialize the instance and its required runtime state."""
         self.debug = debug
         self.headers = {"Content-Type": "application/json", "Accept": "application/json"}
         self.verify_ssl = verify_ssl
@@ -107,6 +110,7 @@ class PmaxAgent:
         self.session.headers.update(self.headers)
 
     def do_get(self, endpoint):
+        """Handle do get for this source file's runtime workflow."""
         response = self.session.get(
             self.base_url + endpoint,
             verify=self.verify_ssl,
@@ -125,6 +129,7 @@ class PmaxAgent:
         return payload
 
     def output(self, data):
+        """Handle output for this source file's runtime workflow."""
         pmax_output = []
         pmax_output.append(data)
 
@@ -134,6 +139,7 @@ class PmaxAgent:
     # SYSTEMINFO
 
     def get_version(self):
+        """Return version for the supplied inputs."""
         self.output("<<<dellpmax_systeminfo:sep(124)>>>")
         data = self.do_get("version")
         self.output("version|" + data["version"])
@@ -141,6 +147,7 @@ class PmaxAgent:
     # RUNTIME USAGE
 
     def get_system_stats(self):
+        """Return system stats for the supplied inputs."""
         self.output("<<<dellpmax_systemstats:sep(124)>>>")
         data = self.do_get("management/RuntimeUsage/read")
         jvm_stats = data["runtimeGenericResources"]["jvmStats"]
@@ -160,6 +167,7 @@ class PmaxAgent:
     # STORAGE RESSOURCE POOLS
 
     def get_local_array_id(self):
+        """Return local array id for the supplied inputs."""
         data = self.do_get("92/vvol/symmetrix")
         for id in data["symmetrixId"]:
             sym_info = self.do_get("92/vvol/symmetrix/%s" % id)
@@ -168,6 +176,7 @@ class PmaxAgent:
         return None
 
     def get_storage_ressource_pools(self, symm_id):
+        """Return storage ressource pools for the supplied inputs."""
         self.output("<<<dellpmax_storage_pools:sep(124)>>>")
         data = self.do_get("92/sloprovisioning/symmetrix/%s/srp" % symm_id)
         for srp_id in data["srpId"]:
@@ -184,6 +193,7 @@ class PmaxAgent:
     # ALERTS
 
     def get_alerts(self, symm_id):
+        """Return alerts for the supplied inputs."""
         alert_categories = [
             "critical_unacknowledged_count",
             "fatal_unacknowledged_count",
@@ -217,6 +227,7 @@ class PmaxAgent:
 
     def run(self):
 
+        """Handle run for this source file's runtime workflow."""
         self.get_version()
 
         self.get_system_stats()
@@ -230,6 +241,7 @@ class PmaxAgent:
 
 def main(argv=None):
 
+    """Run the command-line entry point and return its result."""
     args = parse_arguments(argv or sys.argv[1:])
 
     verify = _resolve_ca_bundle(args.ca_file, args.no_cert_check)

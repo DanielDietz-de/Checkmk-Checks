@@ -32,6 +32,7 @@ def _resolve_secret_reference(reference: str) -> str:
 
 
 def parse_arguments(argv):
+    """Parse arguments into its normalized representation."""
     parser = argparse.ArgumentParser(description="AWS Lambda CloudWatch monitoring")
     parser.add_argument("--access-key-id", required=True, help="AWS access key id")
     secret_group = parser.add_mutually_exclusive_group(required=True)
@@ -115,6 +116,7 @@ _METRICS = [
 
 
 def _discover_functions(client):
+    """Handle discover functions for this source file's runtime workflow."""
     names = set()
     paginator = client.get_paginator("list_metrics")
     for page in paginator.paginate(Namespace="AWS/Lambda", MetricName="Invocations"):
@@ -126,6 +128,7 @@ def _discover_functions(client):
 
 
 def _build_queries(functions):
+    """Handle build queries for this source file's runtime workflow."""
     queries = []
     index = {}
     for f_idx, function in enumerate(functions):
@@ -149,11 +152,13 @@ def _build_queries(functions):
 
 
 def _chunked(seq, size):
+    """Handle chunked for this source file's runtime workflow."""
     for i in range(0, len(seq), size):
         yield seq[i:i + size]
 
 
 def main(argv):
+    """Run the command-line entry point and return its result."""
     args = parse_arguments(argv)
     print("<<<aws_lambda_cw:sep(0)>>>")
 

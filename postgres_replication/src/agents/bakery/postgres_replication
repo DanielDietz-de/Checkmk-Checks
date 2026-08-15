@@ -5,6 +5,7 @@
 
 
 def bake_postgres_replication(opsys, conf, conf_dir, plugins_dir):
+    """Handle bake postgres replication for this source file's runtime workflow."""
     shutil.copy2(cmk.utils.paths.local_agents_dir + "/plugins/postgres_replication.sh", plugins_dir + "/postgres_replication.sh")
 
 bakery_info["postgres_replication"] = {

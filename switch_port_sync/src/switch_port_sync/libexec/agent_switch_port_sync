@@ -44,6 +44,7 @@ class LiveStatusError(RuntimeError):
 
 @dataclass(frozen=True)
 class InterfaceService:
+    """Represent interfaceservice behavior and its associated runtime state."""
     description: str
     core_state: int
     plugin_output: str
@@ -55,12 +56,14 @@ class InterfaceService:
 
 
 def _safe_lql_value(value: str) -> str:
+    """Handle safe lql value for this source file's runtime workflow."""
     if "\n" in value or "\r" in value:
         raise ValueError("Host names must not contain line breaks")
     return value
 
 
 def _recv_all(sock: socket.socket) -> bytes:
+    """Handle recv all for this source file's runtime workflow."""
     chunks: list[bytes] = []
     while True:
         chunk = sock.recv(65536)
@@ -70,6 +73,7 @@ def _recv_all(sock: socket.socket) -> bytes:
 
 
 def livestatus_query(socket_path: Path, query: str) -> Any:
+    """Handle livestatus query for this source file's runtime workflow."""
     request = f"{query.rstrip()}\nResponseHeader: fixed16\nOutputFormat: json\n"
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
         sock.settimeout(10.0)
@@ -99,6 +103,7 @@ def livestatus_query(socket_path: Path, query: str) -> Any:
 
 
 def _parse_preferred_rows(rows: Any) -> list[InterfaceService]:
+    """Handle parse preferred rows for this source file's runtime workflow."""
     if not isinstance(rows, list):
         raise LiveStatusError("Livestatus service result is not a list")
 
@@ -125,6 +130,7 @@ def _parse_preferred_rows(rows: Any) -> list[InterfaceService]:
 
 
 def _parse_fallback_rows(rows: Any) -> list[InterfaceService]:
+    """Handle parse fallback rows for this source file's runtime workflow."""
     if not isinstance(rows, list):
         raise LiveStatusError("Livestatus service result is not a list")
 
@@ -151,6 +157,7 @@ def _parse_fallback_rows(rows: Any) -> list[InterfaceService]:
 
 
 def _query_host_services(socket_path: Path, host_name: str) -> list[InterfaceService]:
+    """Handle query host services for this source file's runtime workflow."""
     host_name = _safe_lql_value(host_name)
 
     preferred_columns = (
@@ -227,6 +234,7 @@ def _extract_interfaces(
     service_regex: re.Pattern[str],
     host_name: str,
 ) -> dict[str, InterfaceService]:
+    """Handle extract interfaces for this source file's runtime workflow."""
     result: dict[str, InterfaceService] = {}
     for service in services:
         match = service_regex.match(service.description)
@@ -250,6 +258,7 @@ def _extract_interfaces(
 
 
 def _compile_service_regex(service_regex_text: str) -> re.Pattern[str]:
+    """Handle compile service regex for this source file's runtime workflow."""
     service_regex = re.compile(service_regex_text)
     if "item" not in service_regex.groupindex and service_regex.groups < 1:
         raise ValueError(
@@ -267,6 +276,7 @@ def build_payload(
     services_a: Iterable[InterfaceService],
     services_b: Iterable[InterfaceService],
 ) -> dict[str, Any]:
+    """Build payload from the supplied inputs."""
     if host_a == host_b:
         raise ValueError("Switch A and Switch B must be different Checkmk hosts")
 
@@ -311,6 +321,7 @@ def build_payload(
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """Parse args into its normalized representation."""
     parser = argparse.ArgumentParser(
         description="Compare existing Checkmk interface services on two switch hosts."
     )
@@ -326,6 +337,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the command-line entry point and return its result."""
     args = parse_args(argv or sys.argv[1:])
     try:
         socket_path = Path(args.livestatus_socket)

@@ -26,6 +26,7 @@
 # GNU General Public License for more details.
 
 def bake_open_iscsi(opsys, conf, conf_dir, plugins_dir):
+    """Handle bake open iscsi for this source file's runtime workflow."""
     source = cmk.utils.paths.local_agents_dir
     source += '/plugins/open-iscsi'
     target = plugins_dir + "/open-iscsi"

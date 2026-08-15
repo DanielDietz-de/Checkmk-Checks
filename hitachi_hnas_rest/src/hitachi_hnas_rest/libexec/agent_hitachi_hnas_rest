@@ -53,6 +53,7 @@ class AgentHitachiHnasRest:
     """
 
     def __init__(self, args):
+        """Initialize the instance and its required runtime state."""
         self.base_url = f"https://{args.host_address}:{args.port}/v8"
         self.timeout = args.timeout
         self.verify = _resolve_ca_bundle(args.ca_file, args.no_cert_check)
@@ -71,6 +72,7 @@ class AgentHitachiHnasRest:
 
     def _get(self, path):
         # Certificate trust is passed explicitly because trust_env remains disabled.
+        """Handle get for this source file's runtime workflow."""
         response = self.session.get(
             f"{self.base_url}/{path}",
             timeout=self.timeout,
@@ -185,6 +187,7 @@ class AgentHitachiHnasRest:
             }))
 
     def run(self):
+        """Handle run for this source file's runtime workflow."""
         errors = []
         for section in (
             self.section_filesystems,
@@ -206,6 +209,7 @@ class AgentHitachiHnasRest:
 
 
 def parse_arguments():
+    """Parse arguments into its normalized representation."""
     parser = argparse.ArgumentParser(description="Hitachi HNAS REST API Monitoring")
     parser.add_argument("--host-address", required=True,
                         help="IP address or hostname of the HNAS admin interface")

@@ -17,6 +17,7 @@ class SpoolFormatError(ValueError):
 
 
 def load_context(spool_file: Path) -> dict[str, Any]:
+    """Load context from its configured source."""
     try:
         size = spool_file.stat().st_size
     except OSError as exc:
@@ -56,6 +57,7 @@ def load_context(spool_file: Path) -> dict[str, Any]:
 
 
 def main() -> int:
+    """Run the command-line entry point and return its result."""
     path = Path(environ["OMD_ROOT"]) / "var/check_mk/notify/spool"
     files_unsorted = listdir(path)
     files = list(map(lambda f: (stat(path / f)[9], f), files_unsorted))

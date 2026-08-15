@@ -60,9 +60,7 @@ CACHE_FILE = expanduser(f"~/tmp/check_mk/exasol_{CONFIG['hostname']}")
 CACHE_DURCATION = 3600
 
 def xml_rpc(path):
-    """
-    XML RPC Helper
-    """
+    """Handle xml rpc for this source file's runtime workflow."""
     params = CONFIG
     params['path'] = path
     url = 'https://{user_name}:{user_password}@{hostname}/cluster1{path}'.format(**params)

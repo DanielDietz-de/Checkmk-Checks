@@ -49,6 +49,7 @@ class PinnedHTTPSResponse:
         response: urllib3.response.BaseHTTPResponse,
         pool: urllib3.HTTPSConnectionPool,
     ) -> None:
+        """Initialize the instance and its required runtime state."""
         self._response = response
         self._pool = pool
         self.status_code = response.status
@@ -56,22 +57,27 @@ class PinnedHTTPSResponse:
 
     @property
     def is_redirect(self) -> bool:
+        """Return whether redirect is true for the supplied input."""
         return 300 <= self.status_code < 400
 
     def iter_content(self, chunk_size: int = 65536):
+        """Handle iter content for this source file's runtime workflow."""
         yield from self._response.stream(amt=chunk_size, decode_content=True)
 
     def close(self) -> None:
+        """Handle close for this source file's runtime workflow."""
         self._response.release_conn()
         self._pool.close()
 
 
 def _host_header(hostname: str, port: int) -> str:
+    """Handle host header for this source file's runtime workflow."""
     rendered = f"[{hostname}]" if ":" in hostname else hostname
     return rendered if port == 443 else f"{rendered}:{port}"
 
 
 def validate_public_https_url(value: str) -> PublicHTTPSDestination:
+    """Validate public https url and reject invalid input."""
     url = value.strip()
     if len(url) > MAX_URL_LENGTH:
         raise EndpointError(f"URL must not exceed {MAX_URL_LENGTH} characters")
@@ -155,6 +161,7 @@ def pinned_https_get(
 
 
 def parse_date(value: Any) -> datetime | None:
+    """Parse date into its normalized representation."""
     if value is None:
         return None
     text = str(value).strip()
@@ -173,6 +180,7 @@ def parse_date(value: Any) -> datetime | None:
 
 
 def lookup_json_path(data: Any, path: str) -> Any:
+    """Handle lookup json path for this source file's runtime workflow."""
     if not path or len(path) > MAX_JSON_PATH_LENGTH:
         return None
     current = data
@@ -192,6 +200,7 @@ def lookup_json_path(data: Any, path: str) -> Any:
 
 
 def compute_age(source: str, headers: Any, body: bytes):
+    """Handle compute age for this source file's runtime workflow."""
     now = datetime.now(timezone.utc)
     if source == "age_header":
         raw = headers.get("Age")
@@ -233,6 +242,7 @@ def compute_age(source: str, headers: Any, body: bytes):
 
 
 def read_bounded(response: PinnedHTTPSResponse) -> bytes:
+    """Read bounded from its configured source."""
     body = bytearray()
     for chunk in response.iter_content(chunk_size=65536):
         body.extend(chunk)
@@ -242,6 +252,7 @@ def read_bounded(response: PinnedHTTPSResponse) -> bytes:
 
 
 def probe_endpoint(spec: dict[str, Any]) -> dict[str, Any]:
+    """Handle probe endpoint for this source file's runtime workflow."""
     name = str(spec.get("name") or "endpoint")[:MAX_NAME_LENGTH]
     raw_url = str(spec.get("url") or "")
     result = {
@@ -284,6 +295,7 @@ def probe_endpoint(spec: dict[str, Any]) -> dict[str, Any]:
 
 
 def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse arguments into its normalized representation."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--endpoint", action="append", default=[])
     args = parser.parse_args(argv)
@@ -295,6 +307,7 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the command-line entry point and return its result."""
     args = parse_arguments(argv)
     print("<<<endpoint_age:sep(0)>>>")
     for raw in args.endpoint:

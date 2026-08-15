@@ -62,6 +62,7 @@ class CollectorError(RuntimeError):
 
 @dataclass(frozen=True)
 class CommandResult:
+    """Represent commandresult behavior and its associated runtime state."""
     returncode: int
     stdout: str
     stderr: str
@@ -79,6 +80,7 @@ class SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
         headers: Mapping[str, str],
         newurl: str,
     ) -> urllib.request.Request | None:
+        """Handle redirect request for this source file's runtime workflow."""
         source = urllib.parse.urlsplit(req.full_url)
         target = urllib.parse.urlsplit(newurl)
         source_port = source.port or (443 if source.scheme == "https" else 80)
@@ -91,6 +93,7 @@ class SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
 
 
 def _redact(value: object) -> str:
+    """Handle redact for this source file's runtime workflow."""
     text = str(value).replace("\x00", "")
     text = URL_USERINFO_PATTERN.sub(r"\g<scheme><redacted>@", text)
     text = SENSITIVE_PATTERN.sub(r"\1<redacted>", text)
@@ -98,18 +101,21 @@ def _redact(value: object) -> str:
 
 
 def _require_mapping(value: object, label: str) -> Mapping[str, Any]:
+    """Handle require mapping for this source file's runtime workflow."""
     if not isinstance(value, Mapping):
         raise CollectorError(f"{label} must be a JSON object")
     return value
 
 
 def _require_sequence(value: object, label: str) -> Sequence[Any]:
+    """Handle require sequence for this source file's runtime workflow."""
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
         raise CollectorError(f"{label} must be a JSON array")
     return value
 
 
 def _required_string(mapping: Mapping[str, Any], key: str, label: str) -> str:
+    """Handle required string for this source file's runtime workflow."""
     value = mapping.get(key)
     if not isinstance(value, str) or not value.strip():
         raise CollectorError(f"{label}.{key} must be a non-empty string")
@@ -119,6 +125,7 @@ def _required_string(mapping: Mapping[str, Any], key: str, label: str) -> str:
 
 
 def _optional_string(mapping: Mapping[str, Any], key: str) -> str | None:
+    """Handle optional string for this source file's runtime workflow."""
     value = mapping.get(key)
     if value is None:
         return None
@@ -132,6 +139,7 @@ def _optional_string(mapping: Mapping[str, Any], key: str) -> str | None:
 def _required_int(
     mapping: Mapping[str, Any], key: str, label: str, *, minimum: int = 0
 ) -> int:
+    """Handle required int for this source file's runtime workflow."""
     value = mapping.get(key)
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
         raise CollectorError(f"{label}.{key} must be an integer >= {minimum}")
@@ -146,6 +154,7 @@ def _bounded_number(
     minimum: float,
     maximum: float,
 ) -> float:
+    """Handle bounded number for this source file's runtime workflow."""
     value = mapping.get(key, default)
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise CollectorError(f"{key} must be a number")
@@ -156,6 +165,7 @@ def _bounded_number(
 
 
 def _absolute_path(value: str, label: str) -> Path:
+    """Handle absolute path for this source file's runtime workflow."""
     path = Path(value)
     if not path.is_absolute():
         raise CollectorError(f"{label} must be an absolute path")
@@ -163,6 +173,7 @@ def _absolute_path(value: str, label: str) -> Path:
 
 
 def _safe_open_read(path: Path, *, max_bytes: int) -> bytes:
+    """Handle safe open read for this source file's runtime workflow."""
     flags = os.O_RDONLY
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
@@ -194,6 +205,7 @@ def _safe_open_read(path: Path, *, max_bytes: int) -> bytes:
 
 
 def load_config(path: Path) -> dict[str, Any]:
+    """Load config from its configured source."""
     raw = _safe_open_read(path, max_bytes=MAX_CONFIG_BYTES)
     try:
         parsed = json.loads(raw.decode("utf-8"))
@@ -207,6 +219,7 @@ def load_config(path: Path) -> dict[str, Any]:
 
 
 def validate_config(config: Mapping[str, Any]) -> None:
+    """Validate config and reject invalid input."""
     inventory = _require_mapping(config.get("inventory"), "inventory")
     oxidized = _require_mapping(config.get("oxidized"), "oxidized")
     state_cfg = _require_mapping(config.get("state"), "state")
@@ -313,6 +326,7 @@ def validate_config(config: Mapping[str, Any]) -> None:
 def _validate_endpoint(
     endpoint: Mapping[str, Any], label: str, *, allow_file: bool
 ) -> None:
+    """Handle validate endpoint for this source file's runtime workflow."""
     source = _required_string(endpoint, "url", label)
     parsed = urllib.parse.urlsplit(source)
     allowed_schemes = {"http", "https"}
@@ -373,11 +387,13 @@ def _validate_endpoint(
 
 
 def _is_loopback_host(host: str) -> bool:
+    """Handle is loopback host for this source file's runtime workflow."""
     normalized = host.strip("[]").lower()
     return normalized in {"localhost", "127.0.0.1", "::1"}
 
 
 def _read_secret(path_value: str) -> str:
+    """Handle read secret for this source file's runtime workflow."""
     path = _absolute_path(path_value, "secret file")
     raw = _safe_open_read(path, max_bytes=64 * 1024)
     info = path.stat()
@@ -397,6 +413,7 @@ def _read_secret(path_value: str) -> str:
 
 
 def _endpoint_headers(endpoint: Mapping[str, Any]) -> dict[str, str]:
+    """Handle endpoint headers for this source file's runtime workflow."""
     headers = {"Accept": "application/json", "User-Agent": "checkmk-oxidized-backup/1"}
     auth = endpoint.get("auth")
     if auth is None:
@@ -415,6 +432,7 @@ def _endpoint_headers(endpoint: Mapping[str, Any]) -> dict[str, str]:
 
 
 def fetch_json(endpoint: Mapping[str, Any], label: str) -> Any:
+    """Fetch json from its configured source."""
     source = _required_string(endpoint, "url", label)
     parsed = urllib.parse.urlsplit(source)
     max_bytes = int(endpoint.get("max_response_bytes", DEFAULT_MAX_RESPONSE_BYTES))
@@ -473,6 +491,7 @@ def fetch_json(endpoint: Mapping[str, Any], label: str) -> Any:
 
 
 def _validate_host_name(value: object, label: str) -> str:
+    """Handle validate host name for this source file's runtime workflow."""
     if not isinstance(value, str) or not value.strip():
         raise CollectorError(f"{label} must be a non-empty string")
     hostname = value.strip()
@@ -484,6 +503,7 @@ def _validate_host_name(value: object, label: str) -> str:
 
 
 def parse_inventory(payload: Any) -> tuple[list[dict[str, Any]], list[str]]:
+    """Parse inventory into its normalized representation."""
     rows = _require_sequence(payload, "inventory response")
     by_hostname: dict[str, dict[str, Any]] = {}
     errors: list[str] = []
@@ -513,6 +533,7 @@ def parse_inventory(payload: Any) -> tuple[list[dict[str, Any]], list[str]]:
 
 
 def _parse_timestamp(value: object) -> int | None:
+    """Handle parse timestamp for this source file's runtime workflow."""
     if value in (None, "", "never"):
         return None
     if isinstance(value, bool):
@@ -553,6 +574,7 @@ def _parse_timestamp(value: object) -> int | None:
 
 
 def parse_oxidized_nodes(payload: Any) -> tuple[list[dict[str, Any]], list[str]]:
+    """Parse oxidized nodes into its normalized representation."""
     rows = _require_sequence(payload, "Oxidized nodes response")
     records: list[dict[str, Any]] = []
     errors: list[str] = []
@@ -589,15 +611,18 @@ def parse_oxidized_nodes(payload: Any) -> tuple[list[dict[str, Any]], list[str]]
 
 
 def _node_key(group: str | None, name: str) -> str:
+    """Handle node key for this source file's runtime workflow."""
     return f"{group or ''}\x1f{name}"
 
 
 def _safe_state_path(config: Mapping[str, Any], key: str) -> Path:
+    """Handle safe state path for this source file's runtime workflow."""
     state_cfg = _require_mapping(config.get("state"), "state")
     return _absolute_path(_required_string(state_cfg, key, "state"), f"state.{key}")
 
 
 def _load_state(path: Path, *, max_bytes: int = 8 * 1024 * 1024) -> dict[str, Any]:
+    """Handle load state for this source file's runtime workflow."""
     if not path.exists():
         return {"schema_version": SCHEMA_VERSION, "nodes": {}, "repositories": {}}
     raw = _safe_open_read(path, max_bytes=max_bytes)
@@ -620,6 +645,7 @@ def _load_state(path: Path, *, max_bytes: int = 8 * 1024 * 1024) -> dict[str, An
 def _atomic_write_json(
     path: Path, payload: Mapping[str, Any], *, mode: int = 0o600
 ) -> None:
+    """Handle atomic write json for this source file's runtime workflow."""
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     if path.exists() and path.is_symlink():
         raise CollectorError(f"Refusing to replace symlink state file {path}")
@@ -647,6 +673,7 @@ def _atomic_write_json(
 
 @contextlib.contextmanager
 def _locked_state(path: Path) -> Iterable[None]:
+    """Handle locked state for this source file's runtime workflow."""
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock_path = path.with_name(path.name + ".lock")
     flags = os.O_RDWR | os.O_CREAT
@@ -662,6 +689,7 @@ def _locked_state(path: Path) -> Iterable[None]:
 
 
 def record_hook(config: Mapping[str, Any], environ: Mapping[str, str]) -> None:
+    """Handle record hook for this source file's runtime workflow."""
     event = environ.get("OX_EVENT", "").strip()
     if event not in ALLOWED_HOOK_EVENTS:
         raise CollectorError(
@@ -729,10 +757,12 @@ def record_hook(config: Mapping[str, Any], environ: Mapping[str, str]) -> None:
 
 
 def _git_prefix(repo_path: Path) -> list[str]:
+    """Handle git prefix for this source file's runtime workflow."""
     return ["-C", str(repo_path)]
 
 
 def _run_as_user_prefix(user: str) -> tuple[list[str], dict[str, str]]:
+    """Handle run as user prefix for this source file's runtime workflow."""
     user_info = pwd.getpwnam(user)
     env = {
         "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
@@ -766,6 +796,7 @@ def run_git(
     arguments: Sequence[str],
     timeout: float,
 ) -> CommandResult:
+    """Handle run git for this source file's runtime workflow."""
     prefix, env = _run_as_user_prefix(run_as_user)
     command = [*prefix, git_binary, *_git_prefix(repo_path), *arguments]
     try:
@@ -795,6 +826,7 @@ def run_git(
 
 
 def _git_required(result: CommandResult, action: str) -> str:
+    """Handle git required for this source file's runtime workflow."""
     if result.returncode != 0:
         raise CollectorError(
             f"{action} failed: {result.stderr or 'Git returned an error'}"
@@ -803,6 +835,7 @@ def _git_required(result: CommandResult, action: str) -> str:
 
 
 def _safe_git_tree_path(group: str | None, name: str, *, single_repo: bool) -> str:
+    """Handle safe git tree path for this source file's runtime workflow."""
     values = [name]
     if single_repo and group:
         values.insert(0, group)
@@ -822,6 +855,7 @@ def _safe_git_tree_path(group: str | None, name: str, *, single_repo: bool) -> s
 def _repository_for_group(
     repositories: Sequence[Mapping[str, Any]], group: str | None
 ) -> Mapping[str, Any] | None:
+    """Handle repository for group for this source file's runtime workflow."""
     normalized = group or ""
     exact: list[Mapping[str, Any]] = []
     wildcard: list[Mapping[str, Any]] = []
@@ -838,6 +872,7 @@ def _repository_for_group(
 
 
 def _classify_remote_error(stderr: str) -> str:
+    """Handle classify remote error for this source file's runtime workflow."""
     text = stderr.lower()
     authentication = (
         "authentication failed",
@@ -878,6 +913,7 @@ def inspect_repository(
     policy: Mapping[str, Any],
     now: int,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Handle inspect repository for this source file's runtime workflow."""
     repo_id = str(repo_cfg["id"])
     repo_path_configured = _absolute_path(
         str(repo_cfg["path"]), f"repository {repo_id} path"
@@ -1098,6 +1134,7 @@ def _merge_node_status(
     api_node: Mapping[str, Any] | None,
     hook_node: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
+    """Handle merge node status for this source file's runtime workflow."""
     if api_node is None and hook_node is None:
         return {
             "present": False,
@@ -1140,6 +1177,7 @@ def _merge_node_status(
 
 
 def collect(config: Mapping[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Handle collect for this source file's runtime workflow."""
     now = int(time.time())
     policy = dict(_require_mapping(config["policy"], "policy"))
     central: dict[str, Any] = {
@@ -1352,6 +1390,7 @@ def collect(config: Mapping[str, Any]) -> tuple[dict[str, Any], list[dict[str, A
 
 
 def emit_section(payload: Mapping[str, Any]) -> None:
+    """Handle emit section for this source file's runtime workflow."""
     print("<<<oxidized_backup:sep(0)>>>")
     print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
 
@@ -1359,6 +1398,7 @@ def emit_section(payload: Mapping[str, Any]) -> None:
 def emit_agent_output(
     central: Mapping[str, Any], devices: Sequence[Mapping[str, Any]]
 ) -> None:
+    """Handle emit agent output for this source file's runtime workflow."""
     emit_section(central)
     for device in sorted(
         devices, key=lambda item: str(item.get("host_name", "")).casefold()
@@ -1370,6 +1410,7 @@ def emit_agent_output(
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
+    """Parse args into its normalized representation."""
     parser = argparse.ArgumentParser(
         description="Monitor Oxidized backups and Git replication"
     )
@@ -1393,6 +1434,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run the command-line entry point and return its result."""
     args = parse_args(list(argv) if argv is not None else sys.argv[1:])
     try:
         config = load_config(args.config)

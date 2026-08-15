@@ -12,11 +12,13 @@ condition_map = {
 
 
 def inventory_hp_proliant_status(info):
+    """Handle inventory hp proliant status for this source file's runtime workflow."""
     if info:
         return [(None, None)]
 
 
 def check_hp_proliant_status(_no_item, _no_params, info):
+    """Evaluate hp proliant status and return its resulting state."""
     status = info[0][0]
     message, state = condition_map[status]
     return state, "Overall State: {}".format(message)
