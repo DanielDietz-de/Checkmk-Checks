@@ -59,3 +59,51 @@ def test_normalizer_documents_multiline_php_function(tmp_path, monkeypatch) -> N
     assert counts["php"] == 1
     updated = source.read_text(encoding="utf-8")
     assert "// Handle cache path for this source file's runtime workflow.\nfunction\ncache_path" in updated
+
+
+def test_php_intertoken_block_comment_is_checked(tmp_path, monkeypatch) -> None:
+    """Verify comments between the PHP function keyword and name remain visible."""
+    module = _load_policy_tool()
+    source = tmp_path / "helper.php"
+    source.write_text(
+        "<?php\nfunction\n/* generated wrapper */\nrun_task() { return true; }\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "tracked_files", lambda _root: [source])
+    assert any(
+        "run_task has no adjacent purpose comment" in item
+        for item in module.collect_findings(tmp_path)
+    )
+
+
+def test_normalizer_documents_php_intertoken_comment(tmp_path, monkeypatch) -> None:
+    """Verify normalization shares PHP trivia-aware function matching."""
+    module = _load_normalizer_tool()
+    source = tmp_path / "helper.php"
+    source.write_text(
+        "<?php\nfunction /* generated wrapper */ run_task() { return true; }\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module.policy, "tracked_files", lambda _root: [source])
+    counts = module.normalize_repository(tmp_path)
+    assert counts["php"] == 1
+    updated = source.read_text(encoding="utf-8")
+    assert (
+        "// Handle run task for this source file's runtime workflow.\n"
+        "function /* generated wrapper */ run_task"
+    ) in updated
+
+
+def test_php_line_comment_trivia_is_checked(tmp_path, monkeypatch) -> None:
+    """Verify PHP line comments are accepted as declaration trivia, not blind spots."""
+    module = _load_policy_tool()
+    source = tmp_path / "helper.php"
+    source.write_text(
+        "<?php\npublic /* wrapper */ static function // generated\n& run_task() { return true; }\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "tracked_files", lambda _root: [source])
+    assert any(
+        "run_task has no adjacent purpose comment" in item
+        for item in module.collect_findings(tmp_path)
+    )
