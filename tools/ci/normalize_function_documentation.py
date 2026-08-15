@@ -197,28 +197,19 @@ def normalize_pattern(path: Path, pattern: re.Pattern[str], marker: str) -> int:
 
 def normalize_repository(root: Path) -> dict[str, int]:
     """Normalize all tracked source files covered by the permanent policy."""
-    ps_pattern = re.compile(
-        r"^(?P<indent>\s*)function\s+(?P<name>[A-Za-z0-9_:-]+)\b", re.I
-    )
-    sh_pattern = re.compile(
-        r"^(?P<indent>\s*)(?:function\s+)?(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(\)\s*\{"
-    )
-    php_pattern = re.compile(
-        r"^(?P<indent>\s*)(?:(?:public|protected|private|static|final|abstract)\s+)*"
-        r"function\s+&?\s*(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(",
-        re.I,
-    )
     counts = {"python": 0, "powershell": 0, "shell": 0, "php": 0}
     for path in policy.tracked_files(root):
         kind = policy.source_kind(path)
         if kind == "python":
             counts[kind] += normalize_python(path)
         elif kind == "powershell":
-            counts[kind] += normalize_pattern(path, ps_pattern, "#")
+            counts[kind] += normalize_pattern(
+                path, policy.POWERSHELL_FUNCTION_PATTERN, "#"
+            )
         elif kind == "shell":
-            counts[kind] += normalize_pattern(path, sh_pattern, "#")
+            counts[kind] += normalize_pattern(path, policy.SHELL_FUNCTION_PATTERN, "#")
         elif kind == "php":
-            counts[kind] += normalize_pattern(path, php_pattern, "//")
+            counts[kind] += normalize_pattern(path, policy.PHP_FUNCTION_PATTERN, "//")
     return counts
 
 
