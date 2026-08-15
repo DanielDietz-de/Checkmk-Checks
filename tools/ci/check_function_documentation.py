@@ -157,11 +157,11 @@ def _line_comment_block(lines: list[str], cursor: int, marker: str) -> str | Non
 
 
 def preceding_comment_text(lines: list[str], index: int) -> str | None:
-    """Return normalized text from the adjacent purpose-comment block."""
+    """Return normalized text from the directly adjacent purpose-comment block."""
+    if index <= 0:
+        return None
     cursor = index - 1
-    while cursor >= 0 and not lines[cursor].strip():
-        cursor -= 1
-    if cursor < 0:
+    if not lines[cursor].strip():
         return None
     stripped = lines[cursor].lstrip().strip()
     if stripped.startswith("#!"):
@@ -188,7 +188,7 @@ def meaningful_purpose_comment(text: str | None) -> bool:
 
 
 def preceding_comment(lines: list[str], index: int) -> bool:
-    """Return whether a declaration has an adjacent meaningful purpose comment."""
+    """Return whether a declaration has a directly adjacent meaningful purpose comment."""
     return meaningful_purpose_comment(preceding_comment_text(lines, index))
 
 
