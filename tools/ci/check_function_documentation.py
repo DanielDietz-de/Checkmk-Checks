@@ -74,13 +74,15 @@ def check_python(path: Path) -> list[str]:
 
 
 def preceding_comment(lines: list[str], index: int) -> bool:
-    """Return whether the nearest preceding non-empty line is a source comment."""
+    """Return whether the nearest preceding non-empty line is a purpose comment."""
     cursor = index - 1
     while cursor >= 0 and not lines[cursor].strip():
         cursor -= 1
     if cursor < 0:
         return False
     stripped = lines[cursor].lstrip()
+    if stripped.startswith("#!"):
+        return False
     return stripped.startswith(("#", "//", "/*", "*")) or stripped.endswith("*/")
 
 
