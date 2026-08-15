@@ -173,7 +173,7 @@ def normalize_python(path: Path) -> int:
 
 
 def normalize_pattern(path: Path, pattern: re.Pattern[str], marker: str) -> int:
-    """Add adjacent purpose comments before undocumented non-Python functions."""
+    """Add adjacent purpose comments before undocumented line-oriented functions."""
     lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
     insertions: list[tuple[int, str]] = []
     for index, line in enumerate(lines):
@@ -186,6 +186,30 @@ def normalize_pattern(path: Path, pattern: re.Pattern[str], marker: str) -> int:
             (
                 index,
                 f"{indent}{marker} {description(match.group('name'), 'function')}{newline}",
+            )
+        )
+    for index, content in reversed(insertions):
+        lines.insert(index, content)
+    if insertions:
+        path.write_text("".join(lines), encoding="utf-8", newline="")
+    return len(insertions)
+
+
+def normalize_php(path: Path) -> int:
+    """Add adjacent purpose comments before undocumented named PHP functions."""
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines(keepends=True)
+    insertions: list[tuple[int, str]] = []
+    for match in policy.PHP_FUNCTION_PATTERN.finditer(text):
+        index = text.count("\n", 0, match.start())
+        if policy.preceding_comment(lines, index):
+            continue
+        indent = match.group("indent") or ""
+        newline = "\r\n" if lines[index].endswith("\r\n") else "\n"
+        insertions.append(
+            (
+                index,
+                f"{indent}// {description(match.group('name'), 'function')}{newline}",
             )
         )
     for index, content in reversed(insertions):
@@ -209,7 +233,7 @@ def normalize_repository(root: Path) -> dict[str, int]:
         elif kind == "shell":
             counts[kind] += normalize_pattern(path, policy.SHELL_FUNCTION_PATTERN, "#")
         elif kind == "php":
-            counts[kind] += normalize_pattern(path, policy.PHP_FUNCTION_PATTERN, "//")
+            counts[kind] += normalize_php(path)
     return counts
 
 
