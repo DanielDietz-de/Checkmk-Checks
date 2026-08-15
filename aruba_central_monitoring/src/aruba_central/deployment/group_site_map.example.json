@@ -1,0 +1,11 @@
+{
+  "B200": [
+    "^B200$"
+  ],
+  "Bad Godesberg": [
+    "^Bad Godesberg$"
+  ],
+  "Campus Bornheim": [
+    "^Campus Bornheim - (ABS5|MAS3)$"
+  ]
+}

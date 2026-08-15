@@ -1,0 +1,20 @@
+title: Aruba Central Radio
+agents: aruba_central_aps
+catalog: hw/network/wlan
+license: GPLv2
+distribution: checkmk
+summary: Monitors each radio reported by an Aruba Central access point.
+description:
+ One itemized service is created per radio. It reports radio name, type, band,
+ channel, status, spatial stream, radio MAC, transmit power, and utilization.
+
+ Status values other than {Up} are {CRIT} by default. Radio utilization is
+ checked against configurable upper thresholds, defaulting to 75 and 90
+ percent. Transmit power and utilization are recorded as metrics when present.
+item:
+ A sanitized stable representation of {radio_name} suffixed with the emitted
+ radio index, for example {Radio_5_GHz_0}. If malformed source data would make
+ two item keys collide, a deterministic additional numeric discriminator is
+ appended until the item is unique.
+discovery:
+ One service is discovered for each radio in the AP piggyback document.

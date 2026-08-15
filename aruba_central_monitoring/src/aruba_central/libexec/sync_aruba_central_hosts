@@ -1,0 +1,728 @@
+#!/usr/bin/env python3
+"""Plan or create Aruba Central AP hosts from Checkmk piggyback output.
+
+The program intentionally separates monitoring data collection from Checkmk
+configuration changes. By default it performs a dry run. Pass ``--apply`` only
+after reviewing the plan.
+"""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+import sys
+from typing import Any
+from urllib.parse import quote, urlparse
+
+import requests
+
+SECTION = "<<<aruba_central_aps:sep(0)>>>"
+PIGGYBACK_START = re.compile(r"^<<<<(.+)>>>>$")
+API_PATH = "/check_mk/api/v1"
+DEFAULT_ATTRIBUTES = {
+    "tag_agent": "no-agent",
+    "tag_piggyback": "piggyback",
+    "tag_snmp_ds": "no-snmp",
+    "tag_address_family": "no-ip",
+}
+
+
+@dataclass(frozen=True)
+class PlannedHost:
+    """Validated Checkmk host and folder destinations for one Aruba AP."""
+
+    host_name: str
+    group_title: str
+    group_id: str
+    folder_id: str
+    folder_path: str
+    site: str
+    serial: str
+    mac: str
+
+
+def _slug(value: str, fallback: str) -> str:
+    """Return a deterministic Checkmk-safe folder segment."""
+
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_").lower()
+    return slug or fallback
+
+
+def _folder_id(*segments: str) -> str:
+    """Return the Checkmk REST object ID for a folder hierarchy."""
+
+    return "~" + "~".join(segments)
+
+
+def _folder_path(*segments: str) -> str:
+    """Return a human-readable Setup-style folder path."""
+
+    return "/" + "/".join(segments)
+
+
+def _child_folder_id(parent_id: str, name: str) -> str:
+    """Return the deterministic object ID for a named child folder."""
+
+    if parent_id == "~":
+        return f"~{name}"
+    return f"{parent_id.rstrip('~')}~{name}"
+
+
+def _folder_path_from_id(folder_id: str) -> str:
+    """Translate a Checkmk folder object ID into its slash-path representation."""
+
+    return _folder_path(*(segment for segment in folder_id.split("~") if segment))
+
+
+def _load_agent_output(
+    source_host: str | None,
+    output_file: Path | None,
+    timeout: int,
+) -> str:
+    """Read captured agent output or execute ``cmk -d`` without a shell."""
+
+    if output_file is not None:
+        return output_file.read_text(encoding="utf-8")
+    if not source_host:
+        raise ValueError("either --source-host or --agent-output-file is required")
+    result = subprocess.run(
+        ["cmk", "-d", source_host],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"cmk -d failed with exit code {result.returncode}: "
+            f"{result.stderr.strip()[:500]}"
+        )
+    return result.stdout
+
+
+def _extract_access_points(agent_output: str) -> list[dict[str, Any]]:
+    """Extract only complete AP records from a successful current collector run."""
+
+    lines = agent_output.splitlines()
+    access_points: list[dict[str, Any]] = []
+    collector_ap_total: int | None = None
+    index = 0
+    current_host: str | None = None
+    while index < len(lines):
+        start_match = PIGGYBACK_START.match(lines[index])
+        if start_match and start_match.group(1):
+            current_host = start_match.group(1)
+            index += 1
+            continue
+        if lines[index] == "<<<<>>>>":
+            current_host = None
+            index += 1
+            continue
+        if current_host is None and lines[index] == SECTION:
+            if index + 1 >= len(lines):
+                raise ValueError("Aruba collector section is truncated")
+            try:
+                payload = json.loads(lines[index + 1])
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"invalid Aruba collector JSON: {exc.msg}"
+                ) from exc
+            if (
+                not isinstance(payload, dict)
+                or payload.get("schema") != 1
+                or payload.get("kind") != "collector"
+            ):
+                raise ValueError("invalid Aruba collector section envelope")
+            collector = payload.get("collector")
+            if not isinstance(collector, dict):
+                raise ValueError("Aruba collector section has no collector object")
+            status = str(collector.get("status", "")).strip().upper()
+            stale = collector.get("stale")
+            if status != "OK" or stale is not False:
+                raise ValueError(
+                    "Aruba collector is not a successful current snapshot: "
+                    f"status={status or 'missing'}, stale={stale!r}"
+                )
+            try:
+                reported_total = int(collector.get("ap_total"))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Aruba collector AP total is invalid") from exc
+            if reported_total < 0:
+                raise ValueError("Aruba collector AP total must not be negative")
+            if collector_ap_total is not None:
+                raise ValueError("multiple Aruba collector sections found")
+            collector_ap_total = reported_total
+            index += 2
+            continue
+        if current_host and lines[index] == SECTION:
+            if index + 1 >= len(lines):
+                raise ValueError(f"{current_host}: Aruba AP section is truncated")
+            try:
+                payload = json.loads(lines[index + 1])
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"{current_host}: invalid Aruba AP JSON: {exc.msg}"
+                ) from exc
+            if (
+                not isinstance(payload, dict)
+                or payload.get("schema") != 1
+                or payload.get("kind") != "ap"
+            ):
+                raise ValueError(f"{current_host}: invalid Aruba AP section envelope")
+            ap = payload.get("ap")
+            if not isinstance(ap, dict):
+                raise ValueError(f"{current_host}: Aruba AP section has no AP object")
+            normalized = dict(ap)
+            payload_host = str(normalized.get("host_name") or "").strip()
+            if payload_host and payload_host.casefold() != current_host.casefold():
+                raise ValueError(
+                    f"{current_host}: AP payload host name {payload_host!r} does not "
+                    "match its piggyback target"
+                )
+            normalized["host_name"] = current_host.strip()
+            if not normalized["host_name"]:
+                raise ValueError("Aruba AP section has an empty piggyback host name")
+            access_points.append(normalized)
+            index += 2
+            continue
+        index += 1
+
+    unique: dict[str, tuple[str, dict[str, Any]]] = {}
+    duplicate_names: set[str] = set()
+    for ap in access_points:
+        host_name = str(ap.get("host_name", "")).strip()
+        key = host_name.casefold()
+        if key in unique:
+            duplicate_names.add(host_name)
+            duplicate_names.add(unique[key][0])
+            continue
+        unique[key] = (host_name, ap)
+    if duplicate_names:
+        raise ValueError(
+            "duplicate Aruba AP piggyback host names: "
+            + ", ".join(sorted(duplicate_names, key=str.casefold))
+        )
+    if collector_ap_total is None:
+        raise ValueError("Aruba collector section is missing")
+    if len(unique) != collector_ap_total:
+        raise ValueError(
+            "Aruba collector/piggyback count mismatch: collector reports "
+            f"{collector_ap_total} APs but {len(unique)} complete piggyback APs were found"
+        )
+    return [
+        item[1]
+        for item in sorted(unique.values(), key=lambda item: item[0].casefold())
+    ]
+
+
+def _load_mapping(path: Path) -> dict[str, list[re.Pattern[str]]]:
+    """Load and compile the administrative Group-to-Site allow-list."""
+
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("group/site mapping must be a JSON object")
+    mapping: dict[str, list[re.Pattern[str]]] = {}
+    for group, patterns in raw.items():
+        if not isinstance(group, str) or not isinstance(patterns, list) or not patterns:
+            raise ValueError(
+                "each group mapping must contain a non-empty list of regular expressions"
+            )
+        mapping[group] = [re.compile(str(pattern)) for pattern in patterns]
+    return mapping
+
+
+def _plan(
+    access_points: list[dict[str, Any]],
+    mapping: dict[str, list[re.Pattern[str]]],
+) -> list[PlannedHost]:
+    """Validate every AP and return an all-or-nothing synchronization plan."""
+
+    planned: list[PlannedHost] = []
+    errors: list[str] = []
+    folder_sources: dict[str, str] = {}
+    host_names: dict[str, str] = {}
+    for ap in access_points:
+        group = str(ap.get("group", "")).strip()
+        site = str(ap.get("site", "")).strip()
+        host_name = str(ap.get("host_name", "")).strip()
+        if not host_name:
+            errors.append("AP record has an empty host name")
+            continue
+        host_key = host_name.casefold()
+        if host_key in host_names:
+            errors.append(
+                f"{host_name}: host name collides with {host_names[host_key]!r}"
+            )
+            continue
+        host_names[host_key] = host_name
+        patterns = mapping.get(group)
+        if not patterns:
+            errors.append(f"{host_name}: group {group!r} is not present in the mapping")
+            continue
+        if not any(pattern.fullmatch(site) for pattern in patterns):
+            errors.append(f"{host_name}: site {site!r} is not valid for group {group!r}")
+            continue
+        group_id = _slug(group, "unassigned")
+        group_key = group_id.casefold()
+        previous_group = folder_sources.get(group_key)
+        if previous_group is not None and previous_group != group:
+            errors.append(
+                f"{host_name}: group {group!r} normalizes to folder ID {group_id!r}, "
+                f"already used by {previous_group!r}"
+            )
+            continue
+        folder_sources[group_key] = group
+        planned.append(
+            PlannedHost(
+                host_name=host_name,
+                group_title=group,
+                group_id=group_id,
+                folder_id=_folder_id(group_id, "accesspoint"),
+                folder_path=_folder_path(group_id, "accesspoint"),
+                site=site,
+                serial=str(ap.get("serial", "")),
+                mac=str(ap.get("mac", "")),
+            )
+        )
+    if errors:
+        raise ValueError(
+            "synchronization plan validation failed:\n- " + "\n- ".join(errors)
+        )
+    return planned
+
+
+def _read_secret(path: Path) -> str:
+    """Read a non-empty automation secret from a protected regular file."""
+
+    info = path.stat()
+    if not stat.S_ISREG(info.st_mode):
+        raise PermissionError(f"{path} is not a regular file")
+    if os.name != "nt" and stat.S_IMODE(info.st_mode) & 0o077:
+        raise PermissionError(
+            f"{path} must not be accessible by group or others; use chmod 0600"
+        )
+    secret = path.read_text(encoding="utf-8").strip()
+    if not secret:
+        raise ValueError(f"{path} is empty")
+    return secret
+
+
+class CheckmkApi:
+    """Minimal Checkmk 2.5 REST v1 client with bounded, non-redirecting calls."""
+
+    def __init__(
+        self,
+        base_url: str,
+        username: str,
+        secret: str,
+        ca_file: Path | None,
+        timeout: int,
+    ) -> None:
+        parsed = urlparse(base_url)
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError(
+                "API URL must not contain user information, a query string, or a fragment"
+            )
+        if not parsed.hostname:
+            raise ValueError("API URL must contain a host name")
+        is_loopback = parsed.hostname.lower() in {"localhost", "127.0.0.1", "::1"}
+        if parsed.scheme != "https" and not (parsed.scheme == "http" and is_loopback):
+            raise ValueError("API URL must use HTTPS unless it targets a loopback address")
+        normalized_path = parsed.path.rstrip("/")
+        if not normalized_path.endswith(API_PATH):
+            raise ValueError(
+                f"Checkmk 2.5 API URL must end with {API_PATH}; got {parsed.path!r}"
+            )
+        if ca_file is not None and not ca_file.is_file():
+            raise ValueError(
+                f"CA bundle does not exist or is not a regular file: {ca_file}"
+            )
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.session = requests.Session()
+        self.session.trust_env = False
+        self.session.headers.update(
+            {
+                "Authorization": f"Bearer {username} {secret}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "User-Agent": "checkmk-aruba-central-host-sync/1.0",
+            }
+        )
+        self.verify: bool | str = str(ca_file) if ca_file else True
+
+    def _request(self, method: str, path: str, **kwargs: Any) -> requests.Response:
+        """Send one authenticated request and reject redirects."""
+
+        response = self.session.request(
+            method,
+            self.base_url + path,
+            timeout=self.timeout,
+            verify=self.verify,
+            allow_redirects=False,
+            **kwargs,
+        )
+        if 300 <= response.status_code < 400:
+            raise RuntimeError(
+                "authenticated REST API redirects are refused; "
+                "use the canonical HTTPS API URL"
+            )
+        return response
+
+    @staticmethod
+    def _already_exists(response: requests.Response) -> bool:
+        """Return true only for explicit idempotent duplicate-object errors."""
+
+        if response.status_code not in {400, 409, 422}:
+            return False
+        details = [response.text]
+        try:
+            payload = response.json()
+        except (TypeError, ValueError):
+            payload = None
+        if isinstance(payload, dict):
+            details.extend(
+                value
+                for key in ("title", "detail", "message")
+                if isinstance((value := payload.get(key)), str)
+            )
+        return any(
+            re.search(r"\balready\s+exists\b", detail, re.IGNORECASE)
+            for detail in details
+        )
+
+    def _verify_existing_folder(self, folder_id: str, title: str) -> None:
+        """Require an occupied folder ID to match the planned title, path, and attributes."""
+
+        response = self._request(
+            "GET",
+            f"/objects/folder_config/{quote(folder_id, safe='~')}",
+        )
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"existing folder {folder_id!r} could not be verified "
+                f"({response.status_code}): {response.text[:500]}"
+            )
+        try:
+            payload = response.json()
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"existing folder {folder_id!r} returned invalid JSON"
+            ) from exc
+        if not isinstance(payload, dict) or payload.get("id") != folder_id:
+            raise RuntimeError(
+                f"existing folder {folder_id!r} returned an unexpected object identity"
+            )
+        extensions = payload.get("extensions")
+        if not isinstance(extensions, dict):
+            raise RuntimeError(
+                f"existing folder {folder_id!r} has no configuration extensions"
+            )
+        attributes = extensions.get("attributes")
+        if not isinstance(attributes, dict):
+            raise RuntimeError(
+                f"existing folder {folder_id!r} has no explicit attributes"
+            )
+        explicit_attributes = {
+            key: value for key, value in attributes.items() if key != "meta_data"
+        }
+        expected_path = _folder_path_from_id(folder_id)
+        if (
+            payload.get("title") != title
+            or extensions.get("path") != expected_path
+            or explicit_attributes
+        ):
+            raise RuntimeError(
+                f"existing folder {folder_id!r} does not match planned configuration; "
+                f"title={payload.get('title')!r}, path={extensions.get('path')!r}, "
+                f"attributes={explicit_attributes!r}"
+            )
+
+    def create_folder(self, name: str, title: str, parent_id: str) -> str:
+        """Create one folder or verify an exact existing equivalent."""
+
+        response = self._request(
+            "POST",
+            "/domain-types/folder_config/collections/all",
+            json={
+                "name": name,
+                "title": title,
+                "parent": parent_id,
+                "attributes": {},
+            },
+        )
+        if response.status_code in {200, 201}:
+            return "created"
+        if self._already_exists(response):
+            folder_id = _child_folder_id(parent_id, name)
+            self._verify_existing_folder(folder_id, title)
+            return "exists-verified"
+        raise RuntimeError(
+            f"folder creation failed ({response.status_code}): {response.text[:500]}"
+        )
+
+    def _verify_existing_host(self, host: PlannedHost) -> None:
+        """Require an occupied host name to match the complete planned AP configuration."""
+
+        response = self._request(
+            "GET",
+            f"/objects/host_config/{quote(host.host_name, safe='')}",
+        )
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"existing host {host.host_name!r} could not be verified "
+                f"({response.status_code}): {response.text[:500]}"
+            )
+        try:
+            payload = response.json()
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"existing host {host.host_name!r} returned invalid JSON"
+            ) from exc
+        if not isinstance(payload, dict) or payload.get("id") != host.host_name:
+            raise RuntimeError(
+                f"existing host {host.host_name!r} returned an unexpected object identity"
+            )
+        extensions = payload.get("extensions")
+        if not isinstance(extensions, dict):
+            raise RuntimeError(
+                f"existing host {host.host_name!r} has no configuration extensions"
+            )
+        folder = str(extensions.get("folder", ""))
+        attributes = extensions.get("attributes")
+        if not isinstance(attributes, dict):
+            raise RuntimeError(
+                f"existing host {host.host_name!r} has no explicit attributes"
+            )
+        explicit_attributes = {
+            key: value for key, value in attributes.items() if key != "meta_data"
+        }
+        folder_matches = folder in {host.folder_id, host.folder_path}
+        attributes_match = explicit_attributes == DEFAULT_ATTRIBUTES
+        if not folder_matches or not attributes_match:
+            raise RuntimeError(
+                f"existing host {host.host_name!r} does not match planned configuration; "
+                f"folder={folder!r}, attributes={explicit_attributes!r}"
+            )
+
+    def create_host(self, host: PlannedHost) -> str:
+        """Create one piggyback-only host or verify an exact existing equivalent."""
+
+        response = self._request(
+            "POST",
+            "/domain-types/host_config/collections/all",
+            params={"bake_agent": "false"},
+            json={
+                "host_name": host.host_name,
+                "folder": host.folder_id,
+                "attributes": DEFAULT_ATTRIBUTES,
+            },
+        )
+        if response.status_code in {200, 201}:
+            return "created"
+        if self._already_exists(response):
+            self._verify_existing_host(host)
+            return "exists-verified"
+        raise RuntimeError(
+            f"host {host.host_name!r} creation failed "
+            f"({response.status_code}): {response.text[:500]}"
+        )
+
+    def _pending_changes_etag(self) -> tuple[bool, str | None]:
+        """Return whether changes are pending and their required concurrency ETag."""
+
+        response = self._request(
+            "GET",
+            "/domain-types/activation_run/collections/pending_changes",
+        )
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"pending-changes query failed ({response.status_code}): "
+                f"{response.text[:500]}"
+            )
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise RuntimeError("pending-changes response is not valid JSON") from exc
+        changes = body.get("value") if isinstance(body, dict) else None
+        if not isinstance(changes, list):
+            raise RuntimeError("pending-changes response has no value list")
+        etag = response.headers.get("ETag")
+        if changes and not etag:
+            raise RuntimeError("pending-changes response has no ETag")
+        return bool(changes), etag
+
+    def activate(self, site: str) -> str:
+        """Activate pending changes and wait for the run to finish successfully."""
+
+        has_changes, etag = self._pending_changes_etag()
+        if not has_changes:
+            return "no-pending-changes"
+        assert etag is not None
+        response = self._request(
+            "POST",
+            "/domain-types/activation_run/actions/activate-changes/invoke",
+            headers={"If-Match": etag},
+            json={
+                "redirect": False,
+                "sites": [site],
+                "force_foreign_changes": False,
+            },
+        )
+        if response.status_code not in {200, 201, 202}:
+            raise RuntimeError(
+                f"activation failed ({response.status_code}): {response.text[:500]}"
+            )
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise RuntimeError("activation response is not valid JSON") from exc
+        activation_id = body.get("id") if isinstance(body, dict) else None
+        if not isinstance(activation_id, str) or not activation_id:
+            raise RuntimeError("activation response has no activation ID")
+        wait = self._request(
+            "GET",
+            f"/objects/activation_run/{quote(activation_id, safe='')}/actions/wait-for-completion/invoke",
+        )
+        if wait.status_code not in {200, 204}:
+            raise RuntimeError(
+                f"activation wait failed ({wait.status_code}): {wait.text[:500]}"
+            )
+        return "completed"
+
+
+def _print_plan(planned: list[PlannedHost]) -> None:
+    """Render a reviewable hierarchy without exposing credentials."""
+
+    groups = sorted({(host.group_id, host.group_title) for host in planned})
+    for group_id, title in groups:
+        print(f"FOLDER /{group_id} title={title!r}")
+        print(f"FOLDER /{group_id}/accesspoint title='Accesspoint'")
+    for host in planned:
+        print(
+            f"HOST   {host.host_name} -> {host.folder_path} "
+            f"group={host.group_title!r} site={host.site!r} "
+            f"serial={host.serial!r} mac={host.mac!r}"
+        )
+    print(f"SUMMARY {len(groups)} groups, {len(planned)} hosts")
+
+
+def _parser() -> argparse.ArgumentParser:
+    """Build the command-line contract."""
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument(
+        "--source-host", help="Checkmk collector host queried with 'cmk -d'"
+    )
+    source.add_argument(
+        "--agent-output-file",
+        type=Path,
+        help="Previously captured Checkmk agent output",
+    )
+    parser.add_argument(
+        "--mapping",
+        type=Path,
+        required=True,
+        help="Group-to-site regular-expression mapping JSON",
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Create folders and hosts; default is dry-run",
+    )
+    parser.add_argument(
+        "--api-url",
+        help=(
+            "Canonical Checkmk 2.5 REST v1 base URL, for example "
+            "https://cmk/site/check_mk/api/v1"
+        ),
+    )
+    parser.add_argument("--username", help="Checkmk automation user")
+    parser.add_argument(
+        "--secret-file",
+        type=Path,
+        help="0600 file containing the automation secret",
+    )
+    parser.add_argument(
+        "--ca-file",
+        type=Path,
+        help="Optional private CA bundle; system trust is used otherwise",
+    )
+    parser.add_argument(
+        "--activate-site",
+        help="Optionally activate changes for this Checkmk site after synchronization",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=30,
+        help="Command and HTTP timeout in seconds",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Execute a dry-run or an explicit idempotent synchronization."""
+
+    args = _parser().parse_args(argv)
+    try:
+        output = _load_agent_output(
+            args.source_host,
+            args.agent_output_file,
+            max(1, args.timeout),
+        )
+        access_points = _extract_access_points(output)
+        if not access_points:
+            raise ValueError("no Aruba Central AP piggyback sections found")
+        planned = _plan(access_points, _load_mapping(args.mapping))
+        _print_plan(planned)
+        if not args.apply:
+            print("DRY-RUN no Checkmk configuration was changed")
+            return 0
+        if not args.api_url or not args.username or not args.secret_file:
+            raise ValueError(
+                "--apply requires --api-url, --username, and --secret-file"
+            )
+        api = CheckmkApi(
+            args.api_url,
+            args.username,
+            _read_secret(args.secret_file),
+            args.ca_file,
+            max(1, args.timeout),
+        )
+        for group_id, title in sorted(
+            {(host.group_id, host.group_title) for host in planned}
+        ):
+            print(
+                f"APPLY folder /{group_id}: "
+                f"{api.create_folder(group_id, title, _folder_id())}"
+            )
+            print(
+                f"APPLY folder /{group_id}/accesspoint: "
+                f"{api.create_folder('accesspoint', 'Accesspoint', _folder_id(group_id))}"
+            )
+        for host in planned:
+            print(f"APPLY host {host.host_name}: {api.create_host(host)}")
+        if args.activate_site:
+            print(f"APPLY activation: {api.activate(args.activate_site)}")
+        return 0
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        subprocess.SubprocessError,
+        requests.RequestException,
+    ) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

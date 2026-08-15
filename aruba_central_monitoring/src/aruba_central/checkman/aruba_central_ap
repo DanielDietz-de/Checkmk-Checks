@@ -1,0 +1,22 @@
+title: Aruba Central Access Point
+agents: aruba_central_aps
+catalog: hw/network/wlan
+license: GPLv2
+distribution: checkmk
+summary: Monitors one Aruba Central access point on its piggyback host.
+description:
+ The service evaluates access-point status, sleep status, connected clients,
+ CPU utilization, free memory, uptime, firmware, SSID count, model, IP address,
+ serial number, MAC address, group, and site.
+
+ Status values other than {Up} are {CRIT} by default. Sleep status is {WARN} by
+ default. CPU and free-memory thresholds are configurable, as are optional
+ client-count thresholds and a firmware compliance regular expression.
+
+ The piggyback host name is the Aruba Central AP name unless the name is empty
+ or equals the MAC address after separator normalization. In that case the
+ stable fallback is {AP_<serial>}; a compact MAC is used only when no serial is
+ available.
+discovery:
+ Exactly one service is discovered on each AP piggyback host containing a valid
+ {kind=ap} document in the {aruba_central_aps} section.
