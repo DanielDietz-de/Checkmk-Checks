@@ -26,9 +26,11 @@ SHELL_FUNCTION_PATTERN = re.compile(
     r"\s*(?:\(\s*\))?(?=\s|\{|$)"
 )
 PHP_FUNCTION_PATTERN = re.compile(
-    r"^(?P<indent>\s*)(?:(?:public|protected|private|static|final|abstract)\s+)*"
-    r"function\s+&?\s*(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(",
-    re.I,
+    r"^(?P<indent>[ \t]*)"
+    r"(?:(?:public|protected|private|static|final|abstract)[ \t\r\n]+)*"
+    r"function[ \t\r\n]+&?[ \t\r\n]*"
+    r"(?P<name>[A-Za-z_][A-Za-z0-9_]*)[ \t\r\n]*\(",
+    re.I | re.M,
 )
 
 
@@ -200,7 +202,7 @@ def preceding_comment(lines: list[str], index: int) -> bool:
 
 
 def check_pattern_file(path: Path, pattern: re.Pattern[str]) -> list[str]:
-    """Return findings for undocumented non-Python function declarations."""
+    """Return findings for undocumented line-oriented function declarations."""
     findings: list[str] = []
     lines = path.read_text(encoding="utf-8").splitlines()
     for index, line in enumerate(lines):
@@ -208,6 +210,20 @@ def check_pattern_file(path: Path, pattern: re.Pattern[str]) -> list[str]:
         if match and not preceding_comment(lines, index):
             findings.append(
                 f"{path}:{index + 1}: {match.group('name')} has no adjacent purpose comment"
+            )
+    return findings
+
+
+def check_php(path: Path) -> list[str]:
+    """Return documentation findings for named PHP functions across line breaks."""
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    findings: list[str] = []
+    for match in PHP_FUNCTION_PATTERN.finditer(text):
+        line_index = text.count("\n", 0, match.start())
+        if not preceding_comment(lines, line_index):
+            findings.append(
+                f"{path}:{line_index + 1}: {match.group('name')} has no adjacent purpose comment"
             )
     return findings
 
@@ -224,7 +240,7 @@ def collect_findings(root: Path) -> list[str]:
         elif kind == "shell":
             findings.extend(check_pattern_file(path, SHELL_FUNCTION_PATTERN))
         elif kind == "php":
-            findings.extend(check_pattern_file(path, PHP_FUNCTION_PATTERN))
+            findings.extend(check_php(path))
     return findings
 
 
