@@ -88,6 +88,40 @@ def test_shell_normalizer_ignores_heredoc_function_shape(tmp_path, monkeypatch) 
     assert counts["shell"] == 0
 
 
+def test_shell_arithmetic_shift_does_not_start_heredoc(tmp_path, monkeypatch) -> None:
+    """Verify arithmetic left shifts do not hide later shell declarations."""
+    module = _load_policy_tool()
+    findings = _findings(
+        module,
+        tmp_path,
+        monkeypatch,
+        "helper.sh",
+        "#!/bin/bash\n"
+        "value=$((1 << 2))\n"
+        "undocumented_helper() { :; }\n",
+    )
+    assert any(
+        "undocumented_helper has no adjacent purpose comment" in item
+        for item in findings
+    )
+
+
+def test_shell_normalizer_survives_arithmetic_shift(tmp_path, monkeypatch) -> None:
+    """Verify normalization still repairs functions after arithmetic shifts."""
+    module = _load_normalizer_tool()
+    source = tmp_path / "helper.sh"
+    source.write_text(
+        "#!/bin/bash\nvalue=$((1 << 2))\nundocumented_helper() { :; }\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module.policy, "tracked_files", lambda _root: [source])
+    counts = module.normalize_repository(tmp_path)
+    assert counts["shell"] == 1
+    assert "# Handle undocumented helper for this source file's runtime workflow." in source.read_text(
+        encoding="utf-8"
+    )
+
+
 def test_powershell_here_string_function_shape_is_ignored(tmp_path, monkeypatch) -> None:
     """Verify PowerShell here-strings cannot create fake function declarations."""
     module = _load_policy_tool()
@@ -97,6 +131,24 @@ def test_powershell_here_string_function_shape_is_ignored(tmp_path, monkeypatch)
         monkeypatch,
         "helper.ps1",
         '$example = @"\n'
+        "function Generated-Helper { }\n"
+        '"@\n'
+        "# Run the actual helper task safely.\n"
+        "function Invoke-RealHelper { }\n",
+    )
+    assert findings == []
+
+
+def test_powershell_indented_here_string_marker_is_content(tmp_path, monkeypatch) -> None:
+    """Verify indented here-string markers do not terminate Windows PowerShell strings."""
+    module = _load_policy_tool()
+    findings = _findings(
+        module,
+        tmp_path,
+        monkeypatch,
+        "helper.ps1",
+        '$example = @"\n'
+        '    "@\n'
         "function Generated-Helper { }\n"
         '"@\n'
         "# Run the actual helper task safely.\n"
@@ -130,6 +182,21 @@ def test_powershell_normalizer_ignores_here_string_function_shape(
     source = tmp_path / "helper.ps1"
     source.write_text(
         '$example = @"\nfunction Generated-Helper { }\n"@\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module.policy, "tracked_files", lambda _root: [source])
+    counts = module.normalize_repository(tmp_path)
+    assert counts["powershell"] == 0
+
+
+def test_powershell_normalizer_keeps_indented_here_string_marker_literal(
+    tmp_path, monkeypatch
+) -> None:
+    """Verify normalization never edits functions after an indented fake terminator."""
+    module = _load_normalizer_tool()
+    source = tmp_path / "helper.ps1"
+    source.write_text(
+        '$example = @"\n    "@\nfunction Generated-Helper { }\n"@\n',
         encoding="utf-8",
     )
     monkeypatch.setattr(module.policy, "tracked_files", lambda _root: [source])
