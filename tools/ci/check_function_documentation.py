@@ -246,6 +246,14 @@ def _parse_shell_heredoc_operator(
     return delimiter, strip_tabs, cursor
 
 
+def _shell_hash_starts_comment(line: str, offset: int) -> bool:
+    """Return whether an unquoted hash begins a shell comment at a word boundary."""
+    if offset == 0:
+        return True
+    previous = line[offset - 1]
+    return previous.isspace() or previous in ";&|()<>"
+
+
 def _scan_shell(
     text: str,
 ) -> tuple[list[LineFunctionDeclaration], dict[int, str]]:
@@ -279,6 +287,12 @@ def _scan_shell(
                     quote = None
                 cursor += 1
                 continue
+            if char == "\\":
+                chars[cursor] = " "
+                if cursor + 1 < len(line):
+                    chars[cursor + 1] = " "
+                cursor += 2
+                continue
             if char in {"'", '"', "`"}:
                 quote = char
                 chars[cursor] = " "
@@ -296,7 +310,11 @@ def _scan_shell(
                 arithmetic_depth -= 1
                 cursor += 2
                 continue
-            if char == "#":
+            if (
+                arithmetic_depth == 0
+                and char == "#"
+                and _shell_hash_starts_comment(line, cursor)
+            ):
                 if cursor == first_nonspace:
                     comments[line_index] = line[cursor + 1 :].strip().rstrip("#").strip()
                 for index in range(cursor, len(chars)):
