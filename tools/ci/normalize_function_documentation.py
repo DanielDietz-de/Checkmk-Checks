@@ -200,16 +200,20 @@ def normalize_php(path: Path) -> int:
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines(keepends=True)
     insertions: list[tuple[int, str]] = []
-    for match in policy.PHP_FUNCTION_PATTERN.finditer(text):
-        index = text.count("\n", 0, match.start())
+    for declaration in policy.php_function_declarations(text):
+        index = declaration.line_index
         if policy.preceding_comment(lines, index):
             continue
-        indent = match.group("indent") or ""
+        line_start = text.rfind("\n", 0, declaration.offset) + 1
+        if text[line_start : declaration.offset].strip():
+            raise RuntimeError(
+                f"cannot safely normalize mid-line PHP declaration at {path}:{index + 1}"
+            )
         newline = "\r\n" if lines[index].endswith("\r\n") else "\n"
         insertions.append(
             (
                 index,
-                f"{indent}// {description(match.group('name'), 'function')}{newline}",
+                f"{declaration.indent}// {description(declaration.name, 'function')}{newline}",
             )
         )
     for index, content in reversed(insertions):
