@@ -215,6 +215,97 @@ def test_shell_normalizer_respects_compound_heredoc_delimiter(tmp_path, monkeypa
     assert counts["shell"] == 0
 
 
+
+def test_shell_here_string_does_not_start_heredoc(tmp_path, monkeypatch) -> None:
+    """Verify the three-character here-string operator cannot hide later functions."""
+    module = _load_policy_tool()
+    findings = _findings(
+        module,
+        tmp_path,
+        monkeypatch,
+        "helper.sh",
+        "#!/bin/bash\ncat <<<value\nundocumented_helper() { :; }\n",
+    )
+    assert any("undocumented_helper has no adjacent purpose comment" in item for item in findings)
+
+
+def test_shell_normalizer_survives_here_string(tmp_path, monkeypatch) -> None:
+    """Verify normalization still sees functions after a shell here-string."""
+    module = _load_normalizer_tool()
+    source = tmp_path / "helper.sh"
+    source.write_text(
+        "#!/bin/bash\ncat <<<value\nundocumented_helper() { :; }\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(module.policy, "tracked_files", lambda _root: [source])
+    counts = module.normalize_repository(tmp_path)
+    assert counts["shell"] == 1
+
+
+def test_shell_empty_quoted_heredoc_delimiter(tmp_path, monkeypatch) -> None:
+    """Verify an empty quoted heredoc word uses a blank physical terminator line."""
+    module = _load_policy_tool()
+    findings = _findings(
+        module,
+        tmp_path,
+        monkeypatch,
+        "helper.sh",
+        "#!/bin/bash\n"
+        "cat <<''\n"
+        "function generated_helper() {\n"
+        "\n"
+        "# Run the actual helper task safely.\n"
+        "real_helper() { :; }\n",
+    )
+    assert findings == []
+
+
+def test_shell_normalizer_respects_empty_quoted_heredoc_delimiter(
+    tmp_path, monkeypatch
+) -> None:
+    """Verify normalization ignores payload under an empty quoted heredoc word."""
+    module = _load_normalizer_tool()
+    source = tmp_path / "helper.sh"
+    source.write_text(
+        "#!/bin/bash\ncat <<''\nfunction generated_helper() {\n\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(module.policy, "tracked_files", lambda _root: [source])
+    counts = module.normalize_repository(tmp_path)
+    assert counts["shell"] == 0
+
+
+def test_shell_continued_heredoc_delimiter_word(tmp_path, monkeypatch) -> None:
+    """Verify backslash-newline continuation joins one heredoc delimiter word."""
+    module = _load_policy_tool()
+    findings = _findings(
+        module,
+        tmp_path,
+        monkeypatch,
+        "helper.sh",
+        "#!/bin/bash\n"
+        "cat <<E\\\n"
+        "OF\n"
+        "function generated_helper() {\n"
+        "EOF\n"
+        "# Run the actual helper task safely.\n"
+        "real_helper() { :; }\n",
+    )
+    assert findings == []
+
+
+def test_shell_normalizer_respects_continued_heredoc_delimiter(
+    tmp_path, monkeypatch
+) -> None:
+    """Verify normalization ignores payload under a continued heredoc word."""
+    module = _load_normalizer_tool()
+    source = tmp_path / "helper.sh"
+    source.write_text(
+        "#!/bin/bash\ncat <<E\\\nOF\nfunction generated_helper() {\nEOF\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module.policy, "tracked_files", lambda _root: [source])
+    counts = module.normalize_repository(tmp_path)
+    assert counts["shell"] == 0
+
 def test_powershell_here_string_function_shape_is_ignored(tmp_path, monkeypatch) -> None:
     """Verify PowerShell here-strings cannot create fake function declarations."""
     module = _load_policy_tool()

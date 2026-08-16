@@ -211,59 +211,81 @@ def _purpose_from_line_comments(
     return meaningful_purpose_comment(" ".join(reversed(parts)))
 
 
-def _parse_shell_delimiter_word(line: str, cursor: int) -> tuple[str, int] | None:
-    """Return a quote-removed shell word used as a heredoc delimiter."""
+def _parse_shell_delimiter_word(
+    lines: list[str], line_index: int, cursor: int
+) -> tuple[str, int, int] | None:
+    """Return one quote-removed heredoc delimiter word across continuations."""
     parts: list[str] = []
     quote: str | None = None
-    while cursor < len(line):
-        char = line[cursor]
-        if quote == "'":
-            if char == "'":
-                quote = None
-            else:
-                parts.append(char)
-            cursor += 1
-            continue
-        if quote == '"':
-            if char == '"':
-                quote = None
+    word_present = False
+    while line_index < len(lines):
+        line = lines[line_index]
+        while cursor < len(line):
+            char = line[cursor]
+            if quote == "'":
+                if char == "'":
+                    quote = None
+                else:
+                    parts.append(char)
                 cursor += 1
                 continue
-            if char == "\\" and cursor + 1 < len(line):
-                following = line[cursor + 1]
-                if following in {'$', '`', '"', "\\"}:
-                    parts.append(following)
+            if quote == '"':
+                if char == '"':
+                    quote = None
+                    cursor += 1
+                    continue
+                if char == "\\":
+                    if cursor + 1 < len(line):
+                        following = line[cursor + 1]
+                        if following in {'$', '`', '"', "\\"}:
+                            parts.append(following)
+                            cursor += 2
+                            continue
+                        parts.append("\\")
+                        cursor += 1
+                        continue
+                    line_index += 1
+                    cursor = 0
+                    break
+                parts.append(char)
+                cursor += 1
+                continue
+            if char in " \t;&|()<>\r\n":
+                if not word_present:
+                    return None
+                return "".join(parts), line_index, cursor
+            if char == "\\":
+                word_present = True
+                if cursor + 1 < len(line):
+                    parts.append(line[cursor + 1])
                     cursor += 2
                     continue
-                parts.append("\\")
+                line_index += 1
+                cursor = 0
+                break
+            if char in {"'", '"'}:
+                word_present = True
+                quote = char
                 cursor += 1
                 continue
+            word_present = True
             parts.append(char)
             cursor += 1
-            continue
-        if char in " \t;&|()<>\r\n":
-            break
-        if char == "\\":
-            if cursor + 1 >= len(line):
+        else:
+            if quote is not None or not word_present:
                 return None
-            parts.append(line[cursor + 1])
-            cursor += 2
-            continue
-        if char in {"'", '"'}:
-            quote = char
-            cursor += 1
-            continue
-        parts.append(char)
-        cursor += 1
-    if quote is not None or not parts:
-        return None
-    return "".join(parts), cursor
+            return "".join(parts), line_index, cursor
+        # A trailing unquoted or double-quoted backslash removes the physical newline;
+        # parsing resumes at the beginning of the next line with the same word state.
+        continue
+    return None
 
 
 def _parse_shell_heredoc_operator(
-    line: str, offset: int
-) -> tuple[str, bool, int] | None:
+    lines: list[str], line_index: int, offset: int
+) -> tuple[str, bool, int, int] | None:
     """Return one heredoc delimiter after shell quote removal."""
+    line = lines[line_index]
     if not line.startswith("<<", offset) or line.startswith("<<<", offset):
         return None
     cursor = offset + 2
@@ -273,11 +295,11 @@ def _parse_shell_heredoc_operator(
         cursor += 1
     while cursor < len(line) and line[cursor] in " \t":
         cursor += 1
-    parsed = _parse_shell_delimiter_word(line, cursor)
+    parsed = _parse_shell_delimiter_word(lines, line_index, cursor)
     if parsed is None:
         return None
-    delimiter, end = parsed
-    return delimiter, strip_tabs, end
+    delimiter, end_line, end_cursor = parsed
+    return delimiter, strip_tabs, end_line, end_cursor
 
 
 def _scan_shell(
@@ -290,7 +312,11 @@ def _scan_shell(
     quote: str | None = None
     arithmetic_depth = 0
     continued_word = False
-    for line_index, line in enumerate(text.splitlines()):
+    continued_heredoc_command_until = -1
+    lines = text.splitlines()
+    for line_index, line in enumerate(lines):
+        if line_index <= continued_heredoc_command_until:
+            continue
         if heredocs:
             delimiter, strip_tabs = heredocs[0]
             candidate = line.lstrip("\t") if strip_tabs else line
@@ -358,13 +384,26 @@ def _scan_shell(
                 for index in range(cursor, len(chars)):
                     chars[index] = " "
                 break
+            if arithmetic_depth == 0 and line.startswith("<<<", cursor):
+                # Here-strings are a distinct three-character redirection operator.
+                # Consume the whole operator so its final two characters cannot be
+                # reconsidered as a heredoc introducer on the next scan iteration.
+                word_started = False
+                cursor += 3
+                continue
             if arithmetic_depth == 0 and line.startswith("<<", cursor):
-                parsed = _parse_shell_heredoc_operator(line, cursor)
+                parsed = _parse_shell_heredoc_operator(lines, line_index, cursor)
                 if parsed is not None:
-                    delimiter, strip_tabs, end = parsed
+                    delimiter, strip_tabs, end_line, end_cursor = parsed
                     heredocs.append((delimiter, strip_tabs))
                     word_started = False
-                    cursor = end
+                    if end_line > line_index:
+                        continued_heredoc_command_until = max(
+                            continued_heredoc_command_until, end_line
+                        )
+                        cursor = len(line)
+                    else:
+                        cursor = end_cursor
                     continue
             if arithmetic_depth == 0 and (char.isspace() or char in ";&|()<> "):
                 word_started = False
@@ -381,7 +420,6 @@ def _scan_shell(
                     )
                 )
     return declarations, comments
-
 
 def shell_function_declarations(text: str) -> list[LineFunctionDeclaration]:
     """Return actual shell function declarations outside literal regions."""
