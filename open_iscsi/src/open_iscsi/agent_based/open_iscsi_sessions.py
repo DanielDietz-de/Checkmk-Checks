@@ -28,10 +28,12 @@ from cmk.agent_based.v2 import (
 
 
 def parse_open_iscsi_sessions(string_table: StringTable) -> StringTable:
+    """Parse open iscsi sessions into its normalized representation."""
     return string_table
 
 
 def discover_open_iscsi_sessions(section: StringTable) -> DiscoveryResult:
+    """Discover open iscsi sessions from the available input data."""
     for line in section:
         if len(line) != 9:
             continue
@@ -48,6 +50,7 @@ def discover_open_iscsi_sessions(section: StringTable) -> DiscoveryResult:
 
 
 def check_open_iscsi_sessions(item: str, section: StringTable) -> CheckResult:
+    """Evaluate open iscsi sessions and return its resulting state."""
     for line in section:
         if len(line) != 9:
             continue

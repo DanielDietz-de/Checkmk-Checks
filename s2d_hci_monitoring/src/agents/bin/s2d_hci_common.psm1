@@ -15,6 +15,7 @@ $ErrorActionPreference = 'Stop'
 $script:S2DHciProtocolVersion = 1
 $script:S2DHciMaximumHealthErrors = 20
 
+# Handle convertto s2dhciboolean for this source file's runtime workflow.
 function ConvertTo-S2DHciBoolean {
     <#
     .SYNOPSIS
@@ -35,6 +36,7 @@ function ConvertTo-S2DHciBoolean {
     throw "Configuration value '$Name' must be a Boolean."
 }
 
+# Handle convertto s2dhciboundedint for this source file's runtime workflow.
 function ConvertTo-S2DHciBoundedInt {
     <#
     .SYNOPSIS
@@ -56,6 +58,7 @@ function ConvertTo-S2DHciBoundedInt {
     return $parsed
 }
 
+# Handle get s2dhciagentroot for this source file's runtime workflow.
 function Get-S2DHciAgentRoot {
     <#
     .SYNOPSIS
@@ -69,6 +72,7 @@ function Get-S2DHciAgentRoot {
     return [System.IO.Path]::GetFullPath((Split-Path -Parent $PluginRoot))
 }
 
+# Handle get s2dhciconfig for this source file's runtime workflow.
 function Get-S2DHciConfig {
     <#
     .SYNOPSIS
@@ -122,6 +126,7 @@ function Get-S2DHciConfig {
     return [pscustomobject]$resolved
 }
 
+# Handle new s2dhciruncontext for this source file's runtime workflow.
 function New-S2DHciRunContext {
     <#
     .SYNOPSIS
@@ -161,6 +166,7 @@ function New-S2DHciRunContext {
     }
 }
 
+# Handle add s2dhcicollectorerror for this source file's runtime workflow.
 function Add-S2DHciCollectorError {
     <#
     .SYNOPSIS
@@ -182,6 +188,7 @@ function Add-S2DHciCollectorError {
     $Context.Complete = $false
 }
 
+# Handle add s2dhciprotocolfields for this source file's runtime workflow.
 function Add-S2DHciProtocolFields {
     <#
     .SYNOPSIS
@@ -200,6 +207,7 @@ function Add-S2DHciProtocolFields {
     return [pscustomobject]$ordered
 }
 
+# Handle write s2dhcijsonline for this source file's runtime workflow.
 function Write-S2DHciJsonLine {
     <#
     .SYNOPSIS
@@ -233,6 +241,7 @@ function Write-S2DHciJsonLine {
     Write-Output $line
 }
 
+# Handle write s2dhcisection for this source file's runtime workflow.
 function Write-S2DHciSection {
     <#
     .SYNOPSIS
@@ -255,6 +264,7 @@ function Write-S2DHciSection {
     process { if ($null -ne $InputObject) { Write-S2DHciJsonLine -InputObject $InputObject -Context $Context } }
 }
 
+# Handle write s2dhcisectionerror for this source file's runtime workflow.
 function Write-S2DHciSectionError {
     <#
     .SYNOPSIS
@@ -280,6 +290,7 @@ function Write-S2DHciSectionError {
     catch { }
 }
 
+# Handle convertto s2dhcihostname for this source file's runtime workflow.
 function ConvertTo-S2DHciHostName {
     <#
     .SYNOPSIS
@@ -296,6 +307,7 @@ function ConvertTo-S2DHciHostName {
     return $normalized
 }
 
+# Handle get s2dhcistablehash for this source file's runtime workflow.
 function Get-S2DHciStableHash {
     <#
     .SYNOPSIS
@@ -315,6 +327,7 @@ function Get-S2DHciStableHash {
     finally { $sha.Dispose() }
 }
 
+# Handle get s2dhciclustercontext for this source file's runtime workflow.
 function Get-S2DHciClusterContext {
     <#
     .SYNOPSIS
@@ -337,6 +350,7 @@ function Get-S2DHciClusterContext {
     return [pscustomobject]@{ ClusterName=[string]$cluster.Name; Leader=$leader; CurrentNode=$current; LogicalHost=$logicalHost; IsLeader=($Context.Role -eq 'leader') }
 }
 
+# Handle start s2dhcipiggyback for this source file's runtime workflow.
 function Start-S2DHciPiggyback {
     <#
     .SYNOPSIS
@@ -348,6 +362,7 @@ function Start-S2DHciPiggyback {
     Write-Output "<<<<$HostName>>>>"
 }
 
+# Handle stop s2dhcipiggyback for this source file's runtime workflow.
 function Stop-S2DHciPiggyback {
     <#
     .SYNOPSIS
@@ -359,6 +374,7 @@ function Stop-S2DHciPiggyback {
     Write-Output '<<<<>>>>'
 }
 
+# Handle write s2dhcicollectorhealth for this source file's runtime workflow.
 function Write-S2DHciCollectorHealth {
     <#
     .SYNOPSIS

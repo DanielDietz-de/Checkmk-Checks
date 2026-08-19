@@ -33,6 +33,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Handle resolve-s2dhcidefaultpath for this module's workflow.
 function Resolve-S2DHciDefaultPath {
     <#
     .SYNOPSIS
@@ -51,6 +52,7 @@ function Resolve-S2DHciDefaultPath {
     return $Candidate
 }
 
+# Handle get-s2dhcispoollifetimeseconds for this module's workflow.
 function Get-S2DHciSpoolLifetimeSeconds {
     <#
     .SYNOPSIS
@@ -67,6 +69,7 @@ function Get-S2DHciSpoolLifetimeSeconds {
     return [int]$lifetimeSeconds
 }
 
+# Handle assert-s2dhcispoollifetime for this module's workflow.
 function Assert-S2DHciSpoolLifetime {
     <#
     .SYNOPSIS
@@ -96,6 +99,7 @@ function Assert-S2DHciSpoolLifetime {
     return [int]$lifetimeSeconds
 }
 
+# Handle test-s2dhcipathunderroot for this module's workflow.
 function Test-S2DHciPathUnderRoot {
     <#
     .SYNOPSIS
@@ -115,6 +119,7 @@ function Test-S2DHciPathUnderRoot {
     return $fullPath.StartsWith($fullRoot, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
+# Handle get-s2dhciregisteredconfigpath for this module's workflow.
 function Get-S2DHciRegisteredConfigPath {
     <#
     .SYNOPSIS
@@ -163,6 +168,7 @@ function Get-S2DHciRegisteredConfigPath {
     return $registered
 }
 
+# Handle stop-s2dhcischeduledtaskpublisher for this module's workflow.
 function Stop-S2DHciScheduledTaskPublisher {
     <#
     .SYNOPSIS
@@ -200,6 +206,7 @@ function Stop-S2DHciScheduledTaskPublisher {
     throw "Scheduled task '$TaskName' did not stop within $TimeoutSeconds seconds; generated state was not changed."
 }
 
+# Handle read-s2dhcipreviousspoolfile for this module's workflow.
 function Read-S2DHciPreviousSpoolFile {
     <#
     .SYNOPSIS
@@ -228,6 +235,7 @@ function Read-S2DHciPreviousSpoolFile {
     return $previous
 }
 
+# Handle remove-s2dhcigeneratedfileifpresent for this module's workflow.
 function Remove-S2DHciGeneratedFileIfPresent {
     <#
     .SYNOPSIS
@@ -242,6 +250,7 @@ function Remove-S2DHciGeneratedFileIfPresent {
     if (Test-Path -LiteralPath $Path -PathType Leaf) { Remove-Item -LiteralPath $Path -Force }
 }
 
+# Handle assert-s2dhcigmsausable for this module's workflow.
 function Assert-S2DHciGmsaUsable {
     <#
     .SYNOPSIS
@@ -259,6 +268,7 @@ function Assert-S2DHciGmsaUsable {
     if (-not (Test-ADServiceAccount -Identity $sam -ErrorAction Stop)) { throw "gMSA '$Identity' is not installed or usable on this host." }
 }
 
+# Handle grant-s2dhciacl for this module's workflow.
 function Grant-S2DHciAcl {
     <#
     .SYNOPSIS
@@ -279,6 +289,7 @@ function Grant-S2DHciAcl {
     if ($LASTEXITCODE -ne 0) { throw "Failed to grant $Permission on '$Path' to '$Identity'." }
 }
 
+# Handle assert-s2dhciaclpresent for this module's workflow.
 function Assert-S2DHciAclPresent {
     <#
     .SYNOPSIS

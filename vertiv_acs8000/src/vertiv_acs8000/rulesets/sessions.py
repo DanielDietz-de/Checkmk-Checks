@@ -19,6 +19,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, Topic
 
 
 def _parameter_form_vertiv_acs8000_sessions():
+    """Handle parameter form vertiv acs8000 sessions for this module's workflow."""
     return Dictionary(
         title=Title("Vertiv ACS active sessions"),
         help_text=Help("Levels on the number of active sessions on a Vertiv Avocent ACS 8000 console server."),

@@ -18,6 +18,7 @@ from cmk.agent_based.v2 import (
 )
 
 class SidecoolerStatus():
+    """Represent sidecoolerstatus behavior and associated state."""
     device: str
     vendor: str
     sw_version: int
@@ -25,6 +26,7 @@ class SidecoolerStatus():
     operating_hours: int
 
     def __init__(self, device, vendor, sw_version, device_type, operating_hours):
+        """Initialize the instance and its required state."""
         self.device = device
         self.vendor = vendor
         self.sw_version = int(sw_version)
@@ -33,6 +35,7 @@ class SidecoolerStatus():
 
 
 def parse_sidecooler_status(string_table):
+    """Parse sidecooler status into its normalized representation."""
     if not string_table:
         return None
 
@@ -42,10 +45,12 @@ def parse_sidecooler_status(string_table):
 
 
 def discover_sidecooler_status(section):
+    """Discover sidecooler status from the available input data."""
     yield Service()
 
 
 def check_sidecooler_status(section):
+    """Evaluate sidecooler status and return its resulting state."""
     yield Metric("uptime", section.operating_hours*3600)
 
     text = f"Device: {section.device}, Vendor name: {section.vendor}, Software version: {section.sw_version}, Device type: {section.device_type}, Operating hours: {section.operating_hours}"

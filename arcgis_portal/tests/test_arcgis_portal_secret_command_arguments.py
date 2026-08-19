@@ -11,6 +11,7 @@ RULESET = PACKAGE / "src/arcgis_portal/rulesets/agent.py"
 
 
 def test_server_side_call_preserves_secret_object() -> None:
+    """Verify that server side call preserves secret object."""
     text = SERVER.read_text(encoding="utf-8")
     tree = ast.parse(text)
     assert not any(
@@ -24,6 +25,7 @@ def test_server_side_call_preserves_secret_object() -> None:
 
 
 def test_agent_resolves_password_store_reference() -> None:
+    """Verify that agent resolves password store reference."""
     text = AGENT.read_text(encoding="utf-8")
     assert "cmk.utils.password_store" in text
     assert '"--password-id"' in text
@@ -31,6 +33,7 @@ def test_agent_resolves_password_store_reference() -> None:
 
 
 def test_debug_output_excludes_bodies_and_query_secrets() -> None:
+    """Verify that debug output excludes bodies and query secrets."""
     text = AGENT.read_text(encoding="utf-8")
     tree = ast.parse(text)
     debug = next(

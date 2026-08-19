@@ -23,6 +23,7 @@ PLUGIN_DIR = Path(__file__).parents[1] / "src" / "acgateway" / "agent_based"
 
 
 class State(IntEnum):
+    """Represent state behavior and associated state."""
     OK = 0
     WARN = 1
     CRIT = 2
@@ -31,6 +32,7 @@ class State(IntEnum):
 
 @dataclass
 class Result:
+    """Represent result behavior and associated state."""
     state: State
     summary: str | None = None
     notice: str | None = None
@@ -38,33 +40,41 @@ class Result:
 
 @dataclass
 class Metric:
+    """Represent metric behavior and associated state."""
     name: str
     value: float
     boundaries: tuple[float | None, float | None] | None = None
 
 
 class Service:
+    """Represent service behavior and associated state."""
     pass
 
 
 class OIDEnd:
+    """Represent oidend behavior and associated state."""
     pass
 
 
 class GetRateError(Exception):
+    """Represent getrateerror behavior and associated state."""
     pass
 
 
 class _Definition:
+    """Represent definition behavior and associated state."""
     def __init__(self, **kwargs):
+        """Initialize the instance and its required state."""
         self.__dict__.update(kwargs)
 
 
 def _contains(*args):
+    """Handle contains for this module's workflow."""
     return args
 
 
 def _install_checkmk_stub(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Handle install checkmk stub for this module's workflow."""
     cmk = types.ModuleType("cmk")
     agent_based = types.ModuleType("cmk.agent_based")
     v2 = types.ModuleType("cmk.agent_based.v2")
@@ -91,6 +101,7 @@ def _install_checkmk_stub(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _load_plugin(monkeypatch: pytest.MonkeyPatch, name: str):
+    """Handle load plugin for this module's workflow."""
     _install_checkmk_stub(monkeypatch)
     module_name = f"test_acgateway_{name}"
     spec = importlib.util.spec_from_file_location(module_name, PLUGIN_DIR / f"{name}.py")
@@ -102,6 +113,7 @@ def _load_plugin(monkeypatch: pytest.MonkeyPatch, name: str):
 
 
 def test_call_capacity_parses_current_and_retained_peaks(monkeypatch):
+    """Verify that call capacity parses current and retained peaks."""
     plugin = _load_plugin(monkeypatch, "call_capacity")
 
     section = plugin.parse_acgateway_call_capacity(
@@ -126,6 +138,7 @@ def test_call_capacity_parses_current_and_retained_peaks(monkeypatch):
 
 
 def test_call_capacity_does_not_treat_null_as_zero(monkeypatch):
+    """Verify that call capacity does not treat null as zero."""
     plugin = _load_plugin(monkeypatch, "call_capacity")
     assert plugin.parse_acgateway_call_capacity(
         [[["null", "null", "null"]], [["110", "null", "null", "null"]]]
@@ -133,6 +146,7 @@ def test_call_capacity_does_not_treat_null_as_zero(monkeypatch):
 
 
 def test_license_headroom_uses_the_more_constrained_license(monkeypatch):
+    """Verify that license headroom uses the more constrained license."""
     plugin = _load_plugin(monkeypatch, "license")
 
     section = plugin.parse_acgateway_license(
@@ -153,6 +167,7 @@ def test_license_headroom_uses_the_more_constrained_license(monkeypatch):
 
 
 def test_ha_parses_fractional_percent_units_and_module_states(monkeypatch):
+    """Verify that ha parses fractional percent units and module states."""
     plugin = _load_plugin(monkeypatch, "ha")
 
     section = plugin.parse_acgateway_ha(
@@ -174,6 +189,7 @@ def test_ha_parses_fractional_percent_units_and_module_states(monkeypatch):
 
 
 def test_ha_alarm_filter_finds_mismatch_and_sync_faults(monkeypatch):
+    """Verify that ha alarm filter finds mismatch and sync faults."""
     plugin = _load_plugin(monkeypatch, "ha")
     alarms = {
         "alarms": [
@@ -190,6 +206,7 @@ def test_ha_alarm_filter_finds_mismatch_and_sync_faults(monkeypatch):
 
 
 def test_tls_parses_current_counters_and_25_hour_peaks(monkeypatch):
+    """Verify that tls parses current counters and 25 hour peaks."""
     plugin = _load_plugin(monkeypatch, "tls")
 
     section = plugin.parse_acgateway_tls(
@@ -213,6 +230,7 @@ def test_tls_parses_current_counters_and_25_hour_peaks(monkeypatch):
 
 
 def test_tls_alarm_filter_finds_certificate_and_socket_limit_alarms(monkeypatch):
+    """Verify that tls alarm filter finds certificate and socket limit alarms."""
     plugin = _load_plugin(monkeypatch, "tls")
     alarms = {
         "alarms": [

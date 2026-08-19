@@ -17,9 +17,11 @@ from cmk.agent_based.v2 import (
 )
 
 def _item_acgateway_ipgroup(line):
+    """Handle item acgateway ipgroup for this module's workflow."""
     return "%s %s" % (line[0], line[4])
 
 def parse_acgateway_ipgroup(string_table):
+    """Parse acgateway ipgroup into its normalized representation."""
     rowStatus = {
         '1': 'active',
         '2': 'notInService',
@@ -60,10 +62,12 @@ snmp_section_acgateway_ipgroup = SNMPSection(
 )
 
 def discover_acgateway_ipgroup(section):
+    """Discover acgateway ipgroup from the available input data."""
     for item, data in section.items():
         yield Service(item=item, parameters={'ipgroupstatus': data.get('ipgroupstatus')})
 
 def check_acgateway_ipgroup(item, params, section):
+    """Evaluate acgateway ipgroup and return its resulting state."""
     if item in section:
         data = section[item]
         yield Result(state=State.OK,

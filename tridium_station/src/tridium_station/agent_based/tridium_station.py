@@ -29,15 +29,18 @@ _TRIDIUM_INDICES = [
 
 
 def parse_tridium(string_table: StringTable) -> StringTable:
+    """Parse tridium into its normalized representation."""
     return string_table
 
 
 def discover_tridium(section: StringTable) -> DiscoveryResult:
+    """Discover tridium from the available input data."""
     for line in section:
         yield Service(item=line[0], parameters={"current": line[1]})
 
 
 def check_tridium(item: str, params: dict, section: StringTable) -> CheckResult:
+    """Evaluate tridium and return its resulting state."""
     for sensor, value in section:
         if sensor != item:
             continue

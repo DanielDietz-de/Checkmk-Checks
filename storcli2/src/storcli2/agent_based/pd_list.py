@@ -25,6 +25,7 @@ agent_section_storcli2_pd_list = AgentSection(
 
 
 def reparse_section(data):
+    """Handle reparse section for this module's workflow."""
     ret = {}
 
     for key, value in data.items():
@@ -41,12 +42,14 @@ def reparse_section(data):
         return data
 
 def discover_storcli2_pd_list(section):
+    """Discover storcli2 pd list from the available input data."""
     data = reparse_section(section)
 
     for controller_slot in data.keys():
         yield Service(item=controller_slot)
 
 def check_storcli2_pd_list(item, section):
+    """Evaluate storcli2 pd list and return its resulting state."""
     map_state = {
         "UConf": "Unconfigured",
         "UConfUnsp": "Unconfigured Unsupported",

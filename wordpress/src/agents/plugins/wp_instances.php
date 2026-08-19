@@ -13,6 +13,7 @@ const DEFAULT_SEARCH_STRING = 'deploy/current';
 const MAX_SCAN_ENTRIES = 100000;
 const API_TIMEOUT_SECONDS = 10;
 
+// Handle config path for this module's workflow.
 function config_path(): string
 {
     $configDir = getenv('MK_CONFDIR');
@@ -22,6 +23,7 @@ function config_path(): string
     return rtrim($configDir, '/') . '/wp_instances.cfg';
 }
 
+// Load config from its configured source.
 function load_config(): array
 {
     $config = [
@@ -65,6 +67,7 @@ function load_config(): array
     return $config;
 }
 
+// Handle find wordpress roots for this module's workflow.
 function find_wordpress_roots(string $baseDir, string $searchString): array
 {
     $realBase = realpath($baseDir);
@@ -123,6 +126,7 @@ function find_wordpress_roots(string $baseDir, string $searchString): array
     return $result;
 }
 
+// Read installed version from its configured source.
 function read_installed_version(string $wordpressRoot): string
 {
     $versionFile = $wordpressRoot . '/wp-includes/version.php';
@@ -141,6 +145,7 @@ function read_installed_version(string $wordpressRoot): string
     return trim($matches[1]);
 }
 
+// Fetch url from its configured source.
 function fetch_url(string $url): string
 {
     if (function_exists('curl_init')) {
@@ -191,6 +196,7 @@ function fetch_url(string $url): string
     return $body;
 }
 
+// Handle latest core version for this module's workflow.
 function latest_core_version(string $installedVersion, array &$cache): string
 {
     if (isset($cache[$installedVersion])) {
@@ -218,6 +224,7 @@ function latest_core_version(string $installedVersion, array &$cache): string
     throw new RuntimeException('WordPress version API returned no current version');
 }
 
+// Handle core status for this module's workflow.
 function core_status(string $installedVersion, string $latestVersion): int
 {
     if (version_compare($installedVersion, $latestVersion, '>=')) {
@@ -232,6 +239,7 @@ function core_status(string $installedVersion, string $latestVersion): int
     return 1;
 }
 
+// Handle instance name for this module's workflow.
 function instance_name(string $root, string $baseDir, array &$seen): string
 {
     $realBase = realpath($baseDir);
@@ -253,6 +261,7 @@ function instance_name(string $root, string $baseDir, array &$seen): string
     return $candidate;
 }
 
+// Build instance from the supplied inputs.
 function build_instance(string $root, string $baseDir, array &$latestCache, array &$seenNames): array
 {
     $name = instance_name($root, $baseDir, $seenNames);

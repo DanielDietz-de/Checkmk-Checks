@@ -18,6 +18,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Handle test-s2dhcipathunderroot for this module's workflow.
 function Test-S2DHciPathUnderRoot {
     <#
     .SYNOPSIS
@@ -37,6 +38,7 @@ function Test-S2DHciPathUnderRoot {
     return $fullPath.StartsWith($fullRoot, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
+# Handle assert-s2dhcinoreparsepoint for this module's workflow.
 function Assert-S2DHciNoReparsePoint {
     <#
     .SYNOPSIS
@@ -70,6 +72,7 @@ function Assert-S2DHciNoReparsePoint {
     }
 }
 
+# Handle read-s2dhcispoolconfig for this module's workflow.
 function Read-S2DHciSpoolConfig {
     <#
     .SYNOPSIS
@@ -91,6 +94,7 @@ function Read-S2DHciSpoolConfig {
     return $json
 }
 
+# Handle test-s2dhcicollectoroutput for this module's workflow.
 function Test-S2DHciCollectorOutput {
     <#
     .SYNOPSIS

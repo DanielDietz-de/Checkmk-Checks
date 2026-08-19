@@ -71,6 +71,7 @@ POLICY_FILES = {"tools/ci/full_repository_audit.py", "tools/ci/repository_guard.
 
 @dataclass(frozen=True, order=True)
 class Finding:
+    """Represent finding behavior and associated state."""
     severity: str
     rule_id: str
     path: str
@@ -80,10 +81,12 @@ class Finding:
 
     @property
     def fingerprint(self) -> str:
+        """Handle fingerprint for this module's workflow."""
         value = "\0".join((self.rule_id, self.path, str(self.line), self.message))
         return hashlib.sha256(value.encode()).hexdigest()
 
     def render(self, baseline: set[str]) -> dict[str, Any]:
+        """Handle render for this module's workflow."""
         result = asdict(self)
         result.update(fingerprint=self.fingerprint, baseline=self.fingerprint in baseline)
         return result
@@ -94,6 +97,7 @@ class AuditError(RuntimeError):
 
 
 def read(path: Path) -> str:
+    """Handle read for this module's workflow."""
     try:
         return path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
@@ -101,6 +105,7 @@ def read(path: Path) -> str:
 
 
 def metadata(path: Path) -> dict[str, Any]:
+    """Handle metadata for this module's workflow."""
     try:
         value = json.loads(read(path)) if path.name == "info.json" else ast.literal_eval(read(path))
     except (json.JSONDecodeError, SyntaxError, ValueError, TypeError) as exc:
@@ -111,6 +116,7 @@ def metadata(path: Path) -> dict[str, Any]:
 
 
 def packages(root: Path) -> list[tuple[Path, dict[str, Any]]]:
+    """Handle packages for this module's workflow."""
     result = []
     for directory in sorted(root.iterdir()):
         if not directory.is_dir() or directory.name.startswith("."):
@@ -123,10 +129,12 @@ def packages(root: Path) -> list[tuple[Path, dict[str, Any]]]:
 
 
 def finding(severity: str, rule: str, root: Path, path: Path, line: int, message: str, remediation: str) -> Finding:
+    """Handle finding for this module's workflow."""
     return Finding(severity, rule, path.relative_to(root).as_posix(), line, message, remediation)
 
 
 def audit_root_docs(root: Path) -> list[Finding]:
+    """Handle audit root docs for this module's workflow."""
     result = []
     for name in ROOT_DOCS:
         path = root / name
@@ -142,6 +150,7 @@ def audit_root_docs(root: Path) -> list[Finding]:
 
 
 def audit_package(root: Path, package: Path, primary: dict[str, Any]) -> list[Finding]:
+    """Handle audit package for this module's workflow."""
     result = []
     info, info_json = package / "src/info", package / "src/info.json"
     primary_path = info if info.is_file() else info_json
@@ -224,6 +233,7 @@ def source_language(path: Path) -> str | None:
 
 
 def source_files(root: Path, active: Iterable[tuple[Path, dict[str, Any]]]) -> Iterable[Path]:
+    """Handle source files for this module's workflow."""
     del active  # discovery covers packaged, archived, tooling, and standalone utility source
     for path in sorted(root.rglob("*")):
         if not path.is_file():
@@ -314,6 +324,7 @@ def audit_credential_material(root: Path, path: Path) -> list[Finding]:
 
 
 def call_name(node: ast.AST) -> str:
+    """Handle call name for this module's workflow."""
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
@@ -401,6 +412,7 @@ def urllib_opener_names(tree: ast.AST, builder_names: set[str]) -> set[str]:
 
 
 def audit_python(root: Path, path: Path, text: str) -> list[Finding]:
+    """Handle audit python for this module's workflow."""
     try:
         tree = ast.parse(text, filename=str(path))
     except SyntaxError as exc:
@@ -485,6 +497,7 @@ def audit_python(root: Path, path: Path, text: str) -> list[Finding]:
 
 
 def audit_text(root: Path, path: Path, text: str) -> list[Finding]:
+    """Handle audit text for this module's workflow."""
     result, policy = [], path.relative_to(root).as_posix() in POLICY_FILES
     for number, line in enumerate(text.splitlines(), 1):
         if line.lstrip().startswith(("#", "//")):
@@ -497,6 +510,7 @@ def audit_text(root: Path, path: Path, text: str) -> list[Finding]:
 
 
 def audit_source(root: Path, path: Path) -> list[Finding]:
+    """Handle audit source for this module's workflow."""
     try:
         text = read(path)
     except AuditError as exc:
@@ -510,6 +524,7 @@ def audit_source(root: Path, path: Path) -> list[Finding]:
 
 
 def audit_hygiene(root: Path) -> list[Finding]:
+    """Handle audit hygiene for this module's workflow."""
     result = []
     for path in sorted(root.rglob("*")):
         if not path.is_file() or any(part in {".git", ".venv", "venv", "__pycache__"} for part in path.parts):
@@ -522,6 +537,7 @@ def audit_hygiene(root: Path) -> list[Finding]:
 
 
 def load_baseline(path: Path | None) -> set[str]:
+    """Load baseline from its configured source."""
     if path is None or not path.exists():
         return set()
     try:
@@ -535,6 +551,7 @@ def load_baseline(path: Path | None) -> set[str]:
 
 
 def build_report(root: Path, baseline: set[str]) -> dict[str, Any]:
+    """Build report from the supplied inputs."""
     active = packages(root)
     findings = audit_root_docs(root)
     for package, data in active:
@@ -565,6 +582,7 @@ def build_report(root: Path, baseline: set[str]) -> dict[str, Any]:
 
 
 def arguments(argv: list[str] | None = None) -> argparse.Namespace:
+    """Handle arguments for this module's workflow."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--baseline", type=Path)
@@ -575,6 +593,7 @@ def arguments(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the command-line entry point and return its result."""
     args = arguments(argv)
     try:
         root = args.root.resolve()

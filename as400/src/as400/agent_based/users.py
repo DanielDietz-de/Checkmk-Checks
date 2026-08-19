@@ -31,11 +31,11 @@ snmp_section_as400_users = SimpleSNMPSection(
 
 
 def discover_as400_users(section):
-    """ Discover Function """
+    """Discover as400 users from the available input data."""
     yield Service()
 
 def check_as400_users(params, section):
-    """ Check Function """
+    """Evaluate as400 users and return its resulting state."""
     warn, crit = params["user_levels"][1]
     users_num = section
 

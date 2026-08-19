@@ -21,6 +21,7 @@ Section = Mapping[str, int]
 
 
 def parse_puppet_agent(string_table: StringTable) -> Section:
+    """Parse puppet agent into its normalized representation."""
     section: dict[str, int] = {}
     for line in string_table:
         if len(line) != 2:
@@ -33,6 +34,7 @@ def parse_puppet_agent(string_table: StringTable) -> Section:
 
 
 def discover_puppet_agent(section: Section) -> DiscoveryResult:
+    """Discover puppet agent from the available input data."""
     if "last_run" in section:
         yield Service()
 
@@ -49,6 +51,7 @@ _CHECKS = [
 
 
 def check_puppet_agent(params: Mapping, section: Section) -> CheckResult:
+    """Evaluate puppet agent and return its resulting state."""
     if "last_run" not in section:
         return
 

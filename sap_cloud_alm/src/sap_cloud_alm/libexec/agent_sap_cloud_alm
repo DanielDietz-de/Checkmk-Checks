@@ -25,9 +25,7 @@ def _resolve_secret_reference(reference: str) -> str:
 
 
 class AgentSapALM():
-    """
-    Agent SAP ALM
-    """
+    """Represent agentsapalm behavior and its associated runtime state."""
     instance_name = None
     client_id = None
     client_secret = None
@@ -67,6 +65,7 @@ class AgentSapALM():
         return self.access_token
 
     def get_metric(self):
+        """Return metric for the supplied inputs."""
         access_token = self.get_token()
         service_id_filter = {
             '$filter' : unquote(self.filter).replace('+', ' '),

@@ -16,6 +16,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_form_sonicwall_conns() -> Dictionary:
+    """Handle parameter form sonicwall conns for this module's workflow."""
     return Dictionary(
         elements={
             "levels": DictElement(

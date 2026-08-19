@@ -32,6 +32,7 @@ def _migrate(value):
 
 
 def _parameter_form_special_agents_cmdb_syncer():
+    """Handle parameter form special agents cmdb syncer for this module's workflow."""
     return Dictionary(
         title = Title("cmdb_syncer via WebAPI"),
         help_text = Help("This rule set selects the special agent for cmdb_syncer"),

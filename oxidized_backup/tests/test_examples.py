@@ -8,6 +8,7 @@ DEPLOYMENT_DIR = Path(__file__).parents[1] / "src/oxidized_backup/deployment"
 
 
 def test_example_configuration_is_valid_json_and_has_no_real_credentials() -> None:
+    """Verify that example configuration is valid json and has no real credentials."""
     path = DEPLOYMENT_DIR / "oxidized_backup.json"
     config = json.loads(path.read_text(encoding="utf-8"))
     assert config["git"]["run_as_user"] == "oxidized"
@@ -19,6 +20,7 @@ def test_example_configuration_is_valid_json_and_has_no_real_credentials() -> No
 
 
 def test_hook_example_references_packaged_paths() -> None:
+    """Verify that hook example references packaged paths."""
     text = (DEPLOYMENT_DIR / "oxidized_backup-hook.yml").read_text(
         encoding="utf-8"
     )

@@ -15,6 +15,7 @@ from .bakery_api.v1 import (
 
 
 def _get_config(conf: dict[str, Any]) -> list[str]:
+    """Handle get config for this module's workflow."""
     base_dir = str(conf.get("base_dir", "/var/www/sites.d"))
     search_string = str(conf.get("search_string", "deploy/current"))
     return [
@@ -24,6 +25,7 @@ def _get_config(conf: dict[str, Any]) -> list[str]:
 
 
 def get_files(conf: dict[str, Any]) -> FileGenerator:
+    """Return files for the supplied inputs."""
     mode = conf.get("deployment", ("do_not_deploy", None))
     match mode:
         case ("do_not_deploy", _):

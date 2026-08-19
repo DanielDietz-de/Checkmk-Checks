@@ -12,6 +12,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_era_rmtr(string_table):
+    """Parse era rmtr into its normalized representation."""
     section = {}
     for entry in string_table[0]:
         status, name = entry
@@ -23,11 +24,13 @@ def parse_era_rmtr(string_table):
 
 
 def discover_era_rmtr(section):
+    """Discover era rmtr from the available input data."""
     for item in section:
         yield Service(item=item)
 
 
 def check_era_rmtr(item, section):
+    """Evaluate era rmtr and return its resulting state."""
     status = section.get(item)
     if status is None:
         return

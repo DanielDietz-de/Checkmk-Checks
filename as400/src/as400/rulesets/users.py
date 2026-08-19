@@ -27,6 +27,7 @@ from cmk.rulesets.v1.rule_specs import (
 
 
 def as400_users():
+    """Handle as400 users for this module's workflow."""
     return Dictionary(
         elements={
             "user_levels": DictElement(

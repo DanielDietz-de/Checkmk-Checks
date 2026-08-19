@@ -6,6 +6,7 @@ from cmk.server_side_calls.v1 import HostConfig, Secret, SpecialAgentCommand, Sp
 
 
 class AgentSapAlmParams(BaseModel):
+    """Represent agentsapalmparams behavior and associated state."""
     instance: str
     client_id: str
     metric_filter: str
@@ -14,6 +15,7 @@ class AgentSapAlmParams(BaseModel):
 
 
 def generate_agent_command(params: AgentSapAlmParams, host_config: HostConfig):
+    """Generate agent command from the current source data."""
     args: list[str | Secret] = [
         "--instance", params.instance,
         "--client-id", params.client_id,

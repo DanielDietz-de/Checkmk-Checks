@@ -23,6 +23,7 @@ loader.exec_module(module)
 
 
 def policy() -> dict[str, int]:
+    """Handle policy for this module's workflow."""
     return {
         "collection_warning_age_seconds": 3600,
         "collection_critical_age_seconds": 7200,
@@ -34,6 +35,7 @@ def policy() -> dict[str, int]:
 
 
 def valid_config(tmp_path: Path) -> dict[str, Any]:
+    """Handle valid config for this module's workflow."""
     user = "nobody"
     try:
         import pwd
@@ -70,6 +72,7 @@ def valid_config(tmp_path: Path) -> dict[str, Any]:
 
 
 def git(*args: str, cwd: Path | None = None) -> str:
+    """Handle git for this module's workflow."""
     completed = subprocess.run(
         [shutil.which("git") or "/usr/bin/git", *args],
         cwd=cwd,
@@ -82,6 +85,7 @@ def git(*args: str, cwd: Path | None = None) -> str:
 
 
 def create_git_pair(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """Create git pair from the supplied inputs."""
     work = tmp_path / "work"
     local_bare = tmp_path / "local.git"
     remote_bare = tmp_path / "remote.git"
@@ -101,6 +105,7 @@ def create_git_pair(tmp_path: Path) -> tuple[Path, Path, Path]:
 def test_validate_config_requires_explicit_cleartext_http_opt_in(
     tmp_path: Path,
 ) -> None:
+    """Verify that validate config requires explicit cleartext http opt in."""
     config = valid_config(tmp_path)
     config["inventory"] = {"url": "http://monitor.example/oxidized.json"}
     with pytest.raises(module.CollectorError, match="allow_insecure_http"):
@@ -110,6 +115,7 @@ def test_validate_config_requires_explicit_cleartext_http_opt_in(
 
 
 def test_validate_config_rejects_root_git_execution(tmp_path: Path) -> None:
+    """Verify that validate config rejects root git execution."""
     config = valid_config(tmp_path)
     config["git"]["run_as_user"] = "root"
     with pytest.raises(module.CollectorError, match="unprivileged"):
@@ -117,6 +123,7 @@ def test_validate_config_rejects_root_git_execution(tmp_path: Path) -> None:
 
 
 def test_validate_config_rejects_multiple_wildcard_repositories(tmp_path: Path) -> None:
+    """Verify that validate config rejects multiple wildcard repositories."""
     config = valid_config(tmp_path)
     second = dict(config["git"]["repositories"][0])
     second["id"] = "second"
@@ -127,6 +134,7 @@ def test_validate_config_rejects_multiple_wildcard_repositories(tmp_path: Path) 
 
 
 def test_inventory_parser_marks_duplicates_and_rejects_output_injection() -> None:
+    """Verify that inventory parser marks duplicates and rejects output injection."""
     records, errors = module.parse_inventory(
         [
             {"hostname": "switch-1", "os": "picos"},
@@ -141,6 +149,7 @@ def test_inventory_parser_marks_duplicates_and_rejects_output_injection() -> Non
 
 
 def test_parse_oxidized_nodes_accepts_top_level_and_last_status() -> None:
+    """Verify that parse oxidized nodes accepts top level and last status."""
     rows, errors = module.parse_oxidized_nodes(
         [
             {
@@ -164,6 +173,7 @@ def test_parse_oxidized_nodes_accepts_top_level_and_last_status() -> None:
 
 
 def test_hook_state_survives_multiple_events(tmp_path: Path) -> None:
+    """Verify that hook state survives multiple events."""
     state_file = tmp_path / "hook-state.json"
     config = {"state": {"hook_state_file": str(state_file)}}
     common = {
@@ -190,6 +200,7 @@ def test_hook_state_survives_multiple_events(tmp_path: Path) -> None:
 
 
 def test_hook_state_redacts_error_secrets(tmp_path: Path) -> None:
+    """Verify that hook state redacts error secrets."""
     state_file = tmp_path / "hook-state.json"
     config = {"state": {"hook_state_file": str(state_file)}}
     module.record_hook(
@@ -208,6 +219,7 @@ def test_hook_state_redacts_error_secrets(tmp_path: Path) -> None:
 
 
 def test_repository_inspection_confirms_file_and_remote_sync(tmp_path: Path) -> None:
+    """Verify that repository inspection confirms file and remote sync."""
     _work, local_bare, _remote = create_git_pair(tmp_path)
     result, monitor = module.inspect_repository(
         {
@@ -236,6 +248,7 @@ def test_repository_inspection_confirms_file_and_remote_sync(tmp_path: Path) -> 
 
 
 def test_repository_inspection_detects_missing_file(tmp_path: Path) -> None:
+    """Verify that repository inspection detects missing file."""
     _work, local_bare, _remote = create_git_pair(tmp_path)
     result, _monitor = module.inspect_repository(
         {
@@ -258,6 +271,7 @@ def test_repository_inspection_detects_missing_file(tmp_path: Path) -> None:
 
 
 def test_repository_mismatch_uses_grace_then_critical(tmp_path: Path) -> None:
+    """Verify that repository mismatch uses grace then critical."""
     work, local_bare, _remote = create_git_pair(tmp_path)
     (work / "switch-1").write_text("hostname switch-1\nchanged\n", encoding="utf-8")
     git("add", "switch-1", cwd=work)
@@ -303,6 +317,7 @@ def test_repository_mismatch_uses_grace_then_critical(tmp_path: Path) -> None:
 
 
 def test_safe_git_tree_paths() -> None:
+    """Verify that safe git tree paths."""
     assert module._safe_git_tree_path("switches", "switch-1", single_repo=True) == (
         "switches/switch-1"
     )
@@ -319,6 +334,7 @@ def test_safe_git_tree_paths() -> None:
 def test_emit_agent_output_has_balanced_piggyback_markers(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """Verify that emit agent output has balanced piggyback markers."""
     module.emit_agent_output(
         {"schema_version": 1, "kind": "central"},
         [{"schema_version": 1, "kind": "device", "host_name": "switch-1"}],

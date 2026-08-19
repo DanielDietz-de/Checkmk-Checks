@@ -7,12 +7,14 @@ from cmk.server_side_calls.v1 import HostConfig, Secret, SpecialAgentCommand, Sp
 
 
 class ExasolParams(BaseModel):
+    """Represent exasolparams behavior and associated state."""
     username: str
     password: Secret
     ignore_dbs: Optional[list] = None
 
 
 def generate_exasol_command(params: ExasolParams, host_config: HostConfig):
+    """Generate exasol command from the current source data."""
     args: list[str | Secret] = [
         "-i", host_config.primary_ip_config.address,
         "-u", params.username,

@@ -14,6 +14,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_cohesity_metadata(string_table):
+    """Parse cohesity metadata into its normalized representation."""
     section = {}
     for row in string_table:
         item = row[0]
@@ -34,10 +35,12 @@ agent_section_cohesity_metadata_usage = AgentSection(
 
 
 def discovery_cohesity_metadata(section):
+    """Handle discovery cohesity metadata for this module's workflow."""
     yield Service()
 
 
 def check_cohesity_metadata(params, section):
+    """Evaluate cohesity metadata and return its resulting state."""
     levels = params.get("levels_pct", ("fixed", (None, None)))
     warn_pct, crit_pct = levels[1]
 
@@ -86,4 +89,3 @@ check_plugin_cohesity_metadata_usage = CheckPlugin(
     check_default_parameters={},
     check_ruleset_name="cohesity_metadata",
 )
-

@@ -17,6 +17,7 @@ _REQUIRED_PARAMETERS = ("pair_name", "host_a", "host_b", "service_regex")
 def _required_parameter(
     params: Mapping[str, object], key: str, *, strip: bool = True
 ) -> str:
+    """Handle required parameter for this module's workflow."""
     if key not in params:
         raise ValueError(f"Missing required switch_port_sync parameter: {key}")
 
@@ -29,6 +30,7 @@ def _required_parameter(
 def _agent_arguments(
     params: Mapping[str, object], host_config: HostConfig
 ) -> Iterable[SpecialAgentCommand]:
+    """Handle agent arguments for this module's workflow."""
     missing = [key for key in _REQUIRED_PARAMETERS if key not in params]
     if missing:
         raise ValueError(

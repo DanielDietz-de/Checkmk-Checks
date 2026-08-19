@@ -27,6 +27,7 @@ def _safe_request_url(value: str) -> str:
 
 
 def parse_arguments():
+    """Parse arguments into its normalized representation."""
     parser = argparse.ArgumentParser(description="Arcgis Portal Monitoring")
     parser.add_argument(
         "--host-name",

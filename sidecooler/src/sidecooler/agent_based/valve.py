@@ -20,11 +20,13 @@ from cmk.agent_based.v2 import (
 )
 
 class SidecoolerValve(NamedTuple):
+    """Represent sidecoolervalve behavior and associated state."""
     valve_set: float
     valve_current: float
 
 
 def parse_sidecooler_valve(string_table):
+    """Parse sidecooler valve into its normalized representation."""
     if not string_table:
         return None
 
@@ -34,10 +36,12 @@ def parse_sidecooler_valve(string_table):
 
 
 def discover_sidecooler_valve(section):
+    """Discover sidecooler valve from the available input data."""
     yield Service()
 
 
 def check_sidecooler_valve(section):
+    """Evaluate sidecooler valve and return its resulting state."""
     yield Result(state=State.OK, summary=f"Set: {section.valve_set}%")
     yield Metric(name="valve_set", value=section.valve_set, boundaries=(0, 100))
 

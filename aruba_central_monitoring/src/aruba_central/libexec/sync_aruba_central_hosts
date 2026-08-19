@@ -324,6 +324,7 @@ class CheckmkApi:
         ca_file: Path | None,
         timeout: int,
     ) -> None:
+        """Initialize the instance and its required runtime state."""
         parsed = urlparse(base_url)
         if parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise ValueError(

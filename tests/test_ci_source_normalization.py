@@ -10,6 +10,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "tools/ci/normalize_package_sourc
 
 
 def _load():
+    """Handle load for this module's workflow."""
     spec = importlib.util.spec_from_file_location("normalize_package_sources", SCRIPT)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -19,15 +20,19 @@ def _load():
 
 
 class PackageSourceNormalizationTests(unittest.TestCase):
+    """Represent packagesourcenormalizationtests behavior and associated state."""
     def setUp(self) -> None:
+        """Handle setup for this module's workflow."""
         self.module = _load()
         self.tempdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tempdir.name)
 
     def tearDown(self) -> None:
+        """Handle teardown for this module's workflow."""
         self.tempdir.cleanup()
 
     def _legacy_bakery_package(self, name: str = "example") -> Path:
+        """Handle legacy bakery package for this module's workflow."""
         package = self.root / name
         legacy = package / "src" / name / "agent_based" / "bakery.py"
         legacy.parent.mkdir(parents=True)
@@ -52,6 +57,7 @@ class PackageSourceNormalizationTests(unittest.TestCase):
         return package
 
     def test_check_mode_reports_pending_migration_without_writing(self) -> None:
+        """Verify that check mode reports pending migration without writing."""
         package = self._legacy_bakery_package()
         changes = self.module.normalize_repository(self.root, write=False)
         self.assertTrue(changes)
@@ -61,6 +67,7 @@ class PackageSourceNormalizationTests(unittest.TestCase):
         )
 
     def test_write_mode_moves_bakery_updates_manifest_and_readme(self) -> None:
+        """Verify that write mode moves bakery updates manifest and readme."""
         package = self._legacy_bakery_package()
         changes = self.module.normalize_repository(self.root, write=True)
         self.assertTrue(changes)
@@ -81,6 +88,7 @@ class PackageSourceNormalizationTests(unittest.TestCase):
         self.assertEqual(self.module.normalize_repository(self.root, write=False), [])
 
     def test_stale_readme_is_detected_after_source_is_normalized(self) -> None:
+        """Verify that stale readme is detected after source is normalized."""
         package = self._legacy_bakery_package()
         self.module.normalize_repository(self.root, write=True)
         (package / "README.md").write_text(
@@ -94,6 +102,7 @@ class PackageSourceNormalizationTests(unittest.TestCase):
         )
 
     def test_unsupported_bakery_import_fails_closed(self) -> None:
+        """Verify that unsupported bakery import fails closed."""
         package = self._legacy_bakery_package()
         legacy = package / "src/example/agent_based/bakery.py"
         legacy.write_text("from unsupported import register\n", encoding="utf-8")

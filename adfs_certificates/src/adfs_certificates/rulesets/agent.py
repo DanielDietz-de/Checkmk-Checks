@@ -26,6 +26,7 @@ from cmk.rulesets.v1.rule_specs import (
 
 
 def _valuespec_special_agent_adfs_certificates():
+    """Handle valuespec special agent adfs certificates for this module's workflow."""
     return Dictionary(
         title=Title("ADFS Certificate Monitoring"),
         help_text=Help(
@@ -78,6 +79,7 @@ rule_spec_adfs_certificates = SpecialAgent(
 
 
 def _valuespec_check_adfs_certificates():
+    """Handle valuespec check adfs certificates for this module's workflow."""
     return Dictionary(
         title=Title("ADFS Certificate Expiry Thresholds"),
         elements={

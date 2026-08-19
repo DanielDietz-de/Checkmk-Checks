@@ -35,11 +35,11 @@ snmp_section_as400_cpu = SimpleSNMPSection(
 
 
 def discover_as400_cpu(section):
-    """ Discover Function """
+    """Discover as400 cpu from the available input data."""
     yield Service()
 
 def check_as400_cpu(params, section):
-    """ Check Function """
+    """Evaluate as400 cpu and return its resulting state."""
     cpu = section / 100.0
 
     yield from check_cpu_load(

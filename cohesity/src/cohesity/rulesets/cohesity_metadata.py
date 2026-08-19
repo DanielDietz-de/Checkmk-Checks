@@ -15,6 +15,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, Topic
 
 
 def _formspec_cohesity_metadata():
+    """Handle formspec cohesity metadata for this module's workflow."""
     return Dictionary(
         elements = {
             "levels_pct": DictElement(
@@ -37,4 +38,3 @@ rule_spec_cohesity_metadata = CheckParameters(
     parameter_form = _formspec_cohesity_metadata,
     title = Title("Cohesity metadata usage"),
 )
-

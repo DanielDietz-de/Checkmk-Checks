@@ -18,6 +18,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_a10_loadbalancer_fan(string_table: StringTable) -> StringTable:
+    """Parse a10 loadbalancer fan into its normalized representation."""
     return string_table
 
 
@@ -37,11 +38,13 @@ snmp_section_a10_loadbalancer_fan = SimpleSNMPSection(
 
 
 def discover_a10_loadbalancer_fan(section: StringTable) -> DiscoveryResult:
+    """Discover a10 loadbalancer fan from the available input data."""
     for line in section:
         yield Service(item=line[0].replace("Fan ", ""))
 
 
 def check_a10_loadbalancer_fan(item: str, section: StringTable) -> CheckResult:
+    """Evaluate a10 loadbalancer fan and return its resulting state."""
     states = {
         "0": "Failed",
         "4": "OK-fixed/high",

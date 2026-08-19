@@ -17,6 +17,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, Topic
 
 
 def _parameter_form_vertiv_acs8000_psu():
+    """Handle parameter form vertiv acs8000 psu for this module's workflow."""
     return Dictionary(
         title=Title("Vertiv ACS power supply"),
         help_text=Help(

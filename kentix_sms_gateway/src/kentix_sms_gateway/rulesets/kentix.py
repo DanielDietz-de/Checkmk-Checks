@@ -16,6 +16,7 @@ from cmk.rulesets.v1.rule_specs import NotificationParameters, Topic
 
 
 def _parameters_kentix() -> Dictionary:
+    """Handle parameters kentix for this module's workflow."""
     return Dictionary(
         title=Title("Kentix SMS Gateway notification"),
         help_text=Help(

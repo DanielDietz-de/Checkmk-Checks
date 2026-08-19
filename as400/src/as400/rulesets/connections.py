@@ -27,6 +27,7 @@ from cmk.rulesets.v1.rule_specs import (
 
 
 def as400_tcp_connections():
+    """Handle as400 tcp connections for this module's workflow."""
     return Dictionary(
         elements={
             "connection_levels": DictElement(

@@ -7,6 +7,7 @@ from pathlib import Path
 from .bakery_api.v1 import register, Plugin, PluginConfig, OS, FileGenerator
 
 def get_files(conf: Any) -> FileGenerator:
+    """Return files for the supplied inputs."""
     mode = conf.get('deployment', ("do_not_deploy", 0,0))
     match mode:
         case "do_not_deploy", _:

@@ -10,9 +10,7 @@ from shutil import copytree, copyfile, rmtree
 from pwd import getpwnam
 
 def usage():
-    """
-    Print Usage
-    """
+    """Handle usage for this source file's runtime workflow."""
     sys.stdout.write("""Usage:
 
     host_mover -s SOURCE_SITE -t TARGET_SITE -H HOSTNAME
@@ -111,16 +109,12 @@ if not opt_host or not opt_target or not opt_source:
 
 # Helpers
 def verbose(msg):
-    """
-    Print Verbose
-    """
+    """Handle verbose for this source file's runtime workflow."""
     if opt_verbose:
         sys.stdout.write(msg + "\n")
 
 def debug(msg):
-    """
-    Debug Messages
-    """
+    """Handle debug for this source file's runtime workflow."""
     if opt_debug:
         sys.stderr.write(msg + "\n")
 
@@ -184,9 +178,7 @@ def find_loglines(path, searchhost):
 
 
 def write_logfiles(path, hostname, config):
-    """
-    Write new logfiles
-    """
+    """Write logfiles to its configured destination."""
     verbose(".. Start Writing")
     for logfile, lines in config.items():
         outfilename = logfile+'-'+hostname

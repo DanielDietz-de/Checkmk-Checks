@@ -27,6 +27,7 @@ from cmk.rulesets.v1.rule_specs import (
 
 
 def as400_jobs() -> Dictionary:
+    """Handle as400 jobs for this module's workflow."""
     return Dictionary(
         elements={
             "job_levels": DictElement(

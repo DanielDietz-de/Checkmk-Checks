@@ -19,6 +19,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_adfs_certificates(string_table):
+    """Parse adfs certificates into its normalized representation."""
     parsed = {}
     for line in string_table:
         try:
@@ -39,12 +40,14 @@ agent_section_adfs_certificates = AgentSection(
 
 
 def discover_adfs_certificates(section):
+    """Discover adfs certificates from the available input data."""
     for item in section:
         if item != "_error":
             yield Service(item=item)
 
 
 def check_adfs_certificates(item, params, section):
+    """Evaluate adfs certificates and return its resulting state."""
     if "_error" in section and item not in section:
         yield Result(state=State.CRIT, summary=f"Agent error: {section['_error']}")
         return

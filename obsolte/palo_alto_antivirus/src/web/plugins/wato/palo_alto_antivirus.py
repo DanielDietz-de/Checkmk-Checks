@@ -13,6 +13,7 @@ from cmk.gui.plugins.wato import (
 )
 
 def _parameter_valuespec_palo_alto_antivirus():
+    """Handle parameter valuespec palo alto antivirus for this module's workflow."""
     return Dictionary(
         elements = [
             ("age", Tuple(

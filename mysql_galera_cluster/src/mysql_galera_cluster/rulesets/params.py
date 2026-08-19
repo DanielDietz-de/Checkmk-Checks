@@ -23,6 +23,7 @@ from cmk.rulesets.v1.form_specs import (
 from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, Topic
 
 def _parameter_galera_repl_health() -> Dictionary:
+   """Handle parameter galera repl health for this module's workflow."""
    return Dictionary(
       help_text=Help("Monitor the Cluster Replication Health"),
       elements={
@@ -68,6 +69,7 @@ rule_spec_galera_repl_health = CheckParameters(
 )
 
 def _parameter_galera_node_state() -> Dictionary:
+   """Handle parameter galera node state for this module's workflow."""
    return Dictionary(
       help_text=Help("Monitor the Cluster Node state"),
       elements={
@@ -107,6 +109,7 @@ rule_spec_galera_node_state = CheckParameters(
 )
 
 def _parameter_galera_cluster_state() -> Dictionary:
+   """Handle parameter galera cluster state for this module's workflow."""
    return Dictionary(
       help_text=Help("This check monitors the current state of the Cluster"),
       elements={

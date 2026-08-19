@@ -10,9 +10,7 @@ from cmk.server_side_calls.v1 import HostConfig, SpecialAgentCommand, SpecialAge
 
 
 class ConfigParser(BaseModel):
-    """
-    Config Parser
-    """
+    """Represent configparser behavior and associated state."""
     proxy_url: str | None = None
     no_verify_ssl: bool = False
     debug: bool = False

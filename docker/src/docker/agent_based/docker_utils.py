@@ -11,6 +11,7 @@ from typing import NamedTuple
 from cmk.agent_based.v2 import GetRateError
 
 class SectionCpuUtilizationOs(NamedTuple):
+    """Represent sectioncpuutilizationos behavior and associated state."""
     num_cpus: int
     time_base: float
     time_cpu: float

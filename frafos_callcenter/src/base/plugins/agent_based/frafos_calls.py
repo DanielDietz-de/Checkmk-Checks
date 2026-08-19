@@ -5,10 +5,12 @@ import time
 from .agent_based_api.v1 import *
 
 def discover_frafos_calls(section):
+    """Discover frafos calls from the available input data."""
     if section:
         yield Service(item=None)
 
 def check_frafos_calls(params, section):
+    """Evaluate frafos calls and return its resulting state."""
     total_calls, current_calls = map(int, section[0])
     yield Result(state=State.OK, summary=f"Currently: {current_calls} Calls")
 

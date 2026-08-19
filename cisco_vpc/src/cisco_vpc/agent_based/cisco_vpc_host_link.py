@@ -15,6 +15,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_cisco_vpc_host_link(string_table: StringTable) -> StringTable:
+    """Parse cisco vpc host link into its normalized representation."""
     parsed = {}
     for line in string_table:
         parsed[line[0]] = {
@@ -42,11 +43,13 @@ snmp_section_cisco_vpc_host_link = SimpleSNMPSection(
 
 
 def discover_cisco_vpc_host_link(section_cisco_vpc_host_link, section_if64):
+    """Discover cisco vpc host link from the available input data."""
     if section_cisco_vpc_host_link and section_if64:
         yield Service()
 
 
 def _cisco_vpc_host_link_get_if_name(if_idx, section_if64):
+    """Handle cisco vpc host link get if name for this module's workflow."""
     for interface in section_if64:
         if interface.index == if_idx:
             if interface.descr:
@@ -57,6 +60,7 @@ def _cisco_vpc_host_link_get_if_name(if_idx, section_if64):
 
 
 def check_cisco_vpc_host_link(section_cisco_vpc_host_link, section_if64):
+    """Evaluate cisco vpc host link and return its resulting state."""
     consistency_status_names = {
         "1": "success",
         "2": "failed",

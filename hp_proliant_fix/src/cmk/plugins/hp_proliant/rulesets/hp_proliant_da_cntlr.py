@@ -22,6 +22,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_form() -> Dictionary:
+    """Handle parameter form for this module's workflow."""
     return Dictionary(
         help_text=Help(
             "Maps the state that the HP ProLiant controller check reports for the "

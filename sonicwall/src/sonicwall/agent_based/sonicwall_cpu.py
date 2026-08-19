@@ -29,10 +29,12 @@ snmp_section_sonicwall_cpu = SimpleSNMPSection(
 )
 
 def discover_sonicwall_cpu(section):
+    """Discover sonicwall cpu from the available input data."""
     if section is not None:
         yield Service()
 
 def check_sonicwall_cpu(params, section):
+    """Evaluate sonicwall cpu and return its resulting state."""
     value = section
     if value is None:
         yield Result(state=State.UNKNOWN, summary="No CPU data")

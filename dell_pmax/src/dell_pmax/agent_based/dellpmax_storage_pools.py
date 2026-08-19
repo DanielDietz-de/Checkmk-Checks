@@ -35,11 +35,13 @@ Storage Ressource Pool ID|{subscribed_allocated_tb}|{subscribed_total_tb}|{snaps
 
 
 def discover_dellpmax_storage_pools(section):
+    """Discover dellpmax storage pools from the available input data."""
     for line in section:
         yield Service(item=line[0])
 
 
 def check_dellpmax_storage_pools_subscribed(item, section):
+    """Evaluate dellpmax storage pools subscribed and return its resulting state."""
     for line in section:
         if line[0] == item:
             subscribed_used_percent = 100 * float(line[1]) / float(line[2])
@@ -65,6 +67,7 @@ check_plugin_dell_pmax_storage_pools_subscripted = CheckPlugin(
 
 
 def check_dellpmax_storage_pools_snapshot(item, section):
+    """Evaluate dellpmax storage pools snapshot and return its resulting state."""
     for line in section:
         if line[0] == item:
             summary = "Snapshot Modified (TB): {3}, Snapshot Total (TB): {4}".format(*line)
@@ -81,6 +84,7 @@ check_plugin_dell_pmax_storage_pools_snapshot = CheckPlugin(
 
 
 def check_dellpmax_storage_pools_usable(item, section):
+    """Evaluate dellpmax storage pools usable and return its resulting state."""
     for line in section:
         if line[0] == item:
             effective_used_capacity_percent = int(line[7])

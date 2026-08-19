@@ -17,6 +17,7 @@ from cmk.utils import password_store
 
 
 def parse_args():
+    """Parse args into its normalized representation."""
     parser = argparse.ArgumentParser(description="Cohesity Special Agent for Checkmk")
     parser.add_argument("--host", required=True, help="Cluster VIP")
     parser.add_argument("--user", required=True, help="Username")
@@ -44,9 +45,7 @@ REQUEST_TIMEOUT = 30.0
 
 
 def get_header():
-    """
-    Cluster Status
-    """
+    """Return header for the supplied inputs."""
     creds = json.dumps({
         "password": PASSWORD,
         "username": ARGS.user,
@@ -84,6 +83,7 @@ HEADER = get_header()
 
 
 def get_url(url):
+    """Return url for the supplied inputs."""
     try:
         response = requests.get(
             API_URL + url,
@@ -99,6 +99,7 @@ def get_url(url):
 
 
 def get_cluster_status():
+    """Return cluster status for the supplied inputs."""
     response_json = get_url("/nexus/cluster/status")
     print("<<<cohesity_node_status>>>")
     for node in response_json["nodeStatus"]:
@@ -116,18 +117,14 @@ def get_cluster_status():
 
 
 def get_storage():
-    """
-    Get Storage Information
-    """
+    """Return storage for the supplied inputs."""
     print("<<<cohesity_storage_usage>>>")
     for key, value in get_url("/public/stats/storage").items():
         print(f"{key} {value}")
 
 
 def get_metadata():
-    """
-    Get Metadata Information
-    """
+    """Return metadata for the supplied inputs."""
     print("<<<cohesity_metadata_usage>>>")
     for key, value in get_url("/public/cluster").items():
         if not isinstance(value, (int, float)):
@@ -136,9 +133,7 @@ def get_metadata():
 
 
 def get_alerts():
-    """
-    Query API Alerts
-    """
+    """Return alerts for the supplied inputs."""
     time_to = int(datetime.datetime.now().timestamp() * 1_000_000)
     time_from = time_to - (86400 * 1_000_000)
     url = f"/public/stats/alerts?startTimeUsecs={time_from}&endTimeUsecs={time_to}"
@@ -148,9 +143,7 @@ def get_alerts():
 
 
 def get_unprotected_objects():
-    """
-    Get Unproteced Objects
-    """
+    """Return unprotected objects for the supplied inputs."""
     url = "/public/stats/protectionSummary"
     print("<<<cohesity_unprotected>>>")
     for key, value in get_url(url).items():

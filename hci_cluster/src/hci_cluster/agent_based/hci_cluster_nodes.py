@@ -11,12 +11,12 @@ from cmk.agent_based.v2 import (
 )
 
 def discovery(section):
-    """ Discovery """
+    """Handle discovery for this module's workflow."""
     for item in section:
         yield Service(item=item)
 
 def check(item, section):
-    """ Check """
+    """Handle check for this module's workflow."""
     if item not in section:
         return
 

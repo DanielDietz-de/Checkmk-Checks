@@ -17,6 +17,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_valuespec_alteon_cpu():
+    """Handle parameter valuespec alteon cpu for this module's workflow."""
     return Dictionary(
         elements={
             "alteon_cpu_utilization_tresholds": DictElement(

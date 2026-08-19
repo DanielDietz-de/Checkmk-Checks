@@ -20,6 +20,7 @@ MAPPING = PACKAGE / "src/aruba_central/deployment/group_site_map.example.json"
 
 
 def _load():
+    """Handle load for this module's workflow."""
     loader = importlib.machinery.SourceFileLoader(
         "aruba_central_host_sync_test",
         str(SCRIPT),
@@ -33,6 +34,7 @@ def _load():
 
 
 def _planned_host(sync):
+    """Handle planned host for this module's workflow."""
     return sync.PlannedHost(
         host_name="AP-01",
         group_title="Campus Bornheim",
@@ -46,6 +48,7 @@ def _planned_host(sync):
 
 
 def _collector_document(ap_total: int, *, status: str = "OK", stale: bool = False) -> str:
+    """Handle collector document for this module's workflow."""
     return json.dumps(
         {
             "schema": 1,
@@ -60,6 +63,7 @@ def _collector_document(ap_total: int, *, status: str = "OK", stale: bool = Fals
 
 
 def test_extract_and_plan_exact_folder_hierarchy():
+    """Verify that extract and plan exact folder hierarchy."""
     sync = _load()
     access_points = sync._extract_access_points(FIXTURE.read_text(encoding="utf-8"))
     assert [ap["host_name"] for ap in access_points] == [
@@ -77,6 +81,7 @@ def test_extract_and_plan_exact_folder_hierarchy():
 
 
 def test_mapping_fails_closed_for_unknown_site():
+    """Verify that mapping fails closed for unknown site."""
     sync = _load()
     access_points = sync._extract_access_points(FIXTURE.read_text(encoding="utf-8"))
     access_points[0]["site"] = "Campus Bornheim - UNKNOWN"
@@ -85,6 +90,7 @@ def test_mapping_fails_closed_for_unknown_site():
 
 
 def test_extract_fails_closed_on_malformed_ap_json():
+    """Verify that extract fails closed on malformed ap json."""
     sync = _load()
     output = "\n".join(
         [
@@ -99,6 +105,7 @@ def test_extract_fails_closed_on_malformed_ap_json():
 
 
 def test_extract_fails_closed_on_truncated_ap_section():
+    """Verify that extract fails closed on truncated ap section."""
     sync = _load()
     output = "\n".join(["<<<<AP-BROKEN>>>>", sync.SECTION])
     with pytest.raises(ValueError, match="section is truncated"):
@@ -106,6 +113,7 @@ def test_extract_fails_closed_on_truncated_ap_section():
 
 
 def test_extract_rejects_complete_partial_inventory_against_collector_total():
+    """Verify that extract rejects complete partial inventory against collector total."""
     sync = _load()
     ap = json.dumps(
         {
@@ -133,6 +141,7 @@ def test_extract_rejects_complete_partial_inventory_against_collector_total():
 
 
 def test_extract_rejects_failed_or_stale_collector_snapshot():
+    """Verify that extract rejects failed or stale collector snapshot."""
     sync = _load()
     ap = json.dumps(
         {
@@ -160,6 +169,7 @@ def test_extract_rejects_failed_or_stale_collector_snapshot():
 
 
 def test_extract_rejects_payload_host_name_mismatch():
+    """Verify that extract rejects payload host name mismatch."""
     sync = _load()
     payload = json.dumps(
         {
@@ -185,6 +195,7 @@ def test_extract_rejects_payload_host_name_mismatch():
 
 
 def test_extract_rejects_duplicate_piggyback_host_names():
+    """Verify that extract rejects duplicate piggyback host names."""
     sync = _load()
     payload = json.dumps(
         {
@@ -224,6 +235,7 @@ def test_extract_rejects_duplicate_piggyback_host_names():
 
 
 def test_plan_rejects_colliding_normalized_group_ids():
+    """Verify that plan rejects colliding normalized group ids."""
     sync = _load()
     mapping = {
         "Campus A": [re.compile(r"^Site A$")],
@@ -238,6 +250,7 @@ def test_plan_rejects_colliding_normalized_group_ids():
 
 
 def test_default_execution_is_dry_run(capsys):
+    """Verify that default execution is dry run."""
     sync = _load()
     result = sync.main(
         [
@@ -254,6 +267,7 @@ def test_default_execution_is_dry_run(capsys):
 
 
 def test_apply_requires_separate_credentials(capsys):
+    """Verify that apply requires separate credentials."""
     sync = _load()
     result = sync.main(
         [
@@ -270,6 +284,7 @@ def test_apply_requires_separate_credentials(capsys):
 
 
 def test_secret_file_permissions_are_restricted(tmp_path):
+    """Verify that secret file permissions are restricted."""
     sync = _load()
     secret = tmp_path / "secret"
     secret.write_text("not-a-real-secret\n", encoding="utf-8")
@@ -282,6 +297,7 @@ def test_secret_file_permissions_are_restricted(tmp_path):
 
 
 def test_rest_client_has_secure_defaults():
+    """Verify that rest client has secure defaults."""
     sync = _load()
     client = sync.CheckmkApi(
         "https://checkmk.example/site/check_mk/api/v1",
@@ -297,6 +313,7 @@ def test_rest_client_has_secure_defaults():
 
 
 def test_rest_client_rejects_wrong_api_path():
+    """Verify that rest client rejects wrong api path."""
     sync = _load()
     with pytest.raises(ValueError, match="must end with /check_mk/api/v1"):
         sync.CheckmkApi(
@@ -309,6 +326,7 @@ def test_rest_client_rejects_wrong_api_path():
 
 
 def test_rest_client_rejects_plain_http_for_remote_hosts():
+    """Verify that rest client rejects plain http for remote hosts."""
     sync = _load()
     with pytest.raises(ValueError, match="must use HTTPS"):
         sync.CheckmkApi(
@@ -321,6 +339,7 @@ def test_rest_client_rejects_plain_http_for_remote_hosts():
 
 
 def test_rest_client_allows_loopback_http_for_local_site_access():
+    """Verify that rest client allows loopback http for local site access."""
     sync = _load()
     client = sync.CheckmkApi(
         "http://127.0.0.1/site/check_mk/api/v1",
@@ -333,6 +352,7 @@ def test_rest_client_allows_loopback_http_for_local_site_access():
 
 
 class _Response:
+    """Represent response behavior and associated state."""
     def __init__(
         self,
         status_code: int,
@@ -340,28 +360,34 @@ class _Response:
         headers: dict[str, str] | None = None,
         text: str = "",
     ) -> None:
+        """Initialize the instance and its required state."""
         self.status_code = status_code
         self._body = body
         self.headers = headers or {}
         self.text = text
 
     def json(self):
+        """Handle json for this module's workflow."""
         if self._body is None:
             raise ValueError("no JSON")
         return self._body
 
 
 class _Session:
+    """Represent session behavior and associated state."""
     def __init__(self, responses):
+        """Initialize the instance and its required state."""
         self.responses = iter(responses)
         self.calls = []
 
     def request(self, method, url, **kwargs):
+        """Handle request for this module's workflow."""
         self.calls.append((method, url, kwargs))
         return next(self.responses)
 
 
 def test_duplicate_classification_requires_explicit_already_exists():
+    """Verify that duplicate classification requires explicit already exists."""
     sync = _load()
     assert sync.CheckmkApi._already_exists(
         _Response(409, text="Object already exists")
@@ -378,6 +404,7 @@ def test_duplicate_classification_requires_explicit_already_exists():
 
 
 def test_non_duplicate_creation_error_is_not_suppressed():
+    """Verify that non duplicate creation error is not suppressed."""
     sync = _load()
     client = sync.CheckmkApi(
         "https://checkmk.example/site/check_mk/api/v1",
@@ -392,6 +419,7 @@ def test_non_duplicate_creation_error_is_not_suppressed():
 
 
 def test_folder_and_host_requests_use_checkmk_object_ids():
+    """Verify that folder and host requests use checkmk object ids."""
     sync = _load()
     client = sync.CheckmkApi(
         "https://checkmk.example/site/check_mk/api/v1",
@@ -415,6 +443,7 @@ def test_folder_and_host_requests_use_checkmk_object_ids():
 
 
 def test_existing_folder_is_accepted_only_after_exact_verification():
+    """Verify that existing folder is accepted only after exact verification."""
     sync = _load()
     client = sync.CheckmkApi(
         "https://checkmk.example/site/check_mk/api/v1",
@@ -447,6 +476,7 @@ def test_existing_folder_is_accepted_only_after_exact_verification():
 
 
 def test_existing_folder_with_conflicting_configuration_is_rejected():
+    """Verify that existing folder with conflicting configuration is rejected."""
     sync = _load()
     client = sync.CheckmkApi(
         "https://checkmk.example/site/check_mk/api/v1",
@@ -474,6 +504,7 @@ def test_existing_folder_with_conflicting_configuration_is_rejected():
 
 
 def test_existing_host_is_accepted_only_after_exact_configuration_verification():
+    """Verify that existing host is accepted only after exact configuration verification."""
     sync = _load()
     client = sync.CheckmkApi(
         "https://checkmk.example/site/check_mk/api/v1",
@@ -506,6 +537,7 @@ def test_existing_host_is_accepted_only_after_exact_configuration_verification()
 
 
 def test_existing_host_in_wrong_folder_is_rejected():
+    """Verify that existing host in wrong folder is rejected."""
     sync = _load()
     client = sync.CheckmkApi(
         "https://checkmk.example/site/check_mk/api/v1",
@@ -533,6 +565,7 @@ def test_existing_host_in_wrong_folder_is_rejected():
 
 
 def test_existing_host_with_extra_or_conflicting_attributes_is_rejected():
+    """Verify that existing host with extra or conflicting attributes is rejected."""
     sync = _load()
     client = sync.CheckmkApi(
         "https://checkmk.example/site/check_mk/api/v1",
@@ -563,6 +596,7 @@ def test_existing_host_with_extra_or_conflicting_attributes_is_rejected():
 
 
 def test_activation_reads_etag_and_waits_for_completion():
+    """Verify that activation reads etag and waits for completion."""
     sync = _load()
     client = sync.CheckmkApi(
         "https://checkmk.example/site/check_mk/api/v1",
@@ -596,6 +630,7 @@ def test_activation_reads_etag_and_waits_for_completion():
 
 
 def test_activation_wait_failure_is_reported():
+    """Verify that activation wait failure is reported."""
     sync = _load()
     client = sync.CheckmkApi(
         "https://checkmk.example/site/check_mk/api/v1",
@@ -616,6 +651,7 @@ def test_activation_wait_failure_is_reported():
 
 
 def test_activation_skips_when_no_changes_are_pending():
+    """Verify that activation skips when no changes are pending."""
     sync = _load()
     client = sync.CheckmkApi(
         "https://checkmk.example/site/check_mk/api/v1",

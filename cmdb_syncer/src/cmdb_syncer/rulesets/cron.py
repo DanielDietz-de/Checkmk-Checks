@@ -21,6 +21,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_form_cmdb_syncer_cron():
+    """Handle parameter form cmdb syncer cron for this module's workflow."""
     return Dictionary(
         title = Title("CMDB Syncer cronjob levels"),
         elements = {
@@ -45,4 +46,3 @@ rule_spec_cmdbsyncer_cron = CheckParameters(
     parameter_form = _parameter_form_cmdb_syncer_cron,
     title = Title("CMDB Syncer Cronjobs"),
 )
-

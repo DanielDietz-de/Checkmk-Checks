@@ -20,6 +20,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_palo_alto_ha(string_table):
+    """Parse palo alto ha into its normalized representation."""
     if not string_table or not string_table[0]:
         return None
     local_state, peer_state, mode = string_table[0]
@@ -43,11 +44,13 @@ snmp_section_palo_alto_ha = SimpleSNMPSection(
 
 def discover_palo_alto_ha(section):
     # Only create the service when HA is actually configured.
+    """Discover palo alto ha from the available input data."""
     if section["mode"].strip().lower() not in ("", "disabled"):
         yield Service()
 
 
 def check_palo_alto_ha(params, section):
+    """Evaluate palo alto ha and return its resulting state."""
     state_map = params["states"]
     local = section["local"].strip()
     peer = section["peer"].strip()

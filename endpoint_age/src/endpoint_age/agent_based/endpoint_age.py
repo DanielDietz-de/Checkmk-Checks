@@ -23,6 +23,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_endpoint_age(string_table):
+    """Parse endpoint age into its normalized representation."""
     section = {}
     for row in string_table:
         if not row:
@@ -39,11 +40,13 @@ def parse_endpoint_age(string_table):
 
 
 def discover_endpoint_age(section):
+    """Discover endpoint age from the available input data."""
     for name in section:
         yield Service(item=name)
 
 
 def check_endpoint_age(item, params, section):
+    """Evaluate endpoint age and return its resulting state."""
     entry = section.get(item)
     if entry is None:
         return

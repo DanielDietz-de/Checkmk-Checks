@@ -14,6 +14,7 @@ from cmk.server_side_calls.v1 import (
 
 
 class AgentJSONEndpoint(BaseModel):
+    """Represent agentjsonendpoint behavior and associated state."""
     api_url: str
     username: Optional[str] = None
     password: Optional[Secret] = None
@@ -21,6 +22,7 @@ class AgentJSONEndpoint(BaseModel):
 
 
 class AgentJSONParams(BaseModel):
+    """Represent agentjsonparams behavior and associated state."""
     endpoints: Optional[List[AgentJSONEndpoint]] = None
     api_url: Optional[str] = None
     username: Optional[str] = None
@@ -29,6 +31,7 @@ class AgentJSONParams(BaseModel):
 
 
 def _endpoints(params: AgentJSONParams):
+    """Handle endpoints for this module's workflow."""
     if params.endpoints:
         return params.endpoints
     if params.api_url:
@@ -44,6 +47,7 @@ def _endpoints(params: AgentJSONParams):
 
 
 def generate_agent_json_command(params: AgentJSONParams, host_config: HostConfig):
+    """Generate agent json command from the current source data."""
     arguments: list[str | Secret] = []
     for endpoint in _endpoints(params):
         arguments.extend(

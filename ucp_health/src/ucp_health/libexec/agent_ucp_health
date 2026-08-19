@@ -23,6 +23,7 @@ import requests
 
 
 def parse_arguments():
+    """Parse arguments into its normalized representation."""
     parser = argparse.ArgumentParser(description="UCP / MKE Health Special Agent")
     parser.add_argument("--node", action="append", nargs=2, metavar=("NAME", "URL"),
                         default=[], help="Node to check: host name and _ping URL. Repeatable.")
@@ -72,6 +73,7 @@ def local_check(state, item, metric, text):
 
 
 def main():
+    """Run the command-line entry point and return its result."""
     args = parse_arguments()
 
     # Verify against the system trust store unless verification is disabled. The

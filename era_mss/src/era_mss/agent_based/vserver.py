@@ -49,6 +49,7 @@ COUNT_FIELDS = [
 
 
 def parse_era_vserver(string_table):
+    """Parse era vserver into its normalized representation."""
     section = {}
     for entry in string_table[0]:
         oid_end = entry[0]
@@ -57,11 +58,13 @@ def parse_era_vserver(string_table):
 
 
 def discover_era_vserver(section):
+    """Discover era vserver from the available input data."""
     for item in section:
         yield Service(item=item)
 
 
 def check_era_vserver(item, params, section):
+    """Evaluate era vserver and return its resulting state."""
     row = section.get(item)
     if row is None:
         return

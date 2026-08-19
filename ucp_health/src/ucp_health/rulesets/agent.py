@@ -21,6 +21,7 @@ from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
 
 def _node_form():
+    """Handle node form for this module's workflow."""
     return Dictionary(
         title=Title("Node"),
         elements={
@@ -53,6 +54,7 @@ def _node_form():
 
 
 def _valuespec_special_agent_ucp_health():
+    """Handle valuespec special agent ucp health for this module's workflow."""
     return Dictionary(
         title=Title("UCP / MKE Health Monitoring"),
         help_text=Help(

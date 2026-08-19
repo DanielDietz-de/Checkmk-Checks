@@ -8,6 +8,7 @@ AGENT = Path(__file__).parents[1] / "src/adfs_certificates/libexec/agent_adfs_ce
 
 
 def test_all_http_requests_have_timeouts() -> None:
+    """Verify that all http requests have timeouts."""
     tree = ast.parse(AGENT.read_text(encoding="utf-8"))
     calls = [
         node
@@ -23,6 +24,7 @@ def test_all_http_requests_have_timeouts() -> None:
 
 
 def test_tls_verification_is_not_disabled_unconditionally() -> None:
+    """Verify that tls verification is not disabled unconditionally."""
     tree = ast.parse(AGENT.read_text(encoding="utf-8"))
     assert not any(
         isinstance(node, ast.keyword)

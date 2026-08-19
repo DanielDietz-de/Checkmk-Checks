@@ -19,6 +19,7 @@ MAGNITUDES = [SIMagnitude.MEGA, SIMagnitude.GIGA, SIMagnitude.TERA]
 
 
 def _formspec_cohesity_storage():
+    """Handle formspec cohesity storage for this module's workflow."""
     return Dictionary(
         elements = {
             "levels": DictElement(
@@ -52,4 +53,3 @@ rule_spec_cohesity_storage = CheckParameters(
     parameter_form = _formspec_cohesity_storage,
     title = Title("Cohesity filesystem size"),
 )
-

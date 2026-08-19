@@ -21,11 +21,13 @@ agent_section_unisphere_powermax_health_score = AgentSection(
 
 
 def discover_health(section):
+    """Discover health from the available input data."""
     for item in section:
         yield Service(item=item)
 
 
 def check_health(item, params, section):
+    """Evaluate health and return its resulting state."""
     data = section.get(item)
     if data is None:
         yield Result(state=State.UNKNOWN, summary="Item is missing from agent data")

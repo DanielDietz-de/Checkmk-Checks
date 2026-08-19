@@ -14,6 +14,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _bps_levels(direction, title, defaults):
+    """Handle bps levels for this module's workflow."""
     return SimpleLevels(
         title=Title(title),
         level_direction=direction,
@@ -23,6 +24,7 @@ def _bps_levels(direction, title, defaults):
 
 
 def _parameters():
+    """Handle parameters for this module's workflow."""
     return Dictionary(
         title=Title("ERA output channel thresholds"),
         elements={

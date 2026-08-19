@@ -20,6 +20,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, Topic
 
 
 def _valuespec_palo_alto_antivirus():
+    """Handle valuespec palo alto antivirus for this module's workflow."""
     return Dictionary(
         title = Title("Age for antivirus updates"),
         help_text = Help("Please configure levels for maximum age of last antivirus update."),

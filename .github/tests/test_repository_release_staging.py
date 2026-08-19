@@ -14,6 +14,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts/stage_repository_release
 
 
 def _load():
+    """Handle load for this module's workflow."""
     spec = importlib.util.spec_from_file_location("stage_repository_release", SCRIPT)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -31,6 +32,7 @@ def _write_package(
     manifest_name: str | None = None,
     manifest_payload: bytes | None = None,
 ) -> None:
+    """Handle write package for this module's workflow."""
     (repository / package_dir / "src").mkdir(parents=True)
     (repository / package_dir / "src/info").write_text("{}", encoding="utf-8")
     output_dir = dist / package_dir
@@ -55,10 +57,12 @@ def _write_package(
 
 
 def _write_index(dist: Path, entries: list[dict[str, str]]) -> None:
+    """Handle write index for this module's workflow."""
     (dist / "packages.json").write_text(json.dumps(entries), encoding="utf-8")
 
 
 def _alpha_index(path: str = "alpha/alpha-1.0.1.mkp") -> list[dict[str, str]]:
+    """Handle alpha index for this module's workflow."""
     return [
         {
             "package_dir": "alpha",
@@ -70,6 +74,7 @@ def _alpha_index(path: str = "alpha/alpha-1.0.1.mkp") -> list[dict[str, str]]:
 
 
 def test_complete_validated_set_is_staged(tmp_path: Path) -> None:
+    """Verify that complete validated set is staged."""
     module = _load()
     repository = tmp_path / "repo"
     dist = tmp_path / "dist"
@@ -88,6 +93,7 @@ def test_complete_validated_set_is_staged(tmp_path: Path) -> None:
 
 
 def test_partial_artifact_set_is_rejected(tmp_path: Path) -> None:
+    """Verify that partial artifact set is rejected."""
     module = _load()
     repository = tmp_path / "repo"
     dist = tmp_path / "dist"
@@ -100,6 +106,7 @@ def test_partial_artifact_set_is_rejected(tmp_path: Path) -> None:
 
 
 def test_index_path_must_match_package_identity(tmp_path: Path) -> None:
+    """Verify that index path must match package identity."""
     module = _load()
     repository = tmp_path / "repo"
     dist = tmp_path / "dist"
@@ -112,6 +119,7 @@ def test_index_path_must_match_package_identity(tmp_path: Path) -> None:
 
 
 def test_contained_file_rejects_path_traversal(tmp_path: Path) -> None:
+    """Verify that contained file rejects path traversal."""
     module = _load()
     root = tmp_path / "dist"
     root.mkdir()
@@ -121,6 +129,7 @@ def test_contained_file_rejects_path_traversal(tmp_path: Path) -> None:
 
 
 def test_manifest_metadata_mismatch_is_rejected(tmp_path: Path) -> None:
+    """Verify that manifest metadata mismatch is rejected."""
     module = _load()
     repository = tmp_path / "repo"
     dist = tmp_path / "dist"
@@ -131,6 +140,7 @@ def test_manifest_metadata_mismatch_is_rejected(tmp_path: Path) -> None:
 
 
 def test_oversized_manifest_is_rejected(tmp_path: Path) -> None:
+    """Verify that oversized manifest is rejected."""
     module = _load()
     repository = tmp_path / "repo"
     dist = tmp_path / "dist"
@@ -148,6 +158,7 @@ def test_oversized_manifest_is_rejected(tmp_path: Path) -> None:
 
 
 def test_symlinked_manifest_target_is_rejected(tmp_path: Path) -> None:
+    """Verify that symlinked manifest target is rejected."""
     module = _load()
     repository = tmp_path / "repo"
     dist = tmp_path / "dist"

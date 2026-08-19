@@ -64,6 +64,7 @@ ERROR_COUNTERS = {'digest_err', 'timeout_err'}
 
 
 def parse_open_iscsi_session_stats(string_table: StringTable) -> dict:
+    """Parse open iscsi session stats into its normalized representation."""
     sessions: dict = {}
     mac_target = None
     for line in string_table:
@@ -77,11 +78,13 @@ def parse_open_iscsi_session_stats(string_table: StringTable) -> dict:
 
 
 def discover_open_iscsi_session_stats(section: dict) -> DiscoveryResult:
+    """Discover open iscsi session stats from the available input data."""
     for session in section:
         yield Service(item=session)
 
 
 def check_open_iscsi_session_stats(item: str, params: dict, section: dict) -> CheckResult:
+    """Evaluate open iscsi session stats and return its resulting state."""
     if item not in section:
         return
     counters = section[item]

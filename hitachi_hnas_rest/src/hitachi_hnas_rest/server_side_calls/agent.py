@@ -10,6 +10,7 @@ from cmk.server_side_calls.v1 import (
 
 
 def _agent_arguments(params, host_config: HostConfig):
+    """Handle agent arguments for this module's workflow."""
     address_mode, address_value = params["address"]
     if address_mode == "ip":
         address = host_config.primary_ip_config.address

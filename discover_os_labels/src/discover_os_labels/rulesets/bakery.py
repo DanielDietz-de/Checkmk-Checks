@@ -18,6 +18,7 @@ from cmk.rulesets.v1.rule_specs import AgentConfig, Topic
 
 
 def _agent_config() -> Dictionary:
+    """Handle agent config for this module's workflow."""
     return Dictionary(
         help_text=Help(
             "This rule controls the deployment of the discover OS labels plugin.",

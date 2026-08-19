@@ -35,6 +35,7 @@ def generate_powermax_command(
     params: AgentDellPowermaxParams,
     host_config: HostConfig,
 ) -> Iterator[SpecialAgentCommand]:
+    """Generate powermax command from the current source data."""
     args: list[str | Secret] = [
         "-u",
         params.username,

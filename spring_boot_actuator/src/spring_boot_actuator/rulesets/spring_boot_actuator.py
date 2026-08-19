@@ -27,6 +27,7 @@ from cmk.rulesets.v1.rule_specs import (
 
 
 def _parameter_form_special_agent():
+    """Handle parameter form special agent for this module's workflow."""
     return Dictionary(
         title=Title("Spring Boot Actuator"),
         help_text=Help(
@@ -94,6 +95,7 @@ rule_spec_spring_boot_actuator = SpecialAgent(
 
 
 def _parameter_form_check():
+    """Handle parameter form check for this module's workflow."""
     return Dictionary(
         title=Title("Spring Boot Actuator health"),
         help_text=Help(

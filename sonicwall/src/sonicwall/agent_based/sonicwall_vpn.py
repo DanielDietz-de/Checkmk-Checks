@@ -45,10 +45,12 @@ snmp_section_sonicwall_vpn = SimpleSNMPSection(
 )
 
 def discover_sonicwall_vpn(section):
+    """Discover sonicwall vpn from the available input data."""
     for entry in section:
         yield Service(item=entry["vpn_name"])
 
 def check_sonicwall_vpn(item, section):
+    """Evaluate sonicwall vpn and return its resulting state."""
     data = next((e for e in section if e["vpn_name"] == item), None)
     if not data:
         yield Result(state=State.UNKNOWN, summary=f"No VPN data for {item}")

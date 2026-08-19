@@ -23,6 +23,7 @@ REQUIRED_FIELDS = (
 
 
 def load_manifest(path: Path) -> dict[str, Any]:
+    """Load manifest from its configured source."""
     value = ast.literal_eval(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise ValueError(f"{path}: manifest must contain a dictionary")
@@ -30,6 +31,7 @@ def load_manifest(path: Path) -> dict[str, Any]:
 
 
 def validate_manifest(path: Path, data: dict[str, Any]) -> list[str]:
+    """Validate manifest and reject invalid input."""
     errors: list[str] = []
     for field in REQUIRED_FIELDS:
         if field not in data:
@@ -48,10 +50,12 @@ def validate_manifest(path: Path, data: dict[str, Any]) -> list[str]:
 
 
 def rendered_json(data: dict[str, Any]) -> str:
+    """Handle rendered json for this module's workflow."""
     return json.dumps(data, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
 
 
 def run(root: Path, *, write: bool) -> list[str]:
+    """Handle run for this module's workflow."""
     errors: list[str] = []
     for manifest in sorted(root.glob("*/src/info")):
         try:
@@ -77,6 +81,7 @@ def run(root: Path, *, write: bool) -> list[str]:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse args into its normalized representation."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--write", action="store_true")
@@ -84,6 +89,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the command-line entry point and return its result."""
     args = parse_args(argv)
     errors = run(args.root.resolve(), write=args.write)
     if errors:

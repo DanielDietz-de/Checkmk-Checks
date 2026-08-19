@@ -14,7 +14,9 @@ from sys import argv, stdout, exit
 
 
 class Videotext:
+    """Represent videotext behavior and its associated runtime state."""
     def __init__(self, url, pattern, timeout, warn, crit):
+        """Initialize the instance and its required runtime state."""
         self.url = url
         self.pattern = pattern
         self.timeout = timeout if timeout else 30
@@ -23,6 +25,7 @@ class Videotext:
 
 
     def request(self):
+        """Handle request for this source file's runtime workflow."""
         resp = get(
             self.url,
             timeout=self.timeout,
@@ -39,6 +42,7 @@ class Videotext:
 
 
     def check(self):
+        """Handle check for this source file's runtime workflow."""
         try:
             time = self.request()
         except ValueError as ve:

@@ -18,6 +18,7 @@ ASYNC_CONFIG = (
 
 
 def test_captures_stdout_and_stderr_without_shell_execution():
+    """Verify that captures stdout and stderr without shell execution."""
     assert "$startInfo.UseShellExecute = $false" in SCRIPT
     assert "$startInfo.RedirectStandardOutput = $true" in SCRIPT
     assert "$startInfo.RedirectStandardError = $true" in SCRIPT
@@ -27,6 +28,7 @@ def test_captures_stdout_and_stderr_without_shell_execution():
 
 
 def test_detects_json_and_diagnostics_streams():
+    """Verify that detects json and diagnostics streams."""
     assert "$jsonStream = 'stdout'" in SCRIPT
     assert "$jsonStream = 'stderr'" in SCRIPT
     assert "$jsonStream = 'combined'" in SCRIPT
@@ -38,6 +40,7 @@ def test_detects_json_and_diagnostics_streams():
 
 
 def test_requested_host_naming_rule_is_implemented():
+    """Verify that requested host naming rule is implemented."""
     assert "$nameIsMac" in SCRIPT
     assert '"AP_$Serial"' in SCRIPT
     assert '"AP_$compactMac"' in SCRIPT
@@ -45,6 +48,7 @@ def test_requested_host_naming_rule_is_implemented():
 
 
 def test_piggyback_host_name_collisions_fail_closed_before_cache_write():
+    """Verify that piggyback host name collisions fail closed before cache write."""
     assert "function Assert-UniqueHostNames" in SCRIPT
     assert "$seen.ContainsKey($hostName)" in SCRIPT
     assert "Duplicate Aruba AP piggyback host name" in SCRIPT
@@ -55,6 +59,7 @@ def test_piggyback_host_name_collisions_fail_closed_before_cache_write():
 
 
 def test_authoritative_ap_count_mismatch_fails_before_cache_write():
+    """Verify that authoritative ap count mismatch fails before cache write."""
     assert "$diagnostics.counts_stream -ne 'derived'" in SCRIPT
     assert "cencli AP count mismatch" in SCRIPT
     validation = SCRIPT.index("cencli AP count mismatch")
@@ -64,6 +69,7 @@ def test_authoritative_ap_count_mismatch_fails_before_cache_write():
 
 
 def test_configuration_failures_enter_monitoring_failure_handler():
+    """Verify that configuration failures enter monitoring failure handler."""
     default_config = SCRIPT.index("$config = Get-DefaultConfig")
     fallback_config = SCRIPT.index("$failureConfig = $config", default_config)
     try_block = SCRIPT.index("try {", fallback_config)
@@ -74,6 +80,7 @@ def test_configuration_failures_enter_monitoring_failure_handler():
 
 
 def test_failure_handler_uses_only_validated_fallback_config():
+    """Verify that failure handler uses only validated fallback config."""
     _, failure = SCRIPT.rsplit("\ncatch {", 1)
     assert "Read-LastGood -Path ([string]$failureConfig.LastGoodCacheFile)" in failure
     assert "-MaxAgeSeconds ([int]$failureConfig.MaxStaleSeconds)" in failure
@@ -82,6 +89,7 @@ def test_failure_handler_uses_only_validated_fallback_config():
 
 
 def test_last_good_cache_is_not_replaced_in_failure_handler():
+    """Verify that last good cache is not replaced in failure handler."""
     success, failure = SCRIPT.rsplit("\ncatch {", 1)
     assert "Write-AtomicJson" in success
     assert "Write-AtomicJson" not in failure
@@ -90,6 +98,7 @@ def test_last_good_cache_is_not_replaced_in_failure_handler():
 
 
 def test_agent_execution_is_explicitly_asynchronous():
+    """Verify that agent execution is explicitly asynchronous."""
     assert "async: yes" in ASYNC_CONFIG
     assert "timeout: 90" in ASYNC_CONFIG
     assert "cache_age: 300" in ASYNC_CONFIG

@@ -14,6 +14,7 @@ EXCHANGE = ROOT / "cmk_api_scripts" / "exchange_publish.py"
 
 
 def load_activate_module():
+    """Load activate module from its configured source."""
     spec = importlib.util.spec_from_file_location("activate_changes_test", ACTIVATE)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -23,12 +24,15 @@ def load_activate_module():
 
 
 class StandaloneUtilityTests(unittest.TestCase):
+    """Represent standaloneutilitytests behavior and associated state."""
     def test_activate_changes_rejects_remote_cleartext_by_default(self):
+        """Verify that activate changes rejects remote cleartext by default."""
         module = load_activate_module()
         with self.assertRaisesRegex(ValueError, "requires HTTPS"):
             module.validate_site_url("http://checkmk.example/mysite")
 
     def test_activate_changes_accepts_https_and_derives_site(self):
+        """Verify that activate changes accepts https and derives site."""
         module = load_activate_module()
         self.assertEqual(
             module.validate_site_url("https://checkmk.example/mysite"),
@@ -36,6 +40,7 @@ class StandaloneUtilityTests(unittest.TestCase):
         )
 
     def test_exchange_publish_uses_bounded_timeout(self):
+        """Verify that exchange publish uses bounded timeout."""
         spec = importlib.util.spec_from_file_location("exchange_publish_test", EXCHANGE)
         assert spec is not None and spec.loader is not None
         module = importlib.util.module_from_spec(spec)
@@ -43,20 +48,25 @@ class StandaloneUtilityTests(unittest.TestCase):
         spec.loader.exec_module(module)
 
         class Response:
+            """Represent response behavior and associated state."""
             headers = {}
 
             @staticmethod
             def getcode():
+                """Handle getcode for this module's workflow."""
                 return 200
 
             @staticmethod
             def read():
+                """Handle read for this module's workflow."""
                 return b"ok"
 
         class Opener:
+            """Represent opener behavior and associated state."""
             timeout = None
 
             def open(self, request, *, timeout):
+                """Handle open for this module's workflow."""
                 del request
                 self.timeout = timeout
                 return Response()
@@ -68,6 +78,7 @@ class StandaloneUtilityTests(unittest.TestCase):
         self.assertEqual(opener.timeout, 7.5)
 
     def test_exchange_publish_rejects_nonpositive_timeout(self):
+        """Verify that exchange publish rejects nonpositive timeout."""
         spec = importlib.util.spec_from_file_location("exchange_publish_timeout_test", EXCHANGE)
         assert spec is not None and spec.loader is not None
         module = importlib.util.module_from_spec(spec)
@@ -77,6 +88,7 @@ class StandaloneUtilityTests(unittest.TestCase):
             module.Exchange(timeout=0)
 
     def test_removed_legacy_web_api_examples_are_absent(self):
+        """Verify that removed legacy web api examples are absent."""
         self.assertFalse((ROOT / "stuff" / "api.py").exists())
         self.assertFalse((ROOT / "stuff" / "edit_label.py").exists())
 

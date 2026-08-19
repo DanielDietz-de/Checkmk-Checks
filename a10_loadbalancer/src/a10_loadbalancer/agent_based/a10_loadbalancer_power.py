@@ -18,6 +18,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_a10_loadbalancer_power(string_table: StringTable) -> StringTable:
+    """Parse a10 loadbalancer power into its normalized representation."""
     return string_table
 
 
@@ -36,12 +37,14 @@ snmp_section_a10_loadbalancer_power = SimpleSNMPSection(
 
 
 def discover_a10_loadbalancer_power(section: StringTable) -> DiscoveryResult:
+    """Discover a10 loadbalancer power from the available input data."""
     for line in section:
         if line[1] == "1":
             yield Service(item=line[0])
 
 
 def check_a10_loadbalancer_power(item: str, section: StringTable) -> CheckResult:
+    """Evaluate a10 loadbalancer power and return its resulting state."""
     states = {
         "0": "off",
         "1": "on",

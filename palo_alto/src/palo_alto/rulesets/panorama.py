@@ -17,6 +17,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, Topic
 
 
 def _formspec_palo_alto_panorama():
+    """Handle formspec palo alto panorama for this module's workflow."""
     return Dictionary(
         title=Title("Palo Alto Panorama Availability"),
         help_text=Help(

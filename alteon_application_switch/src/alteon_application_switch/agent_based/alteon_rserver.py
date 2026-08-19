@@ -3,7 +3,7 @@
 
 
 from cmk.agent_based.v2 import (
-    SNMPTree, 
+    SNMPTree,
     startswith,
     Service,
     Result,
@@ -19,6 +19,7 @@ from cmk.agent_based.v2 import (
 import time
 
 def parse_alteon_rserver(string_table):
+    """Parse alteon rserver into its normalized representation."""
     rserver = {}
     for ip_data in string_table:
         values = {}
@@ -58,11 +59,13 @@ snmp_section_alteon_server = SNMPSection(
 
 
 def discover_alteon_rserver(section):
+    """Discover alteon rserver from the available input data."""
     for name, data in section.items():
-        yield Service(item=name) 
+        yield Service(item=name)
 
 
 def get_traffic_human_readable(speed, in_unit, out_unit):
+    """Return traffic human readable for the supplied inputs."""
     base = 1000.0
     if in_unit == "Bit" and out_unit == 'Byte':
         speed = speed / 8
@@ -86,6 +89,7 @@ def get_traffic_human_readable(speed, in_unit, out_unit):
 
 
 def check_alteon_rserver(item, section):
+    """Evaluate alteon rserver and return its resulting state."""
     this_time = time.time()
     value_store = get_value_store()
 
@@ -117,7 +121,7 @@ def check_alteon_rserver(item, section):
         ))
 
 
-check_plugin_alteon_rserver = CheckPlugin(     
+check_plugin_alteon_rserver = CheckPlugin(
     name='alteon_rserver',
     service_name='RServer [%s]',
     discovery_function=discover_alteon_rserver,

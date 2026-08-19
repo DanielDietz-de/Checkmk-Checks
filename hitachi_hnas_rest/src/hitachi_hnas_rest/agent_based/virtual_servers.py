@@ -45,12 +45,14 @@ agent_section_hitachi_hnas_rest_virtual_servers = AgentSection(
 
 
 def discover_hitachi_hnas_rest_virtual_servers(section):
+    """Discover hitachi hnas rest virtual servers from the available input data."""
     for name, server in section.items():
         if server.get("isEnabled"):
             yield Service(item=name)
 
 
 def check_hitachi_hnas_rest_virtual_servers(item, section):
+    """Evaluate hitachi hnas rest virtual servers and return its resulting state."""
     server = section.get(item)
     if not server:
         return

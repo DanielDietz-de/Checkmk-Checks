@@ -8,6 +8,7 @@ from cmk.server_side_calls.v1 import HostConfig, SpecialAgentCommand, SpecialAge
 
 
 class Endpoint(BaseModel):
+    """Represent endpoint behavior and associated state."""
     name: str
     url: str
     source: tuple[str, str | None]
@@ -15,10 +16,12 @@ class Endpoint(BaseModel):
 
 
 class ConfigParser(BaseModel):
+    """Represent configparser behavior and associated state."""
     endpoints: list[Endpoint] = Field(min_length=1, max_length=100)
 
 
 def _source_to_str(source: tuple[str, str | None]) -> str:
+    """Handle source to str for this module's workflow."""
     kind, value = source
     if kind == "age_header":
         return "age_header"
@@ -30,6 +33,7 @@ def _source_to_str(source: tuple[str, str | None]) -> str:
 
 
 def agent_arguments(params: ConfigParser, host_config: HostConfig):
+    """Handle agent arguments for this module's workflow."""
     args: list[str] = []
     for endpoint in params.endpoints:
         payload = {

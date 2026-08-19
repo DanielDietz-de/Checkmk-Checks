@@ -41,11 +41,13 @@ agent_section_hitachi_hnas_rest_storage_pools = AgentSection(
 
 
 def discover_hitachi_hnas_rest_storage_pools(section):
+    """Discover hitachi hnas rest storage pools from the available input data."""
     for label in section:
         yield Service(item=label)
 
 
 def check_hitachi_hnas_rest_storage_pools(item, params, section):
+    """Evaluate hitachi hnas rest storage pools and return its resulting state."""
     pool = section.get(item)
     if not pool:
         return

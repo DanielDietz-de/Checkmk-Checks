@@ -34,6 +34,7 @@ MpToDevice = Mapping[str, str]
 
 
 def _padded_line(line: List[str]) -> List[str]:
+    """Handle padded line for this module's workflow."""
     try:
         int(line[1])
     except ValueError:
@@ -44,6 +45,7 @@ def _padded_line(line: List[str]) -> List[str]:
 
 def _reformat_line(line: List[str]) -> List[str]:
     # Handle known cases, where the file system contains spaces
+    """Handle reformat line for this module's workflow."""
     for index, entry in enumerate(line):
         if entry == "NTFS":
             line = (
@@ -64,6 +66,7 @@ def _processed(
     seen_btrfs_devices: Set[str],
     device_to_uuid: LsblkMap,
 ) -> Optional[DfBlock]:
+    """Handle processed for this module's workflow."""
     device, fs_type, size_kb, used_kb, avail_kb, _, *rest = line
     if fs_type == "btrfs":
         # This particular bit of magic originated in Werk #2671 and has the purpose of
@@ -105,6 +108,7 @@ def _processed(
 def _parse_blocks_subsection(
     blocks_subsection: StringTable, device_to_uuid: LsblkMap
 ) -> Tuple[BlocksSubsection, MpToDevice]:
+    """Handle parse blocks subsection for this module's workflow."""
     seen_btrfs_devices: Set[str] = set()
     df_blocks = tuple(
         item  #
@@ -122,7 +126,9 @@ def _parse_blocks_subsection(
 def _parse_inodes_subsection(
     inodes_subsection: StringTable, mp_to_device: MpToDevice, device_to_uuid: LsblkMap
 ) -> InodesSubsection:
+    """Handle parse inodes subsection for this module's workflow."""
     def _to_entry(line: Sequence[str]) -> Optional[DfInode]:
+        """Handle to entry for this module's workflow."""
         with suppress(ValueError):
             mountpoint = line[-1]
             device = mp_to_device.get(mountpoint)
@@ -141,6 +147,7 @@ def _parse_inodes_subsection(
 
 
 def _parse_lsblk_subsection(lsblk_subsection: StringTable) -> LsblkMap:
+    """Handle parse lsblk subsection for this module's workflow."""
     try:
         lsblk = json.loads("".join(["".join(line) for line in lsblk_subsection]))
     except json.decoder.JSONDecodeError:

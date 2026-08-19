@@ -9,9 +9,7 @@ from pydantic import BaseModel
 from cmk.server_side_calls.v1 import SpecialAgentCommand, SpecialAgentConfig, Secret
 
 class ConfigParser(BaseModel):
-    """
-    Config Parser
-    """
+    """Represent configparser behavior and associated state."""
     tenant_id: str
     client_id: str
     client_secret: Secret
@@ -28,10 +26,10 @@ def azure_arguments(params, host_config):
         "--client-secret-id", params.client_secret,
         "--subscription-id", params.subscription_id,
     ]
-    
+
     if params.proxy_url:
         args.extend(["--proxy-url", params.proxy_url])
-    
+
     yield SpecialAgentCommand(command_arguments=args)
 
 special_agent_azure = SpecialAgentConfig(
@@ -39,6 +37,3 @@ special_agent_azure = SpecialAgentConfig(
     parameter_parser=ConfigParser.model_validate,
     commands_function=azure_arguments,
 )
-
-
-

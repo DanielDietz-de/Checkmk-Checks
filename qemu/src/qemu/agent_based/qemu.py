@@ -5,16 +5,19 @@ from cmk.agent_based.v2 import AgentSection, CheckPlugin, Metric, Result, Servic
 
 
 def parse_qemu(string_table):
+    """Parse qemu into its normalized representation."""
     return string_table
 
 
 def qemu_fix_vmname(name):
+    """Handle qemu fix vmname for this module's workflow."""
     if name.startswith("instance"):
         name.replace("instance", "i")
     return name
 
 
 def discover_qemu(section):
+    """Discover qemu from the available input data."""
     for line in section:
         if line[2] == "running":
             yield Service(item=qemu_fix_vmname(line[1]))
@@ -28,6 +31,7 @@ def _upper_levels(value):
 
 
 def check_qemu(item, params, section):
+    """Evaluate qemu and return its resulting state."""
     perfdata = []
     for line in section:
         vm = qemu_fix_vmname(line[1])

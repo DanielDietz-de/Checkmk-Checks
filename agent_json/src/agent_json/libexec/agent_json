@@ -40,6 +40,8 @@ class EndpointError(RuntimeError):
 
 @dataclass(frozen=True)
 class Endpoint:
+    """Represent one configured JSON endpoint and its request credentials."""
+
     url: str
     username: str
     password: str
@@ -47,6 +49,8 @@ class Endpoint:
 
 
 class AgentJson:
+    """Fetch JSON endpoint checks and render safe Checkmk local output."""
+
     map_states = {
         "OK": 0,
         "UP": 0,
@@ -60,12 +64,14 @@ class AgentJson:
     }
 
     def __init__(self, endpoints: Iterable[Endpoint]):
+        """Initialize the collector with validated endpoint definitions and HTTP state."""
         self.endpoints = list(endpoints)
         self.session = requests.Session()
         self.session.trust_env = False
 
     @staticmethod
     def validate_url(value: str) -> str:
+        """Validate and normalize an HTTPS endpoint URL before requesting it."""
         parsed = urlsplit(value.strip())
         if parsed.scheme != "https" or not parsed.hostname:
             raise EndpointError("endpoint must be an absolute HTTPS URL")
@@ -77,11 +83,13 @@ class AgentJson:
 
     @staticmethod
     def endpoint_label(url: str) -> str:
+        """Return a safe host label derived from an endpoint URL."""
         parsed = urlsplit(url)
         return parsed.hostname or "invalid endpoint"
 
     @staticmethod
     def read_bounded_response(response: requests.Response) -> bytes:
+        """Read an HTTP response while enforcing the configured byte limit."""
         declared = response.headers.get("Content-Length")
         if declared:
             try:
@@ -97,6 +105,7 @@ class AgentJson:
         return bytes(body)
 
     def fetch_checks(self, endpoint: Endpoint) -> list[dict[str, Any]]:
+        """Fetch and normalize trusted check objects from one configured endpoint."""
         url = self.validate_url(endpoint.url)
         method = endpoint.method.upper()
         if method not in {"GET", "POST"}:
@@ -170,6 +179,7 @@ class AgentJson:
 
     @staticmethod
     def safe_text(value: Any, *, limit: int) -> str:
+        """Return sanitized single-line text bounded to the requested output length."""
         text = CONTROL_CHAR_RE.sub(" ", str(value))
         text = " ".join(text.split())
         if len(text) > limit:
@@ -178,12 +188,14 @@ class AgentJson:
 
     @classmethod
     def safe_service_name(cls, value: Any) -> str:
+        """Return a quoted-service-safe name for Checkmk local-check output."""
         name = cls.safe_text(value, limit=MAX_SERVICE_NAME_LENGTH)
         name = name.replace("\\", "\\\\").replace('"', '\\"')
         return name or "Unnamed check"
 
     @classmethod
     def check_output(cls, check: dict[str, Any]) -> str:
+        """Render one normalized check payload into bounded human-readable output."""
         parts: list[str] = []
         if check.get("summary") not in (None, ""):
             parts.append(cls.safe_text(check["summary"], limit=MAX_OUTPUT_LENGTH))
@@ -196,6 +208,7 @@ class AgentJson:
 
     @classmethod
     def unknown_line(cls, endpoint: Endpoint, message: str) -> str:
+        """Render one UNKNOWN local-check line for an endpoint-level failure."""
         label = cls.safe_service_name(
             f"JSON agent {cls.endpoint_label(endpoint.url)}"
         )
@@ -203,6 +216,7 @@ class AgentJson:
         return f'3 "{label}" - {output}'
 
     def get_json(self) -> int:
+        """Fetch every endpoint and print its normalized Checkmk local-check lines."""
         print("<<<local>>>")
         seen_names: dict[str, int] = {}
         failures = 0
@@ -228,6 +242,7 @@ class AgentJson:
 
 
 def parse_endpoints(args: list[str]) -> list[Endpoint]:
+    """Parse command-line endpoint groups into validated endpoint definitions."""
     if not args or len(args) % 4 != 0:
         raise EndpointError(
             "arguments must be complete URL, username, password, method groups"
@@ -252,6 +267,7 @@ def parse_endpoints(args: list[str]) -> list[Endpoint]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the JSON agent collector command-line entry point."""
     arguments = sys.argv[1:] if argv is None else argv
     try:
         endpoints = parse_endpoints(arguments)

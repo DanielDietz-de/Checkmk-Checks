@@ -17,6 +17,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _formspec_catalyst_switch_state():
+    """Handle formspec catalyst switch state for this module's workflow."""
     return Dictionary(
         elements={
             "switch_role": DictElement(

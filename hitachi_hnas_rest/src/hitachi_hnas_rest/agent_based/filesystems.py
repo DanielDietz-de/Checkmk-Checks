@@ -41,11 +41,13 @@ agent_section_hitachi_hnas_rest_filesystems = AgentSection(
 
 
 def discover_hitachi_hnas_rest_filesystems(section):
+    """Discover hitachi hnas rest filesystems from the available input data."""
     for label in section:
         yield Service(item=label)
 
 
 def check_hitachi_hnas_rest_filesystems(item, params, section):
+    """Evaluate hitachi hnas rest filesystems and return its resulting state."""
     filesystem = section.get(item)
     if not filesystem:
         return

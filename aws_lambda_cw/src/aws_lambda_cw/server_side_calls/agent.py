@@ -20,6 +20,7 @@ from cmk.server_side_calls.v1 import (
 
 
 class ConfigParser(BaseModel):
+    """Represent configparser behavior and associated state."""
     access_key_id: str
     secret_key: Secret
     role_arn: str | None = None
@@ -33,6 +34,7 @@ class ConfigParser(BaseModel):
 
 
 def agent_arguments(params: ConfigParser, host_config: HostConfig):
+    """Handle agent arguments for this module's workflow."""
     args: list[str | Secret] = [
         "--access-key-id", params.access_key_id,
         "--secret-key-id", params.secret_key,

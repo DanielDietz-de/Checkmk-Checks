@@ -31,16 +31,19 @@ detect_era = contains('.1.3.6.1.2.1.1.2.0', ".1.3.6.1.4.1.311.1.1.3.1.2")
 
 
 def era_state(value, mon=True):
+    """Handle era state for this module's workflow."""
     if not mon:
         return State.OK
     return STATE_MAP_ERA.get(value, State.UNKNOWN)
 
 
 def is_na(value):
+    """Return whether na is true for the supplied input."""
     return value in ('', 'n/a', NA_INT, None)
 
 
 def parse_int(value):
+    """Parse int into its normalized representation."""
     if is_na(value):
         return None
     try:
@@ -50,6 +53,7 @@ def parse_int(value):
 
 
 def parse_float(value):
+    """Parse float into its normalized representation."""
     if is_na(value):
         return None
     try:
@@ -59,16 +63,19 @@ def parse_float(value):
 
 
 def discover_era(section):
+    """Discover era from the available input data."""
     for entry in section:
         yield Service(item=entry)
 
 
 def discover_era_simple(section):
+    """Discover era simple from the available input data."""
     if section:
         yield Service()
 
 
 def check_era(item, section):
+    """Evaluate era and return its resulting state."""
     data = section.get(item)
     if data is None:
         return
@@ -76,10 +83,12 @@ def check_era(item, section):
 
 
 def check_era_simple(section):
+    """Evaluate era simple and return its resulting state."""
     yield from _emit_results(section)
 
 
 def _emit_results(data):
+    """Handle emit results for this module's workflow."""
     for key, mon_data in data.items():
         value = mon_data['value']
         mon = mon_data.get('mon', True)
@@ -87,12 +96,14 @@ def _emit_results(data):
 
 
 def _levels(params, key):
+    """Handle levels for this module's workflow."""
     if not params or key is None:
         return ('no_levels', None)
     return params.get(key, ('no_levels', None))
 
 
 def check_percent(label, value_str, metric, params=None, param_key=None):
+    """Evaluate percent and return its resulting state."""
     value = parse_int(value_str)
     if value is None:
         yield Result(state=State.UNKNOWN, summary=f"{label}: n/a")
@@ -108,6 +119,7 @@ def check_percent(label, value_str, metric, params=None, param_key=None):
 
 
 def check_count(label, value_str, metric, params=None, param_key=None):
+    """Evaluate count and return its resulting state."""
     value = parse_int(value_str)
     if value is None:
         yield Result(state=State.UNKNOWN, summary=f"{label}: n/a")

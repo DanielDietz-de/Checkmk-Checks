@@ -12,8 +12,7 @@ from cmk.agent_based.v2 import Attributes, TableRow, InventoryPlugin, AgentSecti
 
 
 def create_inventory(path, attribute, value):
-    """
-    """
+    """Create inventory from the supplied inputs."""
     if type(value) == list:
         path.append(attribute)
         for idx, sub_object in enumerate(value):
@@ -47,12 +46,11 @@ def parse_sina_ws(string_table):
     return json.loads(string_table[0][0])
 
 def read_timeold(timestamp):
+    """Read timeold from its configured source."""
     return time.strftime('%d-%m-%Y %H:%M:%S', time.localtime(timestamp/1000.0))
 
 def inventory_sina(section):
-    """"
-    Fill Inventory Table
-    """
+    """Handle inventory sina for this module's workflow."""
 
     yield Attributes(
             path=['software', 'os'],
@@ -86,9 +84,9 @@ def inventory_sina(section):
             })
 
     # Dynamic Collectors
-    
+
     ## hwinfo and hardware
-    hwinfo_excludes = ['systemVendor', 'systemUuid', 'systemSerial', 
+    hwinfo_excludes = ['systemVendor', 'systemUuid', 'systemSerial',
                        'systemVersion', 'biosVersion']
     node_hw = {}
     sub_node_hw = {}

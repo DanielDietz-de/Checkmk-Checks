@@ -23,6 +23,7 @@ from datetime import datetime
 #vasa-ct1 10.20.12.237 imported 1679495208000 1711117608000 Pure_Storage,Pure_Storage
 
 def parse_pure_certificates(string_table):
+    """Parse pure certificates into its normalized representation."""
     section = {}
 
     for row in string_table:
@@ -53,10 +54,12 @@ agent_section_pure_arraycertificates = AgentSection(
 
 
 def discover_pure_certificates(section):
+    """Discover pure certificates from the available input data."""
     for item in section.keys():
         yield Service(item=item)
 
 def check_pure_certificates(item, section):
+    """Evaluate pure certificates and return its resulting state."""
     failed = []
 
     if item not in section.keys():

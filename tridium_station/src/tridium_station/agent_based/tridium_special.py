@@ -20,6 +20,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_tridium_special(string_table: list[StringTable]) -> dict:
+    """Parse tridium special into its normalized representation."""
     data = dict(string_table[0])
     data.update(dict(string_table[1]))
     return data
@@ -43,11 +44,13 @@ snmp_section_tridium_special = SNMPSection(
 
 
 def discover_tridium_special(section: dict) -> DiscoveryResult:
+    """Discover tridium special from the available input data."""
     for item in section:
         yield Service(item=item)
 
 
 def check_tridium_special(item: str, params: dict, section: dict) -> CheckResult:
+    """Evaluate tridium special and return its resulting state."""
     if item not in section:
         return
 

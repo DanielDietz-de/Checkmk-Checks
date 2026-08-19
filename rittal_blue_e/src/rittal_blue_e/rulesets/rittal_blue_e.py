@@ -17,6 +17,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _status_override() -> Dictionary:
+    """Handle status override for this module's workflow."""
     return Dictionary(
         elements={
             "status": DictElement(
@@ -41,6 +42,7 @@ def _status_override() -> Dictionary:
 
 
 def _parameters_blue_e():
+    """Handle parameters blue e for this module's workflow."""
     return Dictionary(
         title=Title("Rittal Blue e+ unit health"),
         help_text=Help(
@@ -62,6 +64,7 @@ def _parameters_blue_e():
 
 
 def _parameters_blue_e_temp():
+    """Handle parameters blue e temp for this module's workflow."""
     return Dictionary(
         title=Title("Rittal Blue e+ temperature"),
         help_text=Help(

@@ -23,6 +23,7 @@ from cmk.agent_based.v2 import (
 
 
 def _check_memory_usage(db, params, section):
+    """Handle check memory usage for this module's workflow."""
     obj_id = db + ":Memory_Manager"
     instance = "None"
 
@@ -31,7 +32,7 @@ def _check_memory_usage(db, params, section):
     totmem = section[(obj_id, instance)]["total_server_memory_(kb)"]
     tarmem = section[(obj_id, instance)]["target_server_memory_(kb)"]
     value = 100 * (totmem / tarmem)
-    targig= tarmem / 1048576    
+    targig= tarmem / 1048576
     infotext = "%.2f %% MemoryUsage of %.2f GB TargetMem" % (value,targig)
 
     if levels is not None:
@@ -50,19 +51,20 @@ def _check_memory_usage(db, params, section):
 
 
 def _check_memory_grants(db, params, section):
+    """Handle check memory grants for this module's workflow."""
     obj_id = db + ":Memory_Manager"
     instance = "None"
 
     levels = params.get("MemoryGrantsPending")
 
     mgrants = section[(obj_id, instance)]["memory_grants_pending"]
-    infotext = "%d memory_grants_pending" % mgrants 
+    infotext = "%d memory_grants_pending" % mgrants
 
     if levels is not None:
         warn, crit = levels[1]
         levelstext = " (warn, crit at %s/%s)" % (warn, crit)
         yield Metric("perf_MemoryGrantsPending", mgrants, levels=(warn, crit))
-        if mgrants >= crit: 
+        if mgrants >= crit:
             yield Result(state=State.CRIT, summary=infotext+levelstext)
         elif mgrants >= warn:
             yield Result(state=State.WARN, summary=infotext+levelstext)
@@ -74,6 +76,7 @@ def _check_memory_grants(db, params, section):
 
 
 def _check_page_life_expectancy(db, params, section):
+    """Handle check page life expectancy for this module's workflow."""
     obj_id = db + ":Buffer_Manager"
     instance = "None"
     levels = params.get("page_life_expectancy")
@@ -97,6 +100,7 @@ def _check_page_life_expectancy(db, params, section):
 
 
 def _check_lazy_writes(db, params, section):
+    """Handle check lazy writes for this module's workflow."""
     obj_id = db + ":Buffer_Manager"
     instance = "None"
 
@@ -121,7 +125,7 @@ def _check_lazy_writes(db, params, section):
         warn, crit = levels[1]
         levelstext = " (warn, crit at %s/%s)" % (warn, crit)
         yield Metric("perf_LazyWrites", value, levels=(warn, crit))
-        if value >= crit: 
+        if value >= crit:
             yield Result(state=State.CRIT, summary=infotext+levelstext)
         elif value >= warn:
             yield Result(state=State.WARN, summary=infotext+levelstext)
@@ -134,6 +138,7 @@ def _check_lazy_writes(db, params, section):
 
 def discover_mssql_counters_memory(section):
     # instance is always "None" here
+    """Discover mssql counters memory from the available input data."""
     for (obj_id, instance), counters in iter(section.items()):
         if obj_id.endswith(":Buffer_Manager") and \
                 "lazy_writes/sec" in counters and \
@@ -148,6 +153,7 @@ def discover_mssql_counters_memory(section):
 
 
 def check_mssql_counters_memory(item, params, section):
+    """Evaluate mssql counters memory and return its resulting state."""
     if not section:
         return
     yield from _check_lazy_writes(item, params, section)

@@ -19,6 +19,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_netbotz_vibration(string_table):
+    """Parse netbotz vibration into its normalized representation."""
     map_state = {
         "-1": (State.UNKNOWN, "undefined"),
         "0": (State.OK, "noVibration"),
@@ -52,11 +53,13 @@ snmp_section_netbotz_vibration = SimpleSNMPSection(
 
 
 def discover_netbotz_vibration(section):
+    """Discover netbotz vibration from the available input data."""
     for item in section.keys():
         yield Service(item=item)
 
 
 def check_netbotz_vibration(item, section):
+    """Evaluate netbotz vibration and return its resulting state."""
     if item not in section.keys():
         yield Result(state=State.UNKNOWN, summary="Item not found")
 

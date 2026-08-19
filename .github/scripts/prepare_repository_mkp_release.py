@@ -15,6 +15,7 @@ _VERSION_RE = re.compile(r"(\d+)\.(\d+)\.(\d+)(?:-dev(\d+))?")
 
 
 def _parse_args() -> argparse.Namespace:
+    """Handle parse args for this module's workflow."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--repository", type=Path, default=Path("."))
     parser.add_argument(
@@ -27,6 +28,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _next_version(version: str) -> str:
+    """Handle next version for this module's workflow."""
     match = _VERSION_RE.fullmatch(version)
     if match is None:
         raise ValueError(f"Unsupported package version: {version!r}")
@@ -37,6 +39,7 @@ def _next_version(version: str) -> str:
 
 
 def _read_config(path: Path) -> dict[str, Any]:
+    """Handle read config for this module's workflow."""
     config = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(config, dict):
         raise ValueError(f"{path}: release configuration must be an object")
@@ -60,6 +63,7 @@ def _release_usable_until(manifest: dict[str, Any]) -> str | None:
 
 
 def main() -> None:
+    """Run the command-line entry point and return its result."""
     args = _parse_args()
     repository = args.repository.resolve()
     config_path = args.config if args.config.is_absolute() else repository / args.config

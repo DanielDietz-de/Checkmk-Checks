@@ -15,6 +15,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_form_qemu() -> Dictionary:
+    """Handle parameter form qemu for this module's workflow."""
     return Dictionary(
         elements={
             "cpu": DictElement(

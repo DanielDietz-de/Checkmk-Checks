@@ -20,9 +20,7 @@ from cmk.agent_based.v2 import (
 #626088  /usr/local/
 
 def discover_dir_size(section):
-    """
-    Discover all directories
-    """
+    """Discover dir size from the available input data."""
     for filesystem in section:
         yield Service(item=filesystem)
 
@@ -51,9 +49,7 @@ def check_dir_size(item, params, section):
         )
 
 def parse_dir_size(string_table):
-    """
-    Parse Filesystems
-    """
+    """Parse dir size into its normalized representation."""
     parsed = {}
     for size, folder_name in string_table:
         parsed[folder_name] = {'size_bytes': int(size)*1024}

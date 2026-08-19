@@ -18,6 +18,7 @@ from cmk.rulesets.v1.rule_specs import AgentConfig, Topic
 
 
 def _agent_config_df_inventory() -> Dictionary:
+    """Handle agent config df inventory for this module's workflow."""
     return Dictionary(
         help_text=Help(
             "This rule controls the deployment of the df_inventory plugin which "

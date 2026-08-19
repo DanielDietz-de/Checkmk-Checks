@@ -16,6 +16,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, Topic
 
 
 def _parameter_form_sonicwall_cpu() -> Dictionary:
+    """Handle parameter form sonicwall cpu for this module's workflow."""
     return Dictionary(
         elements={
             "levels": DictElement(

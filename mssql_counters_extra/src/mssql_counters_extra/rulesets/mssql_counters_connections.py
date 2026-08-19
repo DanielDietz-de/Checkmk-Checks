@@ -20,6 +20,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_valuespec_mssql_counters_connections():
+    """Handle parameter valuespec mssql counters connections for this module's workflow."""
     return Dictionary(
         title = Title("MSSQL user connections"),
         elements = {

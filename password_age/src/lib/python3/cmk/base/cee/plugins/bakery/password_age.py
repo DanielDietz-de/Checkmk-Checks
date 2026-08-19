@@ -6,6 +6,7 @@ from pathlib import Path
 from .bakery_api.v1 import register, Plugin, OS, FileGenerator
 
 def get_discover_password(conf: Any) -> FileGenerator:
+    """Return discover password for the supplied inputs."""
     mode, interval = conf.get('deployment', ("do_not_deploy", 0))
     match mode:
         case "do_not_deploy":

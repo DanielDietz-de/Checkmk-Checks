@@ -32,17 +32,13 @@ def parse_function(string_table):
 
 
 def discover_service(section):
-    """
-    Discover
-    """
+    """Discover service from the available input data."""
     for service_id in section:
         yield Service(item=service_id)
 
 
 def check_service(item, section):
-    """
-    Check Metric
-    """
+    """Evaluate service and return its resulting state."""
     data = section.get(item)
     if not data:
         yield Result(state=State.UNKNOWN, summary=f"No data for item {item}")

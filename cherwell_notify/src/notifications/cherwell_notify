@@ -24,6 +24,7 @@ class CherwellError(RuntimeError):
 
 
 def validate_https_url(value: str, label: str) -> str:
+    """Validate https url and reject invalid input."""
     parsed = urlsplit(value.strip())
     if parsed.scheme != "https" or not parsed.hostname:
         raise CherwellError(f"{label} must be an absolute HTTPS URL")
@@ -35,6 +36,7 @@ def validate_https_url(value: str, label: str) -> str:
 
 
 def validate_ca_bundle(value: str | None, label: str) -> bool | str:
+    """Validate ca bundle and reject invalid input."""
     if not value:
         return True
     path = Path(value)
@@ -44,6 +46,7 @@ def validate_ca_bundle(value: str | None, label: str) -> bool | str:
 
 
 def parse_field_mappings(raw: Any, label: str) -> list[dict[str, Any]]:
+    """Parse field mappings into its normalized representation."""
     if raw in (None, "", []):
         return []
     value = raw
@@ -84,7 +87,9 @@ def parse_field_mappings(raw: Any, label: str) -> list[dict[str, Any]]:
 
 
 class NotifyCherwell:
+    """Represent notifycherwell behavior and its associated runtime state."""
     def __init__(self, context: dict[str, str] | None = None):
+        """Initialize the instance and its required runtime state."""
         self.context = utils.collect_context() if context is None else context
         context_data = self.context
         self.api_url = validate_https_url(context_data["PARAMETER_API_URL"], "API URL")
@@ -150,6 +155,7 @@ class NotifyCherwell:
 
     @staticmethod
     def _build_checkmk_base_url(server: str, site: str) -> str:
+        """Handle build checkmk base url for this source file's runtime workflow."""
         if not SITE_RE.fullmatch(site):
             raise CherwellError("Checkmk site name contains invalid characters")
         parsed = urlsplit(f"https://{server.strip()}")
@@ -177,6 +183,7 @@ class NotifyCherwell:
         expected_empty: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
+        """Handle request json for this source file's runtime workflow."""
         try:
             response = session.request(
                 method,
@@ -211,6 +218,7 @@ class NotifyCherwell:
         return data
 
     def get_login_token(self) -> str:
+        """Return login token for the supplied inputs."""
         data = self._request_json(
             self.cherwell,
             "POST",
@@ -229,6 +237,7 @@ class NotifyCherwell:
         return token
 
     def acknowledge_event(self, ticket_number: str) -> None:
+        """Handle acknowledge event for this source file's runtime workflow."""
         if self.event_id is None:
             return
         event_id = quote(str(self.event_id), safe="")
@@ -255,6 +264,7 @@ class NotifyCherwell:
         )
 
     def _description(self) -> str:
+        """Handle description for this source file's runtime workflow."""
         context = self.context
         what = context.get("WHAT", "")
         host = context.get("HOSTNAME", "Undefined")
@@ -297,6 +307,7 @@ class NotifyCherwell:
         return "\n".join(lines)
 
     def build_insert_payload(self) -> dict[str, Any]:
+        """Build insert payload from the supplied inputs."""
         fields = [
             {
                 "dirty": True,
@@ -313,6 +324,7 @@ class NotifyCherwell:
         }
 
     def build_update_payload(self, ticket_number: str) -> dict[str, Any]:
+        """Build update payload from the supplied inputs."""
         return {
             "busObPublicId": ticket_number,
             "busObId": self.business_object_id,
@@ -322,6 +334,7 @@ class NotifyCherwell:
         }
 
     def notify(self) -> int:
+        """Handle notify for this source file's runtime workflow."""
         notification_type = self.context.get("NOTIFICATIONTYPE")
         if notification_type not in {"PROBLEM", "RECOVERY"}:
             print(f"Ignoring unsupported notification type {notification_type!r}")
@@ -366,6 +379,7 @@ class NotifyCherwell:
 
 
 def main() -> int:
+    """Run the command-line entry point and return its result."""
     return NotifyCherwell().notify()
 
 

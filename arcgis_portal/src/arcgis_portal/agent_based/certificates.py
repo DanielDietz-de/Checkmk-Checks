@@ -16,22 +16,16 @@ from cmk.agent_based.v2 import (
 )
 
 def parse_function(string_table):
-    """
-    Parse
-    """
+    """Parse function into its normalized representation."""
     return string_table
 
 def discover_service(section):
-    """
-    Discover
-    """
+    """Discover service from the available input data."""
     yield Service()
 
 
 def check_service(section):
-    """
-    Check
-    """
+    """Evaluate service and return its resulting state."""
     if not section:
         yield Result(state=State.UNKNOWN, summary=f"No data for item {item}")
         return

@@ -114,6 +114,7 @@ def _is_phantom(cond: str, role: str, b_status: str, b_cond: str) -> bool:
 
 
 def parse_hp_proliant_da_cntlr(string_table: StringTable) -> Section:
+    """Parse hp proliant da cntlr into its normalized representation."""
     section: dict[str, list[str] | None] = {}
     for line in string_table:
         _index, _model, _slot, cond, role, b_status, b_cond, _serial = line
@@ -122,6 +123,7 @@ def parse_hp_proliant_da_cntlr(string_table: StringTable) -> Section:
 
 
 def discovery_hp_proliant_da_cntlr(section: Section) -> DiscoveryResult:
+    """Handle discovery hp proliant da cntlr for this module's workflow."""
     yield from (Service(item=item) for item, line in section.items() if line is not None)
 
 
@@ -138,6 +140,7 @@ def _state_for(
 def check_hp_proliant_da_cntlr(
     item: str, params: Mapping[str, int], section: Section
 ) -> CheckResult:
+    """Evaluate hp proliant da cntlr and return its resulting state."""
     line = section.get(item)
     if not line:
         yield Result(state=State.UNKNOWN, summary="Controller not found in SNMP data")

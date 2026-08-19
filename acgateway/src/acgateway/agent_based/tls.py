@@ -29,6 +29,7 @@ _TLS_ALARM_MARKERS = (
 
 
 def _to_int(value):
+    """Handle to int for this module's workflow."""
     if value is None:
         return None
     normalized = str(value).strip().lower()
@@ -41,12 +42,14 @@ def _to_int(value):
 
 
 def _retained_max(rows, column):
+    """Handle retained max for this module's workflow."""
     values = [_to_int(row[column]) for row in rows if len(row) > column]
     valid_values = [value for value in values if value is not None]
     return max(valid_values) if valid_values else None
 
 
 def parse_acgateway_tls(string_table):
+    """Parse acgateway tls into its normalized representation."""
     current_table = string_table[0] if string_table else []
     current = current_table[0] if current_table else []
     history = string_table[1] if len(string_table) > 1 else []
@@ -92,12 +95,14 @@ snmp_section_acgateway_tls = SNMPSection(
 
 
 def _alarm_text(alarm):
+    """Handle alarm text for this module's workflow."""
     return " ".join(
         str(alarm.get(key, "")) for key in ("name", "desc", "source")
     ).lower()
 
 
 def _tls_alarms(section_acgateway_alarms):
+    """Handle tls alarms for this module's workflow."""
     if not section_acgateway_alarms:
         return []
     return [
@@ -108,12 +113,14 @@ def _tls_alarms(section_acgateway_alarms):
 
 
 def discover_acgateway_tls(section_acgateway_tls, section_acgateway_alarms):
+    """Discover acgateway tls from the available input data."""
     del section_acgateway_alarms
     if section_acgateway_tls:
         yield Service()
 
 
 def check_acgateway_tls(section_acgateway_tls, section_acgateway_alarms):
+    """Evaluate acgateway tls and return its resulting state."""
     alarms = _tls_alarms(section_acgateway_alarms)
     if not alarms:
         yield Result(

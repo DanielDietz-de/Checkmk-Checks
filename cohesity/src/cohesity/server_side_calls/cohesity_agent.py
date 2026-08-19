@@ -32,6 +32,7 @@ from cmk.server_side_calls.v1 import noop_parser, Secret, SpecialAgentConfig, Sp
 
 
 def _agent_cohesity_arguments(params, host_config):
+    """Handle agent cohesity arguments for this module's workflow."""
     args: list[str | Secret] = [
         "--host", host_config.primary_ip_config.address,
         "--user", params['user'],
@@ -47,4 +48,3 @@ special_agent_cohesity = SpecialAgentConfig(
     parameter_parser=noop_parser,
     commands_function=_agent_cohesity_arguments
 )
-

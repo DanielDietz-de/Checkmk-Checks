@@ -12,20 +12,25 @@ import pytest
 
 @dataclass
 class HostConfig:
+    """Represent hostconfig behavior and associated state."""
     name: str
 
 
 @dataclass
 class SpecialAgentCommand:
+    """Represent specialagentcommand behavior and associated state."""
     command_arguments: list[str]
 
 
 class SpecialAgentConfig:
+    """Represent specialagentconfig behavior and associated state."""
     def __init__(self, **kwargs: Any) -> None:
+        """Initialize the instance and its required state."""
         self.kwargs = kwargs
 
 
 def noop_parser(value: object) -> object:
+    """Handle noop parser for this module's workflow."""
     return value
 
 
@@ -61,6 +66,7 @@ COMPLETE_PARAMS = {
 
 
 def test_complete_configuration_builds_explicit_command() -> None:
+    """Verify that complete configuration builds explicit command."""
     commands = list(module._agent_arguments(COMPLETE_PARAMS, HostConfig(name="switch-1")))
     assert commands == [
         SpecialAgentCommand(
@@ -80,6 +86,7 @@ def test_complete_configuration_builds_explicit_command() -> None:
 
 @pytest.mark.parametrize("missing_key", ["pair_name", "host_a", "host_b", "service_regex"])
 def test_missing_required_configuration_is_rejected(missing_key: str) -> None:
+    """Verify that missing required configuration is rejected."""
     params = dict(COMPLETE_PARAMS)
     del params[missing_key]
 
@@ -89,6 +96,7 @@ def test_missing_required_configuration_is_rejected(missing_key: str) -> None:
 
 @pytest.mark.parametrize("empty_key", ["pair_name", "host_a", "host_b", "service_regex"])
 def test_blank_required_configuration_is_rejected(empty_key: str) -> None:
+    """Verify that blank required configuration is rejected."""
     params = dict(COMPLETE_PARAMS)
     params[empty_key] = "   "
 
@@ -97,4 +105,5 @@ def test_blank_required_configuration_is_rejected(empty_key: str) -> None:
 
 
 def test_unrelated_host_does_not_run_agent() -> None:
+    """Verify that unrelated host does not run agent."""
     assert list(module._agent_arguments(COMPLETE_PARAMS, HostConfig(name="switch-3"))) == []

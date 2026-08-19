@@ -18,12 +18,15 @@ from cmk.plugins.lib.temperature import check_temperature
 
 
 def parse_querx_webtherm_temp(string_table):
+    """Parse querx webtherm temp into its normalized representation."""
     return float(string_table[0][0]) / 10
 
 def discover_querx_webtherm_temp(section):
+    """Discover querx webtherm temp from the available input data."""
     yield Service(item="Temperature Sensor")
 
 def check_querx_webtherm_temp(item, params, section):
+    """Evaluate querx webtherm temp and return its resulting state."""
     yield from check_temperature(section, params, unique_name="temperature", value_store=get_value_store())
 
 

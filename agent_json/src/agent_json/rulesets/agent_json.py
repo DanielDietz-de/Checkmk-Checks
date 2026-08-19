@@ -17,6 +17,7 @@ from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
 
 def _migrate(value):
+    """Handle migrate for this module's workflow."""
     if "endpoints" in value:
         return value
     endpoint = {}
@@ -27,6 +28,7 @@ def _migrate(value):
 
 
 def _endpoint_form():
+    """Handle endpoint form for this module's workflow."""
     return Dictionary(
         title=Title("HTTPS endpoint"),
         help_text=Help(
@@ -83,6 +85,7 @@ def _endpoint_form():
 
 
 def _parameter_form_special_agent_json():
+    """Handle parameter form special agent json for this module's workflow."""
     return Dictionary(
         title=Title("Agent JSON"),
         help_text=Help(

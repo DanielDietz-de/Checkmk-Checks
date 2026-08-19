@@ -33,14 +33,17 @@ _ALERTMANAGER_DEBUG_PRINTS = (
 
 @dataclass(frozen=True, order=True)
 class SourceChange:
+    """Represent sourcechange behavior and associated state."""
     action: Literal["write", "delete"]
     path: str
 
     def render(self) -> str:
+        """Handle render for this module's workflow."""
         return f"{self.action}: {self.path}"
 
 
 def _parse_args() -> argparse.Namespace:
+    """Handle parse args for this module's workflow."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--repository", type=Path, default=Path("."))
     parser.add_argument("--write", action="store_true")
@@ -48,6 +51,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _manifest(path: Path) -> dict[str, Any]:
+    """Handle manifest for this module's workflow."""
     value = ast.literal_eval(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise ValueError(f"{path}: manifest must be a dictionary")
@@ -55,10 +59,12 @@ def _manifest(path: Path) -> dict[str, Any]:
 
 
 def _render_manifest(manifest: dict[str, Any]) -> str:
+    """Handle render manifest for this module's workflow."""
     return pprint.pformat(manifest, sort_dicts=False, width=120) + "\n"
 
 
 def _is_legacy_bakery_entry(entry: str) -> bool:
+    """Handle is legacy bakery entry for this module's workflow."""
     path = Path(entry)
     return "agent_based" in path.parts and "bakery" in path.name
 
@@ -67,6 +73,7 @@ def _desired_bakery_state(
     package_dir: Path,
     manifest: dict[str, Any],
 ) -> tuple[dict[Path, str], set[Path]]:
+    """Handle desired bakery state for this module's workflow."""
     files = manifest.setdefault("files", {})
     if not isinstance(files, dict):
         raise ValueError(f"{package_dir}: manifest files must be a dictionary")
@@ -147,6 +154,7 @@ def _desired_alertmanager_state(
     package_dir: Path,
     manifest: dict[str, Any],
 ) -> dict[Path, str]:
+    """Handle desired alertmanager state for this module's workflow."""
     if package_dir.name != _ALERTMANAGER_PACKAGE:
         return {}
 
@@ -196,6 +204,7 @@ def _desired_alertmanager_state(
 
 
 def normalize_repository(repository: Path, *, write: bool) -> list[SourceChange]:
+    """Normalize repository into the canonical form."""
     repository = repository.resolve()
     info_paths = sorted(path for path in repository.glob("*/src/info") if path.is_file())
     if not info_paths:
@@ -231,6 +240,7 @@ def normalize_repository(repository: Path, *, write: bool) -> list[SourceChange]
 
 
 def main() -> None:
+    """Run the command-line entry point and return its result."""
     args = _parse_args()
     changes = normalize_repository(args.repository, write=args.write)
     for change in changes:

@@ -31,11 +31,11 @@ snmp_section_as400_jobs = SimpleSNMPSection(
 
 
 def discover_as400_jobs(section):
-    """ Discover Function """
+    """Discover as400 jobs from the available input data."""
     yield Service()
 
 def check_as400_jobs(params, section):
-    """ Check Function """
+    """Evaluate as400 jobs and return its resulting state."""
     warn, crit = params["job_levels"][1]
     jobs_num = section
 

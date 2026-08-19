@@ -7,6 +7,7 @@ from cmk.server_side_calls.v1 import HostConfig, Secret, SpecialAgentCommand, Sp
 
 
 class VeritasParams(BaseModel):
+    """Represent veritasparams behavior and associated state."""
     api_url: str
     username: str
     password: Secret
@@ -15,6 +16,7 @@ class VeritasParams(BaseModel):
 
 
 def generate_veritas_command(params: VeritasParams, host_config: HostConfig):
+    """Generate veritas command from the current source data."""
     if params.ca_file and params.no_cert_check:
         raise ValueError("ca_file and no_cert_check are mutually exclusive")
     arguments: list[str | Secret] = [

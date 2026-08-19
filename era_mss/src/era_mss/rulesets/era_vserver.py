@@ -14,6 +14,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _percent_levels(title, defaults):
+    """Handle percent levels for this module's workflow."""
     return SimpleLevels(
         title=Title(title),
         level_direction=LevelDirection.UPPER,
@@ -23,6 +24,7 @@ def _percent_levels(title, defaults):
 
 
 def _count_levels(title, defaults):
+    """Handle count levels for this module's workflow."""
     return SimpleLevels(
         title=Title(title),
         level_direction=LevelDirection.UPPER,
@@ -32,6 +34,7 @@ def _count_levels(title, defaults):
 
 
 def _parameters():
+    """Handle parameters for this module's workflow."""
     return Dictionary(
         title=Title("ERA vServer thresholds"),
         elements={

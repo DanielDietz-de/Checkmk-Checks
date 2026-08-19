@@ -41,6 +41,7 @@ DEFAULT_CONN_STATE_MAPPING = {
 
 
 def parse_vertiv_acs8000_serial_port(string_table):
+    """Parse vertiv acs8000 serial port into its normalized representation."""
     if not string_table:
         return None
     ports = {}
@@ -62,6 +63,7 @@ def parse_vertiv_acs8000_serial_port(string_table):
 
 
 def _to_int(value):
+    """Handle to int for this module's workflow."""
     try:
         return int(value)
     except (ValueError, TypeError):
@@ -69,15 +71,18 @@ def _to_int(value):
 
 
 def _unprefix(mapping):
+    """Handle unprefix for this module's workflow."""
     return {k.removeprefix("value_"): v for k, v in mapping.items()}
 
 
 def discover_vertiv_acs8000_serial_port(section):
+    """Discover vertiv acs8000 serial port from the available input data."""
     for item in section:
         yield Service(item=item)
 
 
 def check_vertiv_acs8000_serial_port(item, params, section):
+    """Evaluate vertiv acs8000 serial port and return its resulting state."""
     port = section.get(item)
     if port is None:
         return

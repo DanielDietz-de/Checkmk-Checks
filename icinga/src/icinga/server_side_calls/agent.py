@@ -5,6 +5,7 @@ from cmk.server_side_calls.v1 import Secret, SpecialAgentCommand, SpecialAgentCo
 
 
 class ConfigParser(BaseModel):
+    """Represent configparser behavior and associated state."""
     host_name: str
     username: str
     password: Secret
@@ -14,6 +15,7 @@ class ConfigParser(BaseModel):
 
 
 def icinga_arguments(params, host_config):
+    """Handle icinga arguments for this module's workflow."""
     args: list[str | Secret] = [
         "--hostname", params.host_name,
         "--username", params.username,

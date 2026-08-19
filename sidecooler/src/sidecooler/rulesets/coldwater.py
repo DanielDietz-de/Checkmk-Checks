@@ -19,6 +19,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, Topic
 
 
 def _parameter_form_sidecooler_coldwater():
+    """Handle parameter form sidecooler coldwater for this module's workflow."""
     return Dictionary(
         title = Title("Sidecooler coldwater"),
         elements = {

@@ -22,6 +22,7 @@ from cmk.rulesets.v1.rule_specs import (
 
 
 def _valuespec_special_agent_exasol():
+    """Handle valuespec special agent exasol for this module's workflow."""
     return Dictionary(
         title = Title("Exasol via XMLApi"),
         help_text = Help("This rule set selects the special agent for exasol"),

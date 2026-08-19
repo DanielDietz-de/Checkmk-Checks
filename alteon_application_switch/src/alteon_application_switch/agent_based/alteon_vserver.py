@@ -18,6 +18,7 @@ from cmk.agent_based.v2 import (
 )
 
 def parse_alteon_vserver(string_table):
+    """Parse alteon vserver into its normalized representation."""
     vserver = {}
     for ip_data in string_table:
         values = {}
@@ -63,12 +64,14 @@ snmp_section_alteon_vserver = SNMPSection(
 
 
 def discover_alteon_vserver(section):
+    """Discover alteon vserver from the available input data."""
     for idx, _data in section.items():
         #service_name = "{} [{}]".format(idx, data["ip"])
         yield Service(item=idx)
 
 
 def get_traffic_human_readable(speed, in_unit, out_unit):
+    """Return traffic human readable for the supplied inputs."""
     base = 1000.0
     if in_unit == "Bit" and out_unit == 'Byte':
         speed = speed / 8
@@ -92,6 +95,7 @@ def get_traffic_human_readable(speed, in_unit, out_unit):
 
 
 def check_alteon_vserver(item, section):
+    """Evaluate alteon vserver and return its resulting state."""
     this_time = time.time()
     value_store = get_value_store()
 
@@ -135,7 +139,7 @@ def check_alteon_vserver(item, section):
     yield Result(state=State.OK, summary=infotext)
 
 
-check_plugin_alteon_vserver = CheckPlugin(     
+check_plugin_alteon_vserver = CheckPlugin(
     name='alteon_vserver',
     service_name='VServer [%s]',
     discovery_function=discover_alteon_vserver,

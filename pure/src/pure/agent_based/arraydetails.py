@@ -20,6 +20,7 @@ from cmk.agent_based.v2.render import (
 
 
 def parse_pure_arraydetails(string_table):
+    """Parse pure arraydetails into its normalized representation."""
     section = {}
 
     for row in string_table:
@@ -74,10 +75,12 @@ agent_section_pure_arraydetails = AgentSection(
 
 
 def discover_pure_arraydetails(section):
+    """Discover pure arraydetails from the available input data."""
     for item in section.keys():
         yield Service(item=item)
 
 def check_pure_arraydetails(item, section):
+    """Evaluate pure arraydetails and return its resulting state."""
     failed = []
 
     if item not in section.keys():

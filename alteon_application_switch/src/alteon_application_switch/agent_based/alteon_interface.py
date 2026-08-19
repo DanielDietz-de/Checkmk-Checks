@@ -3,7 +3,7 @@
 
 
 from cmk.agent_based.v2 import (
-    SNMPTree, 
+    SNMPTree,
     startswith,
     Service,
     Result,
@@ -19,6 +19,7 @@ from cmk.agent_based.v2 import (
 import time
 
 def if_render_mac_address(ifPhysAddress):
+    """Handle if render mac address for this module's workflow."""
     if not isinstance(ifPhysAddress, list):
         mac_bytes = map(ord, ifPhysAddress)
     else:
@@ -26,6 +27,7 @@ def if_render_mac_address(ifPhysAddress):
     return (":".join(["%02s" % hex(m)[2:] for m in mac_bytes]).replace(' ', '0')).upper()
 
 def parse_alteon_interface(string_table):
+    """Parse alteon interface into its normalized representation."""
     interfaces = {}
     indexes = []
     phy_if_index = {}
@@ -182,12 +184,13 @@ snmp_section_alteon_interface = SNMPSection(
 
 
 def discover_alteon_interface(section):
+    """Discover alteon interface from the available input data."""
     for index, interface in section.items():
         port_num = interface['ifIndex']
         if interface['ifIndex'] == 999:
             port_num = "MGMT"
         elif interface['ifType2'] == "physical":
-            port_num = int(interface['ifDescription'].split()[1])        
+            port_num = int(interface['ifDescription'].split()[1])
 
         service_name = "{} - {} {}".format(
             interface['ifIndex'],
@@ -199,6 +202,7 @@ def discover_alteon_interface(section):
 
 
 def get_traffic_human_readable(speed, in_unit, out_unit):
+    """Return traffic human readable for the supplied inputs."""
     base = 1000.0
     if in_unit == "Bit" and out_unit == 'Byte':
         speed = speed / 8
@@ -222,6 +226,7 @@ def get_traffic_human_readable(speed, in_unit, out_unit):
 
 
 def check_alteon_interface(item, params, section):
+    """Evaluate alteon interface and return its resulting state."""
     this_time = time.time()
     value_store = get_value_store()
 
@@ -339,7 +344,7 @@ def check_alteon_interface(item, params, section):
         "{}".format(get_traffic_human_readable(perfdata['ifHCOutOctets'], "Byte", "Bit")),
         # Errors out %
         "{}%".format(errors_out),
-        # 
+        #
         infotext
     )
     yield Result(state=State.OK, summary=infotext)

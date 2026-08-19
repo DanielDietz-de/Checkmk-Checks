@@ -34,10 +34,12 @@ register.snmp_section(
 
 
 def discover_palo_alto_antivirus(section):
+    """Discover palo alto antivirus from the available input data."""
     yield Service()
 
 
 def check_palo_alto_antivirus(params, section):
+    """Evaluate palo alto antivirus and return its resulting state."""
     value_store = get_value_store()
     now = time.time()
 

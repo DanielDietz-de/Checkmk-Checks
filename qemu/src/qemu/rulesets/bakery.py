@@ -14,6 +14,7 @@ from cmk.rulesets.v1.rule_specs import AgentConfig, Topic
 
 
 def _parameter_form_bakery() -> Dictionary:
+    """Handle parameter form bakery for this module's workflow."""
     return Dictionary(
         help_text=Help(
             "The plugin 'qemu' allows monitoring of KVM and QEMU virtual machines "

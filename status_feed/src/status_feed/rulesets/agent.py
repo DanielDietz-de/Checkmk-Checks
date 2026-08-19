@@ -12,6 +12,7 @@ from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
 
 def _feed_form():
+    """Handle feed form for this module's workflow."""
     return Dictionary(
         help_text=Help(
             "Only public HTTPS feeds are accepted. Internal, loopback, "
@@ -40,6 +41,7 @@ def _feed_form():
 
 
 def _form_special_agent_status_feed():
+    """Handle form special agent status feed for this module's workflow."""
     return Dictionary(
         title=Title("Public status RSS/Atom feeds"),
         help_text=Help(

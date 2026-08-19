@@ -22,6 +22,7 @@ from cmk.plugins.lib.temperature import check_temperature, TempParamDict
 
 
 def parse_arista(string_table: list[StringTable]) -> dict:
+    """Parse arista into its normalized representation."""
     entity_names = {int(k): v for k, v in string_table[0]}
     value = {int(k): v for k, v in string_table[1]}
     status = {int(k): v for k, v in string_table[2]}
@@ -29,6 +30,7 @@ def parse_arista(string_table: list[StringTable]) -> dict:
     data = {}
 
     def name_cleanup(what: str) -> str:
+        """Handle name cleanup for this module's workflow."""
         if what.startswith("Fan"):
             return what[4:].strip()
         return what
@@ -67,6 +69,7 @@ snmp_section_arista = SNMPSection(
 
 
 def discover_arista_temp(section: dict) -> DiscoveryResult:
+    """Discover arista temp from the available input data."""
     for key, value in section.items():
         if value["unit"] != "Celsius":
             continue
@@ -77,6 +80,7 @@ def discover_arista_temp(section: dict) -> DiscoveryResult:
 
 
 def check_arista_temp(item: str, params: TempParamDict, section: dict) -> CheckResult:
+    """Evaluate arista temp and return its resulting state."""
     if item not in section:
         return
     state, state_readable = arista_state_maps[section[item]["status"]]
@@ -102,12 +106,14 @@ check_plugin_arista = CheckPlugin(
 
 
 def discover_arista_fan(section: dict) -> DiscoveryResult:
+    """Discover arista fan from the available input data."""
     for key, value in section.items():
         if value["unit"] == "RPM":
             yield Service(item=key)
 
 
 def check_arista_fan(item: str, params, section: dict) -> CheckResult:
+    """Evaluate arista fan and return its resulting state."""
     if item not in section:
         return
     state, state_readable = arista_state_maps[section[item]["status"]]
@@ -135,12 +141,14 @@ check_plugin_arista_fan = CheckPlugin(
 
 
 def discover_arista_voltage(section: dict) -> DiscoveryResult:
+    """Discover arista voltage from the available input data."""
     for key, value in section.items():
         if value["unit"] == "Volts":
             yield Service(item=key)
 
 
 def check_arista_voltage(item: str, params, section: dict) -> CheckResult:
+    """Evaluate arista voltage and return its resulting state."""
     if item not in section:
         return
     state, state_readable = arista_state_maps[section[item]["status"]]

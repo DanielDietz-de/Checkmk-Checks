@@ -34,6 +34,7 @@ DEFAULT_TIMEOUT = 30.0
 
 
 def vkey(v):
+    """Handle vkey for this module's workflow."""
     m = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?(?:-dev(\d+))?$", v or "")
     if not m:
         return None
@@ -44,7 +45,9 @@ def vkey(v):
 
 
 class Exchange:
+    """Represent exchange behavior and associated state."""
     def __init__(self, timeout=DEFAULT_TIMEOUT):
+        """Initialize the instance and its required state."""
         timeout = float(timeout)
         if timeout <= 0:
             raise ValueError("timeout must be greater than zero")
@@ -56,12 +59,14 @@ class Exchange:
         )
 
     def _xsrf(self):
+        """Handle xsrf for this module's workflow."""
         for c in self.cj:
             if c.name == "XSRF-TOKEN":
                 return urllib.parse.unquote(c.value)
         return None
 
     def _req(self, method, path, data=None, headers=None, follow=False):
+        """Handle req for this module's workflow."""
         url = path if path.startswith("http") else BASE + path
         h = {"User-Agent": "kr-exchange-publish/1.0",
              "Accept": "application/json, text/html"}
@@ -77,6 +82,7 @@ class Exchange:
             return e.code, e.read(), dict(e.headers)
 
     def login(self, user, password):
+        """Handle login for this module's workflow."""
         self._req("GET", "/login", follow=True)          # seed cookies
         token = self._xsrf()
         if not token:
@@ -117,6 +123,7 @@ class Exchange:
         return best
 
     def upload(self, package_id, mkp_path, description):
+        """Handle upload for this module's workflow."""
         token = self._xsrf()
         fields = {"package_id": str(package_id), "description": description, "icon": ""}
         body, ctype = encode_multipart(fields, "mkp", mkp_path)
@@ -130,11 +137,14 @@ class Exchange:
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Represent noredirect behavior and associated state."""
     def redirect_request(self, *a, **k):
+        """Handle redirect request for this module's workflow."""
         return None
 
 
 def encode_multipart(fields, file_field, file_path):
+    """Handle encode multipart for this module's workflow."""
     boundary = "----krexch" + os.urandom(12).hex()
     nl = b"\r\n"
     buf = []
@@ -177,6 +187,7 @@ def scan_repo(repo):
 
 
 def main():
+    """Run the command-line entry point and return its result."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", required=True)
     ap.add_argument("--only", default="", help="comma list of plugin names")

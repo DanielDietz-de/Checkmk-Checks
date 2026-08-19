@@ -85,6 +85,7 @@ agent_section_spring_boot_actuator = AgentSection(
 
 
 def discover_spring_boot_actuator(section):
+    """Discover spring boot actuator from the available input data."""
     if section is None:
         return
     yield Service(item=OVERALL_ITEM)
@@ -124,6 +125,7 @@ def _render_detail(key, value):
 
 
 def check_spring_boot_actuator(item, params, section):
+    """Evaluate spring boot actuator and return its resulting state."""
     if section is None:
         return
 

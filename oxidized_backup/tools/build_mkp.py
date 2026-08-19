@@ -35,12 +35,14 @@ VERSION_PATTERN = re.compile(r"^[0-9]+(?:\.[0-9]+){2}(?:[A-Za-z0-9._-]*)?$")
 
 @dataclass(frozen=True)
 class Component:
+    """Represent component behavior and associated state."""
     name: str
     source_root: Path
     include_root: Path
 
 
 def _safe_relative(path: Path, root: Path) -> PurePosixPath:
+    """Handle safe relative for this module's workflow."""
     relative = PurePosixPath(path.relative_to(root).as_posix())
     if relative.is_absolute() or not relative.parts:
         raise ValueError(f"Unsafe package path: {relative}")
@@ -50,6 +52,7 @@ def _safe_relative(path: Path, root: Path) -> PurePosixPath:
 
 
 def _files(component: Component) -> list[tuple[Path, PurePosixPath]]:
+    """Handle files for this module's workflow."""
     if not component.source_root.is_dir():
         raise FileNotFoundError(component.source_root)
     if not component.include_root.exists():
@@ -73,6 +76,7 @@ def _files(component: Component) -> list[tuple[Path, PurePosixPath]]:
 
 
 def _normalise_tar_info(info: tarfile.TarInfo) -> tarfile.TarInfo:
+    """Handle normalise tar info for this module's workflow."""
     info.uid = 0
     info.gid = 0
     info.uname = "root"
@@ -103,6 +107,7 @@ def _add_bytes(
     *,
     mode: int = 0o644,
 ) -> None:
+    """Handle add bytes for this module's workflow."""
     relative = PurePosixPath(name)
     if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
         raise ValueError(f"Unsafe outer archive path: {name}")
@@ -118,6 +123,7 @@ def _outer_archive(
     manifest: dict[str, object],
     component_archives: dict[str, bytes],
 ) -> None:
+    """Handle outer archive for this module's workflow."""
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(f".{target.name}.tmp")
     try:
@@ -156,6 +162,7 @@ def _outer_archive(
 
 
 def _validate_package(target: Path, manifest: dict[str, object]) -> None:
+    """Handle validate package for this module's workflow."""
     with tarfile.open(target, "r:*") as outer:
         outer_names = {member.name for member in outer.getmembers()}
         expected_outer = {"info", "info.json"} | {
@@ -203,6 +210,7 @@ def build_package(
     repository: str,
     packaged_version: str,
 ) -> tuple[Path, Path]:
+    """Build package from the supplied inputs."""
     if not VERSION_PATTERN.fullmatch(version):
         raise ValueError(f"Invalid package version: {version}")
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
@@ -272,6 +280,7 @@ def build_package(
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse args into its normalized representation."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", required=True)
     parser.add_argument(
@@ -284,6 +293,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    """Run the command-line entry point and return its result."""
     args = parse_args()
     package_root = Path(__file__).resolve().parents[1]
     output_dir = args.output_dir or package_root

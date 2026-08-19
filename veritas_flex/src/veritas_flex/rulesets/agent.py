@@ -22,6 +22,7 @@ from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
 
 def _parameter_form_special_agents_veritas():
+    """Handle parameter form special agents veritas for this module's workflow."""
     return Dictionary(
         title = Title("veritas via WebAPI"),
         help_text = Help("This rule set selects the special agent for veritas"),

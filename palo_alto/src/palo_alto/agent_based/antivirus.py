@@ -25,10 +25,12 @@ from cmk.agent_based.v2.render import timespan
 
 
 def discover_palo_alto_antivirus(section):
+    """Discover palo alto antivirus from the available input data."""
     yield Service()
 
 
 def check_palo_alto_antivirus(params, section):
+    """Evaluate palo alto antivirus and return its resulting state."""
     value_store = get_value_store()
     now = time()
 
@@ -57,6 +59,7 @@ def check_palo_alto_antivirus(params, section):
 
 
 def parse_palo_alto_antivirus(string_table):
+    """Parse palo alto antivirus into its normalized representation."""
     if not string_table or not string_table[0]:
         return None
     return string_table

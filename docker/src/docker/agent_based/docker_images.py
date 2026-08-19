@@ -30,6 +30,7 @@ from cmk.agent_based.v2 import (
 from .docker_utils import get_docker_container_cpu
 
 def parse_docker_images(string_table):
+    """Parse docker images into its normalized representation."""
     return string_table
 
 def get_running_image_containers(image_id, containers):
@@ -40,9 +41,7 @@ def get_running_image_containers(image_id, containers):
 
 
 def get_docker_image_cpu(value_store, image_containers):
-    """
-    Get Image CPU
-    """
+    """Return docker image cpu for the supplied inputs."""
     raise_get_rate_error = False
     cpu_perc = 0
     for container in image_containers:
@@ -57,18 +56,14 @@ def get_docker_image_cpu(value_store, image_containers):
 
 
 def discover_docker_images(section_docker_images, section_docker_containers):
-    """
-    Discover Docker Images
-    """
+    """Discover docker images from the available input data."""
     if section_docker_images is not None:
         for line in section_docker_images:
             yield Service(item=line[0])
 
 
 def check_docker_images(item, section_docker_images, section_docker_containers):
-    """
-    Check Docker Images
-    """
+    """Evaluate docker images and return its resulting state."""
     value_store = get_value_store()
 
     for line in section_docker_images:

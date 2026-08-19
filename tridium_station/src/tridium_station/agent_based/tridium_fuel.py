@@ -22,6 +22,7 @@ _MAX_FUEL = 6000.0
 
 
 def parse_tridium_fuel(string_table: StringTable) -> StringTable:
+    """Parse tridium fuel into its normalized representation."""
     return string_table
 
 
@@ -40,11 +41,13 @@ snmp_section_tridium_fuel = SimpleSNMPSection(
 
 
 def discover_tridium_fuel(section: StringTable) -> DiscoveryResult:
+    """Discover tridium fuel from the available input data."""
     if section:
         yield Service()
 
 
 def check_tridium_fuel(params: dict, section: StringTable) -> CheckResult:
+    """Evaluate tridium fuel and return its resulting state."""
     if not section:
         return
 

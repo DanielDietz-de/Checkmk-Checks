@@ -11,6 +11,7 @@ from typing import Any
 
 
 class State(IntEnum):
+    """Represent state behavior and associated state."""
     OK = 0
     WARN = 1
     CRIT = 2
@@ -19,6 +20,7 @@ class State(IntEnum):
 
 @dataclass
 class Result:
+    """Represent result behavior and associated state."""
     state: State
     summary: str | None = None
     details: str | None = None
@@ -26,16 +28,21 @@ class Result:
 
 @dataclass
 class Service:
+    """Represent service behavior and associated state."""
     item: str
 
 
 class AgentSection:
+    """Represent agentsection behavior and associated state."""
     def __init__(self, **kwargs: Any) -> None:
+        """Initialize the instance and its required state."""
         self.kwargs = kwargs
 
 
 class CheckPlugin:
+    """Represent checkplugin behavior and associated state."""
     def __init__(self, **kwargs: Any) -> None:
+        """Initialize the instance and its required state."""
         self.kwargs = kwargs
 
 
@@ -64,6 +71,7 @@ spec.loader.exec_module(module)
 
 
 def record(item: str, state_a: str, state_b: str) -> dict[str, Any]:
+    """Handle record for this module's workflow."""
     return {
         "item": item,
         "host_a": {
@@ -80,6 +88,7 @@ def record(item: str, state_a: str, state_b: str) -> dict[str, Any]:
 
 
 def section(*records: dict[str, Any]) -> dict[str, Any]:
+    """Handle section for this module's workflow."""
     return {
         "pair_name": "Switch pair 1",
         "host_a": "switch-1",
@@ -90,17 +99,20 @@ def section(*records: dict[str, Any]) -> dict[str, Any]:
 
 
 def result_for(state_a: str, state_b: str) -> Result:
+    """Handle result for for this module's workflow."""
     data = section(record("01", state_a, state_b))
     return list(module.check_switch_port_sync("01", data))[0]
 
 
 def test_parser() -> None:
+    """Verify that parser for this code path."""
     payload = section(record("01", "up", "up"))
     parsed = module.parse_switch_port_sync([[json.dumps(payload)]])
     assert parsed == payload
 
 
 def test_discovery_baseline() -> None:
+    """Verify that discovery baseline."""
     data = section(
         record("up-up", "up", "up"),
         record("up-down", "up", "down"),
@@ -118,6 +130,7 @@ def test_discovery_baseline() -> None:
 
 
 def test_discovery_with_missing_configuration_only_keeps_pair_status() -> None:
+    """Verify that discovery with missing configuration only keeps pair status."""
     data = section(record("01", "up", "up"))
     del data["service_regex"]
     assert [service.item for service in module.discover_switch_port_sync(data)] == [
@@ -126,6 +139,7 @@ def test_discovery_with_missing_configuration_only_keeps_pair_status() -> None:
 
 
 def test_requested_state_matrix() -> None:
+    """Verify that requested state matrix."""
     assert result_for("up", "up").state == State.OK
     assert result_for("up", "down").state == State.CRIT
     assert result_for("down", "up").state == State.CRIT
@@ -134,12 +148,14 @@ def test_requested_state_matrix() -> None:
 
 
 def test_missing_stale_unknown_are_unknown() -> None:
+    """Verify that missing stale unknown are unknown."""
     for unresolved in ("missing", "stale", "unknown"):
         assert result_for(unresolved, "up").state == State.UNKNOWN
         assert result_for("up", unresolved).state == State.UNKNOWN
 
 
 def test_pair_status_reports_query_health_not_port_health() -> None:
+    """Verify that pair status reports query health not port health."""
     result = list(
         module.check_switch_port_sync(
             "Pair status",
@@ -151,11 +167,13 @@ def test_pair_status_reports_query_health_not_port_health() -> None:
 
 
 def test_pair_status_without_records_is_unknown() -> None:
+    """Verify that pair status without records is unknown."""
     result = list(module.check_switch_port_sync("Pair status", section()))[0]
     assert result.state == State.UNKNOWN
 
 
 def test_pair_status_missing_configuration_is_unknown() -> None:
+    """Verify that pair status missing configuration is unknown."""
     data = section(record("01", "up", "up"))
     del data["host_b"]
     result = list(module.check_switch_port_sync("Pair status", data))[0]
@@ -164,6 +182,7 @@ def test_pair_status_missing_configuration_is_unknown() -> None:
 
 
 def test_port_record_switch_names_must_match_configuration() -> None:
+    """Verify that port record switch names must match configuration."""
     mismatched = record("01", "up", "up")
     mismatched["host_b"]["name"] = "different-switch"
     result = list(module.check_switch_port_sync("01", section(mismatched)))[0]
@@ -172,6 +191,7 @@ def test_port_record_switch_names_must_match_configuration() -> None:
 
 
 def test_pair_status_error_is_unknown() -> None:
+    """Verify that pair status error is unknown."""
     result = list(
         module.check_switch_port_sync(
             "Pair status",

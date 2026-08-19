@@ -12,6 +12,7 @@ loader.exec_module(module)
 
 
 def test_loads_valid_literal_context(tmp_path):
+    """Verify that loads valid literal context."""
     spool_file = tmp_path / "notification"
     spool_file.write_text(
         repr(
@@ -32,6 +33,7 @@ def test_loads_valid_literal_context(tmp_path):
 
 
 def test_rejects_executable_python_without_running_it(tmp_path):
+    """Verify that rejects executable python without running it."""
     marker = tmp_path / "executed"
     spool_file = tmp_path / "notification"
     spool_file.write_text(
@@ -45,6 +47,7 @@ def test_rejects_executable_python_without_running_it(tmp_path):
 
 
 def test_rejects_oversized_spool_file(tmp_path, monkeypatch):
+    """Verify that rejects oversized spool file."""
     spool_file = tmp_path / "notification"
     spool_file.write_text("{}", encoding="utf-8")
     monkeypatch.setattr(module, "MAX_SPOOL_FILE_SIZE", 1)
@@ -54,6 +57,7 @@ def test_rejects_oversized_spool_file(tmp_path, monkeypatch):
 
 
 def test_rejects_missing_context_fields(tmp_path):
+    """Verify that rejects missing context fields."""
     spool_file = tmp_path / "notification"
     spool_file.write_text(repr({"context": {"WHAT": "HOST"}}), encoding="utf-8")
 

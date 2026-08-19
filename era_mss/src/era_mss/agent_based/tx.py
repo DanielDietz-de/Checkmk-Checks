@@ -32,6 +32,7 @@ STATUS_FIELDS = [
 
 
 def parse_era_tx(string_table):
+    """Parse era tx into its normalized representation."""
     section = {}
     for entry in string_table[0]:
         site = (entry[14] or '').strip()
@@ -42,11 +43,13 @@ def parse_era_tx(string_table):
 
 
 def discover_era_tx(section):
+    """Discover era tx from the available input data."""
     for item in section:
         yield Service(item=item)
 
 
 def check_era_tx(item, section):
+    """Evaluate era tx and return its resulting state."""
     row = section.get(item)
     if row is None:
         return

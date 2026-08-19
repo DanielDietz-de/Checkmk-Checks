@@ -21,6 +21,7 @@ from cmk.rulesets.v1.rule_specs import (
 
 
 def _valuespec_discovery_rule_storcli2_status():
+    """Handle valuespec discovery rule storcli2 status for this module's workflow."""
     return Dictionary(
         elements={
             "filters": DictElement(
@@ -32,7 +33,7 @@ def _valuespec_discovery_rule_storcli2_status():
                 required = True,
             ),
         },
-    )   
+    )
 
 
 rule_spec_discover_storcli2_status = DiscoveryParameters(

@@ -18,9 +18,11 @@ from cmk.agent_based.v2 import (
 )
 
 class SidecoolerSupply():
+    """Represent sidecoolersupply behavior and associated state."""
     devices: dict
 
     def __init__(self, a, b):
+        """Initialize the instance and its required state."""
         self.devices = {
             "A": a,
             "B": b,
@@ -28,6 +30,7 @@ class SidecoolerSupply():
 
 
 def parse_sidecooler_supply(string_table):
+    """Parse sidecooler supply into its normalized representation."""
     if not string_table:
         return None
 
@@ -37,11 +40,13 @@ def parse_sidecooler_supply(string_table):
 
 
 def discover_sidecooler_supply(section):
+    """Discover sidecooler supply from the available input data."""
     for supply in section.devices.keys():
         yield Service(item=supply)
 
 
 def check_sidecooler_supply(item, section):
+    """Evaluate sidecooler supply and return its resulting state."""
     supply_state = {
         "0": "inactive",
         "1": "ok",

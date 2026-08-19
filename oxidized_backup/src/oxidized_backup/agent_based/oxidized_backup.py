@@ -26,6 +26,7 @@ _VALID_KINDS = frozenset({"central", "device"})
 
 
 def parse_oxidized_backup(string_table: StringTable) -> Section:
+    """Parse oxidized backup into its normalized representation."""
     text = "".join(itertools.chain.from_iterable(string_table))
     if not text:
         return {"kind": "invalid", "error": "Agent plug-in returned an empty section"}
@@ -43,6 +44,7 @@ def parse_oxidized_backup(string_table: StringTable) -> Section:
 
 
 def discover_oxidized_backup(section: Section) -> DiscoveryResult:
+    """Discover oxidized backup from the available input data."""
     kind = section.get("kind")
     if kind == "device":
         yield Service(item="backup")
@@ -53,16 +55,19 @@ def discover_oxidized_backup(section: Section) -> DiscoveryResult:
 
 
 def _mapping(value: object) -> Mapping[str, Any]:
+    """Handle mapping for this module's workflow."""
     return value if isinstance(value, Mapping) else {}
 
 
 def _sequence(value: object) -> Sequence[Any]:
+    """Handle sequence for this module's workflow."""
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return value
     return []
 
 
 def _integer(value: object) -> int | None:
+    """Handle integer for this module's workflow."""
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
@@ -71,6 +76,7 @@ def _integer(value: object) -> int | None:
 
 
 def _age(now: int, timestamp: object) -> int | None:
+    """Handle age for this module's workflow."""
     parsed = _integer(timestamp)
     if parsed is None or parsed <= 0:
         return None
@@ -78,6 +84,7 @@ def _age(now: int, timestamp: object) -> int | None:
 
 
 def _state_from_hint(value: object) -> State:
+    """Handle state from hint for this module's workflow."""
     hint = _integer(value)
     return {
         0: State.OK,
@@ -88,6 +95,7 @@ def _state_from_hint(value: object) -> State:
 
 
 def _worst_state(states: Sequence[State]) -> State:
+    """Handle worst state for this module's workflow."""
     if State.CRIT in states:
         return State.CRIT
     if State.UNKNOWN in states:
@@ -98,6 +106,7 @@ def _worst_state(states: Sequence[State]) -> State:
 
 
 def _format_age(seconds: int | None) -> str:
+    """Handle format age for this module's workflow."""
     if seconds is None:
         return "unknown"
     days, remainder = divmod(seconds, 86400)
@@ -115,10 +124,12 @@ def _format_age(seconds: int | None) -> str:
 
 
 def _policy(section: Section) -> Mapping[str, Any]:
+    """Handle policy for this module's workflow."""
     return _mapping(section.get("policy"))
 
 
 def _collection_thresholds(section: Section) -> tuple[int | None, int | None]:
+    """Handle collection thresholds for this module's workflow."""
     policy = _policy(section)
     warning = _integer(policy.get("collection_warning_age_seconds"))
     critical = _integer(policy.get("collection_critical_age_seconds"))
@@ -128,6 +139,7 @@ def _collection_thresholds(section: Section) -> tuple[int | None, int | None]:
 
 
 def _device_check(section: Section) -> CheckResult:
+    """Handle device check for this module's workflow."""
     error = section.get("error")
     if error:
         yield Result(state=State.UNKNOWN, summary=str(error))
@@ -280,6 +292,7 @@ def _device_check(section: Section) -> CheckResult:
 
 
 def _inventory_check(section: Section) -> CheckResult:
+    """Handle inventory check for this module's workflow."""
     if section.get("error"):
         yield Result(state=State.UNKNOWN, summary=str(section["error"]))
         return
@@ -356,6 +369,7 @@ def _inventory_check(section: Section) -> CheckResult:
 
 
 def _repository_check(section: Section) -> CheckResult:
+    """Handle repository check for this module's workflow."""
     if section.get("monitor_state_error"):
         yield Result(
             state=State.UNKNOWN,
@@ -417,6 +431,7 @@ def _repository_check(section: Section) -> CheckResult:
 
 
 def _remote_check(section: Section) -> CheckResult:
+    """Handle remote check for this module's workflow."""
     repositories = [
         _mapping(item) for item in _sequence(section.get("repositories")) if isinstance(item, Mapping)
     ]
@@ -458,6 +473,7 @@ def _remote_check(section: Section) -> CheckResult:
 
 
 def check_oxidized_backup(item: str, section: Section) -> CheckResult:
+    """Evaluate oxidized backup and return its resulting state."""
     if section.get("error"):
         yield Result(state=State.UNKNOWN, summary=str(section["error"]))
         return

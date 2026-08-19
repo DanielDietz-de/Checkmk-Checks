@@ -15,6 +15,7 @@ from cmk.rulesets.v1.rule_specs import AgentConfig, Topic
 
 
 def _agent_config_nfs_df() -> Dictionary:
+    """Handle agent config nfs df for this module's workflow."""
     return Dictionary(
         help_text=Help("The plugin <tt>nfs_df</tt> allows "
                        "monitoring of NFS Mount-Points on Linux Systems"
@@ -55,7 +56,7 @@ def _agent_config_nfs_df() -> Dictionary:
 
 rule_spec_nfs_df = AgentConfig(
     name="nfs_df",
-    title=Title("Filesystemmonitoring of NFS Mounts via Plugin (Linux)"), 
+    title=Title("Filesystemmonitoring of NFS Mounts via Plugin (Linux)"),
     topic=Topic.OPERATING_SYSTEM,
     parameter_form=_agent_config_nfs_df,
 )

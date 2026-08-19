@@ -22,6 +22,7 @@ TP_COL_NAMES = [
 
 
 def parse_era_main(string_table):
+    """Parse era main into its normalized representation."""
     tp_rows, scalars = string_table
     section = {}
     for row in tp_rows:
@@ -35,11 +36,13 @@ def parse_era_main(string_table):
 
 
 def discover_era_main(section):
+    """Discover era main from the available input data."""
     for item in section:
         yield Service(item=item)
 
 
 def check_era_main(item, section):
+    """Evaluate era main and return its resulting state."""
     data = section.get(item)
     if not data:
         return

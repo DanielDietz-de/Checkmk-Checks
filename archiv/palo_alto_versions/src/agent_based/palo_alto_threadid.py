@@ -31,10 +31,12 @@ register.snmp_section(
 
 
 def discover_palo_alto_threadid(section):
+    """Discover palo alto threadid from the available input data."""
     yield Service()
 
 
 def check_palo_alto_threadid(section):
+    """Evaluate palo alto threadid and return its resulting state."""
     state = State.OK
     version = section[0][0]
     yield Result(

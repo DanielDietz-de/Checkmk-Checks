@@ -24,6 +24,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_cisco_stackring(string_table):
+    """Parse cisco stackring into its normalized representation."""
     members, ring = string_table
     return {
         "members": [row[0] for row in members],
@@ -52,11 +53,13 @@ snmp_section_cisco_stackring = SNMPSection(
 
 
 def discover_cisco_stackring(section):
+    """Discover cisco stackring from the available input data."""
     if len(section["members"]) >= 2:
         yield Service()
 
 
 def check_cisco_stackring(section):
+    """Evaluate cisco stackring and return its resulting state."""
     if section["ring"] is None:
         yield Result(state=State.UNKNOWN, summary="Stackring not found")
         return

@@ -7,7 +7,7 @@ https://kuhn-ruess.de
 """
 
 #
-# MSSQL_SQL2012T:Access_Methods full_scans/sec None 292076 
+# MSSQL_SQL2012T:Access_Methods full_scans/sec None 292076
 # MSSQL_SQL2012T:Access_Methods index_searches/sec None 27662568
 #
 
@@ -30,6 +30,7 @@ from cmk.agent_based.v2 import (
 
 def discover_mssql_counters_access_methods(section):
     # instance is always "None" here
+    """Discover mssql counters access methods from the available input data."""
     for (obj_id, instance), counters in iter(section.items()):
         if obj_id.endswith(":Access_Methods") and \
                 "full_scans/sec" in counters and \
@@ -38,6 +39,7 @@ def discover_mssql_counters_access_methods(section):
 
 
 def check_mssql_access_methods(item, params, section):
+    """Evaluate mssql access methods and return its resulting state."""
     if not section:
         return
 

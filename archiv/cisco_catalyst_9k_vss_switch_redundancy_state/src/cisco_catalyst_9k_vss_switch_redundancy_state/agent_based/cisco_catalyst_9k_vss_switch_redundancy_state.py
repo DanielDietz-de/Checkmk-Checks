@@ -15,6 +15,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_cisco_catalyst_9k_vss_switch_redundancy_state(string_table: StringTable):
+    """Parse cisco catalyst 9k vss switch redundancy state into its normalized representation."""
     parsed = {}
     for line in string_table:
         parsed[line[0]] = {
@@ -40,11 +41,13 @@ snmp_section_cisco_catalyst_9k_vss_switch_redundancy_state = SNMPSection(
 
 
 def discover_cisco_catalyst_9k_vss_switch_redundancy_state(section):
+    """Discover cisco catalyst 9k vss switch redundancy state from the available input data."""
     for switch_number, info in section.items():
         yield Service(item=switch_number, parameters={"switch_role": info["switch_role"]})
 
 
 def check_cisco_catalyst_9k_vss_switch_redundancy_state(item, params, section):
+    """Evaluate cisco catalyst 9k vss switch redundancy state and return its resulting state."""
     switch_roles = {
         "1": "master",
         "2": "member",

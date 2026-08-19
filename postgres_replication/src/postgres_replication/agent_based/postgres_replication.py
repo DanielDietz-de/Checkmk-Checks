@@ -47,6 +47,7 @@ def discover_postgres_replication(section: Section) -> DiscoveryResult:
 
 
 def check_postgres_replication(item: str, params: Mapping, section: Section) -> CheckResult:
+    """Evaluate postgres replication and return its resulting state."""
     line = section.get(item)
     if line is None:
         return

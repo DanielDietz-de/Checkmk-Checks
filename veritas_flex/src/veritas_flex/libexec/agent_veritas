@@ -44,7 +44,9 @@ def _resolve_ca_bundle(explicit_ca_file: str | None, no_cert_check: bool) -> str
 
 
 class FlexApi:
+    """Represent flexapi behavior and its associated runtime state."""
     def __init__(self):
+        """Initialize the instance and its required runtime state."""
         self.log_file = '/tmp/checkMK_flex.log'
         self.url = ''
         self.session = None
@@ -69,6 +71,7 @@ class FlexApi:
         )
 
     def do_login(self, username, password):
+        """Handle do login for this source file's runtime workflow."""
         auth = {
             "password": password,
             "username": username,
@@ -108,6 +111,7 @@ class FlexApi:
 
     def get_nodes(self):
         # api/v1/nodes
+        """Return nodes for the supplied inputs."""
         node_url = ''.join([self.url, 'v1/nodes'])
         nodes = []
         try:
@@ -122,6 +126,7 @@ class FlexApi:
         return nodes
 
     def get_instances(self):
+        """Return instances for the supplied inputs."""
         instances = []
         instance_url = ''.join([self.url, 'v3/instances'])
         try:
@@ -139,6 +144,7 @@ class FlexApi:
         return instances
 
     def get_hardware_health(self):
+        """Return hardware health for the supplied inputs."""
         health_status = []
         for node in self.get_nodes():
             hardware_health_url = ''.join([self.url, 'v1/nodes/', node, '/health/hardware'])
@@ -161,6 +167,7 @@ class FlexApi:
         return health_status
 
     def get_services_health(self):
+        """Return services health for the supplied inputs."""
         health_status = []
         for node in self.get_nodes():
             services_health_url = ''.join([self.url, 'v1/nodes/', node, '/health/services'])
@@ -182,12 +189,14 @@ class FlexApi:
         return health_status
 
     def do_logout(self):
+        """Handle do logout for this source file's runtime workflow."""
         logout_url = ''.join([self.url, 'v1/logout'])
         r = self.session.post(logout_url, verify=self.verify, timeout=10, allow_redirects=False)
         logging.debug('Logout response status: %s', r.status_code)
 
 
 def main():
+    """Run the command-line entry point and return its result."""
     parser = argparse.ArgumentParser(
         prog='./agent_veritas',
         description='FlexAPI monitoring script')

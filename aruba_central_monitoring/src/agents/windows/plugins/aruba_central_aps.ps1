@@ -26,6 +26,7 @@ $ErrorActionPreference = 'Stop'
 $SectionHeader = '<<<aruba_central_aps:sep(0)>>>'
 $PiggybackEnd = '<<<<>>>>'
 
+# Handle get-defaultconfig for this module's workflow.
 function Get-DefaultConfig {
     $programData = if ($env:ProgramData) { $env:ProgramData } else { 'C:\ProgramData' }
     return [ordered]@{
@@ -39,6 +40,7 @@ function Get-DefaultConfig {
     }
 }
 
+# Handle read-configuration for this module's workflow.
 function Read-Configuration {
     param([string]$Path)
 
@@ -61,6 +63,7 @@ function Read-Configuration {
     return $config
 }
 
+# Handle protect-message for this module's workflow.
 function Protect-Message {
     param([AllowEmptyString()][string]$Text)
 
@@ -71,6 +74,7 @@ function Protect-Message {
     return $value.Trim()
 }
 
+# Handle find-jsonobject for this module's workflow.
 function Find-JsonObject {
     param([AllowEmptyString()][string]$Text)
 
@@ -106,6 +110,7 @@ function Find-JsonObject {
     return $null
 }
 
+# Handle invoke-cencli for this module's workflow.
 function Invoke-Cencli {
     param([System.Collections.IDictionary]$Config)
 
@@ -170,6 +175,7 @@ function Invoke-Cencli {
     }
 }
 
+# Handle get-objectproperty for this module's workflow.
 function Get-ObjectProperty {
     param($Object, [string]$Name, $Default = $null)
     if ($null -eq $Object) { return $Default }
@@ -178,6 +184,7 @@ function Get-ObjectProperty {
     return $property.Value
 }
 
+# Handle convert-tonumber for this module's workflow.
 function Convert-ToNumber {
     param($Value)
     if ($null -eq $Value -or [string]::IsNullOrWhiteSpace([string]$Value)) { return $null }
@@ -189,6 +196,7 @@ function Convert-ToNumber {
     return $null
 }
 
+# Handle convert-tomegabytes for this module's workflow.
 function Convert-ToMegabytes {
     param($Value)
     if ($null -eq $Value) { return $null }
@@ -203,6 +211,7 @@ function Convert-ToMegabytes {
     }
 }
 
+# Handle convert-uptimeseconds for this module's workflow.
 function Convert-UptimeSeconds {
     param($Value)
     $total = 0L
@@ -222,6 +231,7 @@ function Convert-UptimeSeconds {
     return $null
 }
 
+# Handle convert-tohostname for this module's workflow.
 function Convert-ToHostName {
     param([string]$Name, [string]$Mac, [string]$Serial)
 
@@ -239,6 +249,7 @@ function Convert-ToHostName {
     return 'AP_unknown'
 }
 
+# Handle assert-uniquehostnames for this module's workflow.
 function Assert-UniqueHostNames {
     param($AccessPoints)
 
@@ -258,6 +269,7 @@ function Assert-UniqueHostNames {
     }
 }
 
+# Handle convert-radio for this module's workflow.
 function Convert-Radio {
     param($Radio, [int]$Index)
     return [ordered]@{
@@ -274,6 +286,7 @@ function Convert-Radio {
     }
 }
 
+# Handle convert-accesspoint for this module's workflow.
 function Convert-AccessPoint {
     param([string]$Key, $Raw)
 
@@ -313,6 +326,7 @@ function Convert-AccessPoint {
     }
 }
 
+# Handle get-accesspoints for this module's workflow.
 function Get-AccessPoints {
     param($Root)
     $result = @()
@@ -325,6 +339,7 @@ function Get-AccessPoints {
     return @($result)
 }
 
+# Handle find-diagnosticmatch for this module's workflow.
 function Find-DiagnosticMatch {
     param([string]$Stdout, [string]$Stderr, [string]$Pattern)
 
@@ -342,6 +357,7 @@ function Find-DiagnosticMatch {
     return [pscustomobject]@{ Match = [regex]::Match('', $Pattern); Stream = 'none' }
 }
 
+# Handle get-diagnostics for this module's workflow.
 function Get-Diagnostics {
     param([string]$Stdout, [string]$Stderr, $AccessPoints)
     $countResult = Find-DiagnosticMatch -Stdout $Stdout -Stderr $Stderr -Pattern 'Counts:\s*ap:\s*(\d+)\s*\((\d+)\s*:\s*(\d+)\)\s*,\s*clients:\s*(\d+)'
@@ -376,6 +392,7 @@ function Get-Diagnostics {
     }
 }
 
+# Handle write-atomicjson for this module's workflow.
 function Write-AtomicJson {
     param([string]$Path, $Value)
     $directory = Split-Path -Parent $Path
@@ -387,6 +404,7 @@ function Write-AtomicJson {
     Move-Item -LiteralPath $temporary -Destination $Path -Force
 }
 
+# Handle read-lastgood for this module's workflow.
 function Read-LastGood {
     param([string]$Path, [int]$MaxAgeSeconds)
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
@@ -400,12 +418,14 @@ function Read-LastGood {
     catch { return $null }
 }
 
+# Handle write-sectionjson for this module's workflow.
 function Write-SectionJson {
     param($Value)
     Write-Output $SectionHeader
     Write-Output ($Value | ConvertTo-Json -Depth 20 -Compress)
 }
 
+# Handle write-monitoringoutput for this module's workflow.
 function Write-MonitoringOutput {
     param($Collector, $AccessPoints, [bool]$EmitPiggyback)
     Write-SectionJson ([ordered]@{ schema = 1; kind = 'collector'; collector = $Collector })

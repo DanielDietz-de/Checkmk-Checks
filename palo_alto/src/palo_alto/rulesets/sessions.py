@@ -21,6 +21,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, Topic
 
 
 def _formspec_palo_alto_sessions():
+    """Handle formspec palo alto sessions for this module's workflow."""
     return Dictionary(
         title=Title("Palo Alto Sessions"),
         help_text=Help(

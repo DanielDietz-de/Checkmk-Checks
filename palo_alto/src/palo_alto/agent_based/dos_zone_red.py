@@ -23,6 +23,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_palo_alto_dos_zone_red(string_table):
+    """Parse palo alto dos zone red into its normalized representation."""
     if not string_table or not string_table[0]:
         return None
     activate, maximum = string_table[0]
@@ -45,10 +46,12 @@ snmp_section_palo_alto_dos_zone_red = SimpleSNMPSection(
 
 
 def discover_palo_alto_dos_zone_red(section):
+    """Discover palo alto dos zone red from the available input data."""
     yield Service()
 
 
 def check_palo_alto_dos_zone_red(params, section):
+    """Evaluate palo alto dos zone red and return its resulting state."""
     value_store = get_value_store()
     now = time()
 

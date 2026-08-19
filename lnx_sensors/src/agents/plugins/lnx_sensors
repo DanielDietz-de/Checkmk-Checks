@@ -6,6 +6,7 @@
 # https://kuhn-ruess.de      #
 ##############################
 
+# Resolve a command from PATH without producing output.
 inpath() {
     # replace "if type [somecmd]" idiom
     # 'command -v' tends to be more robust vs 'which' and 'type' based tests

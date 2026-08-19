@@ -19,6 +19,7 @@ from cmk.rulesets.v1.rule_specs import AgentConfig, Topic
 
 
 def _agent_config_password_age() -> Dictionary:
+    """Handle agent config password age for this module's workflow."""
     return Dictionary(
         help_text=Help(
             "This will deploy the agent plug-in <tt>passwort_age</tt>. "

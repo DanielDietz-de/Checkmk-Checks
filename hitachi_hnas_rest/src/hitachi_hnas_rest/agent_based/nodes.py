@@ -40,11 +40,13 @@ agent_section_hitachi_hnas_rest_nodes = AgentSection(
 
 
 def discover_hitachi_hnas_rest_nodes(section):
+    """Discover hitachi hnas rest nodes from the available input data."""
     for name in section:
         yield Service(item=name)
 
 
 def check_hitachi_hnas_rest_nodes(item, section):
+    """Evaluate hitachi hnas rest nodes and return its resulting state."""
     node = section.get(item)
     if not node:
         return

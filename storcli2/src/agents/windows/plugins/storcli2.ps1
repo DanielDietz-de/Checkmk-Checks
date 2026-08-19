@@ -16,6 +16,7 @@ if (Test-Path -Path "$CONFIG_FILE") {
     . "$CONFIG_FILE"
 }
 
+# Rewrite StorCLI2 output into Checkmk section records while filtering summary noise.
 function rewriteOutput($output) {
     foreach($line in $output) {
         if ($line[-1] -eq ":") {

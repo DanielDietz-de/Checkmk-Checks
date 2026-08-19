@@ -13,6 +13,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_era_ntp(string_table):
+    """Parse era ntp into its normalized representation."""
     section = {}
     for entry in string_table[0]:
         oid_end, status = entry
@@ -23,11 +24,13 @@ def parse_era_ntp(string_table):
 
 
 def discover_era_ntp(section):
+    """Discover era ntp from the available input data."""
     for item in section:
         yield Service(item=item)
 
 
 def check_era_ntp(item, section):
+    """Evaluate era ntp and return its resulting state."""
     status = section.get(item)
     if status is None:
         return

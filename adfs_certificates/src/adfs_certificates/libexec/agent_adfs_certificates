@@ -41,6 +41,7 @@ def debug(message):
 
 
 def parse_arguments():
+    """Parse arguments into its normalized representation."""
     parser = argparse.ArgumentParser(description="ADFS Certificate Monitoring")
     parser.add_argument(
         "--host-name",
@@ -68,6 +69,7 @@ def parse_arguments():
 
 
 def fetch_federation_metadata(host_name, proxy_url=None, verify_ssl=True):
+    """Fetch federation metadata from its configured source."""
     url = f"https://{host_name}/federationmetadata/2007-06/federationmetadata.xml"
     proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
     debug(f"Fetching federation metadata from {url} (proxy={proxy_url}, verify_ssl={verify_ssl})")

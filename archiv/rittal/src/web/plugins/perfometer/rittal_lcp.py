@@ -12,7 +12,7 @@
 # |        | )___) )_   |  /  \ \| (___) || )   ( || )  \  |        |
 # |        |/ \___/(_)  |_/    \/(_______)|/     \||/    )_)        |
 # |                                                                 |
-# | Copyright Bastian Kuhn 2011                mail@bastian-kuhn.de | 
+# | Copyright Bastian Kuhn 2011                mail@bastian-kuhn.de |
 # +-----------------------------------------------------------------+
 #
 # This file is a perfometer Script for multisite
@@ -41,10 +41,10 @@
 #    (varname, value, unit, warn, crit, min, max)
 
 def perfometer_rittal_lcp(row, check_command, perf_data):
+    """Handle perfometer rittal lcp for this module's workflow."""
     color = { 0: "#68f", 1: "#ff2", 2: "#f22", 3: "#fa2" }[row["service_state"]]
     val = float(perf_data[0][1])
     unit = str(perf_data[0][0])
     return "%.1f %s" % (val,unit), perfometer_logarithmic(val, 4, 2, color)
 
 perfometers["check_mk-rittal_lcp"] = perfometer_rittal_lcp
-

@@ -29,10 +29,12 @@ name|heap|heap.max|heap.used|cpu.usage|mem.total|mem.used
 # HEAP
 
 def discover_dellpmax_systemstats_heap(section):
+    """Discover dellpmax systemstats heap from the available input data."""
     yield Service()
 
 
 def check_dellpmax_systemstats_heap(params, section):
+    """Evaluate dellpmax systemstats heap and return its resulting state."""
     if section:
         heap_max = int(section[0][2])
         heap_used = int(section[0][3])
@@ -57,10 +59,12 @@ check_plugin_dell_pmax_systemstats_heap = CheckPlugin(
 # CPU
 
 def discover_dellpmax_systemstats_cpu(section):
+    """Discover dellpmax systemstats cpu from the available input data."""
     yield Service()
 
 
 def check_dellpmax_systemstats_cpu(params, section):
+    """Evaluate dellpmax systemstats cpu and return its resulting state."""
     if section:
         cpu_util = float(section[0][4])
         yield from check_cpu_util(
@@ -89,10 +93,12 @@ check_plugin_dell_pmax_systemstats_cpu = CheckPlugin(
 # MEMORY
 
 def discover_dellpmax_systemstats_memory(section):
+    """Discover dellpmax systemstats memory from the available input data."""
     yield Service()
 
 
 def check_dellpmax_systemstats_mem(params, section):
+    """Evaluate dellpmax systemstats mem and return its resulting state."""
     if section:
         mem_max = int(section[0][5])
         mem_used = int(section[0][6])

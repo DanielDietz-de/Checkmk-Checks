@@ -50,9 +50,7 @@ def _resolve_ca_bundle(
 
 
 class Quobyte():
-    """
-    Quobyte
-    """
+    """Represent quobyte behavior and its associated runtime state."""
 
     volume_names_map = {}
 
@@ -75,9 +73,7 @@ class Quobyte():
 
 
     def request(self, method):
-        """
-        Request Data
-        """
+        """Handle request for this source file's runtime workflow."""
         json_request = {
             "params": {},
             "jsonrpc": "2.0",
@@ -417,6 +413,7 @@ class Quobyte():
 
 
 def parse_arguments():
+    """Parse arguments into its normalized representation."""
     parser = argparse.ArgumentParser(description="Quobyte JSON-RPC special agent")
     parser.add_argument("--api-url", required=True)
     parser.add_argument("--username", required=True)

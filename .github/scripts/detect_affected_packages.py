@@ -42,17 +42,20 @@ _PACKAGE_MANIFEST_PATHS = {"src/info", "src/info.json"}
 
 @dataclass(frozen=True)
 class Change:
+    """Represent change behavior and associated state."""
     status: str
     paths: tuple[str, ...]
 
 
 @dataclass(frozen=True)
 class Selection:
+    """Represent selection behavior and associated state."""
     mode: Mode
     packages: tuple[str, ...]
     reason: str
 
     def as_json(self) -> dict[str, object]:
+        """Handle as json for this module's workflow."""
         return {
             "mode": self.mode,
             "packages": list(self.packages),
@@ -61,6 +64,7 @@ class Selection:
 
 
 def _parse_args() -> argparse.Namespace:
+    """Handle parse args for this module's workflow."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--repository", type=Path, default=Path("."))
     parser.add_argument("--base", default="")
@@ -81,6 +85,7 @@ def discover_packages(repository: Path) -> set[str]:
 
 
 def _safe_path(value: str) -> bool:
+    """Handle safe path for this module's workflow."""
     path = PurePosixPath(value)
     return (
         bool(value)
@@ -111,6 +116,7 @@ def parse_name_status(data: bytes) -> list[Change]:
 
 
 def git_changes(repository: Path, base: str, head: str) -> list[Change]:
+    """Handle git changes for this module's workflow."""
     if not base or set(base) == {"0"}:
         raise ValueError("comparison base is unavailable")
     result = subprocess.run(
@@ -208,6 +214,7 @@ def select_for_event(
     base: str,
     head: str,
 ) -> Selection:
+    """Handle select for event for this module's workflow."""
     if event_name != "pull_request":
         return Selection(
             "full",
@@ -227,6 +234,7 @@ def _single_line(value: str) -> str:
 
 
 def _write_github_output(path: Path, selection: Selection) -> None:
+    """Handle write github output for this module's workflow."""
     packages_json = json.dumps(list(selection.packages), separators=(",", ":"))
     values = {
         "mode": selection.mode,
@@ -240,6 +248,7 @@ def _write_github_output(path: Path, selection: Selection) -> None:
 
 
 def main() -> None:
+    """Run the command-line entry point and return its result."""
     args = _parse_args()
     repository = args.repository.resolve()
     selection = select_for_event(

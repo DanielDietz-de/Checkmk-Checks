@@ -27,6 +27,7 @@ def service(
     stale: bool = False,
     host_state: int = 0,
 ):
+    """Handle service for this module's workflow."""
     return module.InterfaceService(
         description=description,
         core_state=state,
@@ -40,10 +41,12 @@ def service(
 
 
 def test_operational_up_is_up() -> None:
+    """Verify that operational up is up."""
     assert module.interface_state(service(output="Operational state: up"))[0] == "up"
 
 
 def test_operational_down_is_down() -> None:
+    """Verify that operational down is down."""
     assert (
         module.interface_state(service(output="Operational state: down", state=2))[0]
         == "down"
@@ -51,15 +54,18 @@ def test_operational_down_is_down() -> None:
 
 
 def test_non_link_critical_is_not_assumed_down() -> None:
+    """Verify that non link critical is not assumed down."""
     assert module.interface_state(service(output="Input errors: 5", state=2))[0] == "unknown"
 
 
 def test_stale_and_host_down_are_unresolved() -> None:
+    """Verify that stale and host down are unresolved."""
     assert module.interface_state(service(output="Operational state: up", stale=True))[0] == "stale"
     assert module.interface_state(service(output="Operational state: up", host_state=1))[0] == "unknown"
 
 
 def test_union_produces_missing_peer_record() -> None:
+    """Verify that union produces missing peer record."""
     payload = module.build_payload(
         pair_name="Switch pair 1",
         host_a="switch-1",
@@ -73,6 +79,7 @@ def test_union_produces_missing_peer_record() -> None:
 
 
 def test_duplicate_mapping_is_rejected() -> None:
+    """Verify that duplicate mapping is rejected."""
     with pytest.raises(ValueError, match="Multiple interface services"):
         module.build_payload(
             pair_name="Switch pair 1",
@@ -88,6 +95,7 @@ def test_duplicate_mapping_is_rejected() -> None:
 
 
 def test_same_host_pair_is_rejected() -> None:
+    """Verify that same host pair is rejected."""
     with pytest.raises(ValueError, match="must be different"):
         module.build_payload(
             pair_name="Switch pair 1",
@@ -100,6 +108,7 @@ def test_same_host_pair_is_rejected() -> None:
 
 
 def test_regex_requires_capture_group() -> None:
+    """Verify that regex requires capture group."""
     with pytest.raises(ValueError, match="capture group"):
         module.build_payload(
             pair_name="Switch pair 1",
@@ -112,6 +121,7 @@ def test_regex_requires_capture_group() -> None:
 
 
 def test_cli_requires_explicit_service_regex() -> None:
+    """Verify that cli requires explicit service regex."""
     with pytest.raises(SystemExit):
         module.parse_args(
             [
@@ -126,6 +136,7 @@ def test_cli_requires_explicit_service_regex() -> None:
 
 
 def test_cli_accepts_complete_explicit_configuration() -> None:
+    """Verify that cli accepts complete explicit configuration."""
     args = module.parse_args(
         [
             "--pair-name",

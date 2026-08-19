@@ -22,6 +22,7 @@ Section = dict[str, int]
 
 
 def parse_gtec_usv_load(string_table: StringTable) -> Section:
+    """Parse gtec usv load into its normalized representation."""
     line = [int(x) for x in string_table[0]]
     return {
         "phase 1": line[0],
@@ -46,11 +47,13 @@ snmp_section_gtec_usv_load = SimpleSNMPSection(
 
 
 def discover_gtec_usv_load(section: Section) -> DiscoveryResult:
+    """Discover gtec usv load from the available input data."""
     for phase in section:
         yield Service(item=phase)
 
 
 def check_gtec_usv_load(item: str, params: Mapping[str, Any], section: Section) -> CheckResult:
+    """Evaluate gtec usv load and return its resulting state."""
     load_raw = section[item]
     load_perc = load_raw / 10
     yield from check_levels_v1(

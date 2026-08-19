@@ -17,12 +17,14 @@ from cmk.server_side_calls.v1 import (
 
 
 class ServiceMetricCounterParams(BaseModel):
+    """Represent servicemetriccounterparams behavior and associated state."""
     service_filters: list
     timeout: float
     path: str
 
 
 def generate_service_counter_command(params: ServiceMetricCounterParams, host_config: HostConfig):
+    """Generate service counter command from the current source data."""
     args = []
 
     if params.timeout:

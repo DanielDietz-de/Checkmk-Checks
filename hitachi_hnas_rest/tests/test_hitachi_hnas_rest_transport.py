@@ -16,6 +16,7 @@ RULESET = PACKAGE_ROOT / "src/hitachi_hnas_rest/rulesets/agent.py"
 
 
 def _load_agent():
+    """Handle load agent for this module's workflow."""
     loader = importlib.machinery.SourceFileLoader("hitachi_hnas_agent_test", str(AGENT))
     spec = importlib.util.spec_from_loader(loader.name, loader)
     assert spec is not None
@@ -25,6 +26,7 @@ def _load_agent():
 
 
 def test_ca_bundle_flows_from_ruleset_to_agent() -> None:
+    """Verify that ca bundle flows from ruleset to agent."""
     server_source = SERVER_SIDE.read_text(encoding="utf-8")
     ruleset_source = RULESET.read_text(encoding="utf-8")
     agent_source = AGENT.read_text(encoding="utf-8")
@@ -40,6 +42,7 @@ def test_ca_bundle_flows_from_ruleset_to_agent() -> None:
 def test_requests_ca_bundle_is_preserved_with_proxy_isolation(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """Verify that requests ca bundle is preserved with proxy isolation."""
     module = _load_agent()
     bundle = tmp_path / "site-ca.pem"
     bundle.write_text("site CA\n", encoding="utf-8")
@@ -66,6 +69,7 @@ def test_requests_ca_bundle_is_preserved_with_proxy_isolation(
 def test_curl_ca_bundle_is_the_compatible_fallback(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """Verify that curl ca bundle is the compatible fallback."""
     module = _load_agent()
     bundle = tmp_path / "curl-ca.pem"
     bundle.write_text("curl CA\n", encoding="utf-8")
@@ -78,6 +82,7 @@ def test_curl_ca_bundle_is_the_compatible_fallback(
 def test_explicit_ca_bundle_overrides_environment(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """Verify that explicit ca bundle overrides environment."""
     module = _load_agent()
     environment_bundle = tmp_path / "environment.pem"
     explicit_bundle = tmp_path / "explicit.pem"
@@ -91,6 +96,7 @@ def test_explicit_ca_bundle_overrides_environment(
 
 
 def test_tls_opt_out_is_explicit_and_conflicts_are_rejected(tmp_path: Path) -> None:
+    """Verify that tls opt out is explicit and conflicts are rejected."""
     module = _load_agent()
     bundle = tmp_path / "private.pem"
     bundle.write_text("private CA\n", encoding="utf-8")
@@ -101,6 +107,7 @@ def test_tls_opt_out_is_explicit_and_conflicts_are_rejected(tmp_path: Path) -> N
 
 
 def test_missing_ca_bundle_is_rejected(tmp_path: Path) -> None:
+    """Verify that missing ca bundle is rejected."""
     module = _load_agent()
     with pytest.raises(ValueError, match="CA bundle does not exist"):
         module._resolve_ca_bundle(str(tmp_path / "missing.pem"), False)

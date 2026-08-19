@@ -18,9 +18,7 @@ from .bakery_api.v1 import (
 
 
 def _get_check_docker_config_lines(conf):
-    """
-    Get Config Lines
-    """
+    """Handle get check docker config lines for this module's workflow."""
     config = []
 
     config.append(f"timeout={conf.get('timeout', 30)}")
@@ -38,9 +36,7 @@ def _get_check_docker_config_lines(conf):
 
 
 def get_check_docker_files(conf):
-    """
-    Get Files
-    """
+    """Return check docker files for the supplied inputs."""
     yield Plugin(
         base_os = OS.LINUX,
         source = Path("check_docker.py"),

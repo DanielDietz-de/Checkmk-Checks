@@ -17,6 +17,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, Topic
 
 
 def _state_element(label, default):
+    """Handle state element for this module's workflow."""
     return DictElement(
         required=True,
         parameter_form=ServiceState(
@@ -27,6 +28,7 @@ def _state_element(label, default):
 
 
 def _formspec_palo_alto_ha():
+    """Handle formspec palo alto ha for this module's workflow."""
     return Dictionary(
         title=Title("Palo Alto HA State"),
         help_text=Help(

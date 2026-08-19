@@ -61,6 +61,7 @@ class PinnedHTTPSResponse:
         response: urllib3.response.BaseHTTPResponse,
         pool: urllib3.HTTPSConnectionPool,
     ) -> None:
+        """Initialize the instance and its required runtime state."""
         self._response = response
         self._pool = pool
         self.status_code = response.status
@@ -68,22 +69,27 @@ class PinnedHTTPSResponse:
 
     @property
     def is_redirect(self) -> bool:
+        """Return whether redirect is true for the supplied input."""
         return 300 <= self.status_code < 400
 
     def iter_content(self, chunk_size: int = 65536):
+        """Handle iter content for this source file's runtime workflow."""
         yield from self._response.stream(amt=chunk_size, decode_content=True)
 
     def close(self) -> None:
+        """Handle close for this source file's runtime workflow."""
         self._response.release_conn()
         self._pool.close()
 
 
 def _host_header(hostname: str, port: int) -> str:
+    """Handle host header for this source file's runtime workflow."""
     rendered = f"[{hostname}]" if ":" in hostname else hostname
     return rendered if port == 443 else f"{rendered}:{port}"
 
 
 def validate_public_https_url(value: str) -> PublicHTTPSDestination:
+    """Validate public https url and reject invalid input."""
     url = value.strip()
     if len(url) > MAX_URL_LENGTH:
         raise FeedError(f"feed URL must not exceed {MAX_URL_LENGTH} characters")
@@ -167,6 +173,7 @@ def pinned_https_get(
 
 
 def parse_date(value: str | None) -> datetime | None:
+    """Parse date into its normalized representation."""
     if not value or len(value) > 256:
         return None
     value = value.strip()
@@ -183,6 +190,7 @@ def parse_date(value: str | None) -> datetime | None:
 
 
 def clean_text(value: str | None, limit: int = MAX_TEXT_LENGTH) -> str:
+    """Handle clean text for this source file's runtime workflow."""
     text = html.unescape(value or "")
     text = re.sub(r"<[^>]{0,2048}>", " ", text)
     text = re.sub(r"[\x00-\x1f\x7f]", " ", text)
@@ -190,6 +198,7 @@ def clean_text(value: str | None, limit: int = MAX_TEXT_LENGTH) -> str:
 
 
 def classify_state(title: str, summary: str) -> str:
+    """Handle classify state for this source file's runtime workflow."""
     haystack = f"{title} {summary}".lower()
     positions = {
         keyword: haystack.find(keyword)
@@ -203,6 +212,7 @@ def classify_state(title: str, summary: str) -> str:
 
 
 def extract_items(xml_bytes: bytes) -> list[dict[str, str]]:
+    """Handle extract items for this source file's runtime workflow."""
     upper = xml_bytes.upper()
     if b"<!DOCTYPE" in upper or b"<!ENTITY" in upper:
         raise FeedError("DTD and entity declarations are not allowed")
@@ -251,6 +261,7 @@ def extract_items(xml_bytes: bytes) -> list[dict[str, str]]:
 
 
 def read_bounded(response: PinnedHTTPSResponse) -> bytes:
+    """Read bounded from its configured source."""
     body = bytearray()
     for chunk in response.iter_content(chunk_size=65536):
         body.extend(chunk)
@@ -265,6 +276,7 @@ def probe_feed(
     timeout: float,
     user_agent: str,
 ) -> dict[str, Any]:
+    """Handle probe feed for this source file's runtime workflow."""
     result: dict[str, Any] = {
         "name": clean_text(name, 256),
         "url": url[:MAX_URL_LENGTH],
@@ -317,6 +329,7 @@ def probe_feed(
 
 
 def split_feed(spec: str) -> tuple[str, str]:
+    """Handle split feed for this source file's runtime workflow."""
     if "=" not in spec:
         raise ValueError("feed spec must be NAME=URL")
     name, url = (part.strip() for part in spec.split("=", 1))
@@ -326,6 +339,7 @@ def split_feed(spec: str) -> tuple[str, str]:
 
 
 def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse arguments into its normalized representation."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--feed", action="append", default=[])
     parser.add_argument("--timeout", type=float, default=15.0)
@@ -341,6 +355,7 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the command-line entry point and return its result."""
     args = parse_arguments(argv)
     print("<<<status_feed:sep(0)>>>")
     for spec in args.feed:

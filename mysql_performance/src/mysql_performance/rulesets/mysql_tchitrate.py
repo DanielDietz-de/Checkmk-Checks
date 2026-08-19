@@ -27,6 +27,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_form_mysql_tchitrate() -> Dictionary:
+    """Handle parameter form mysql tchitrate for this module's workflow."""
     return Dictionary(
         elements={
             "levels": DictElement(

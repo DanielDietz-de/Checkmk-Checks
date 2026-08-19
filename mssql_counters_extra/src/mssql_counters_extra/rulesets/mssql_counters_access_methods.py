@@ -20,6 +20,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_valuespec_mssql_counters_access_methods():
+    """Handle parameter valuespec mssql counters access methods for this module's workflow."""
     return Dictionary(
             title = Title("MSSQL index usage"),
         elements = {

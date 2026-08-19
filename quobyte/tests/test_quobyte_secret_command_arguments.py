@@ -16,6 +16,7 @@ AGENT = PACKAGE_ROOT / "src/quobyte/libexec/agent_quobyte"
 
 
 def _load_agent():
+    """Handle load agent for this module's workflow."""
     loader = importlib.machinery.SourceFileLoader("quobyte_agent_test", str(AGENT))
     spec = importlib.util.spec_from_loader(loader.name, loader)
     assert spec is not None
@@ -25,6 +26,7 @@ def _load_agent():
 
 
 def test_server_side_call_preserves_secret_object() -> None:
+    """Verify that server side call preserves secret object."""
     text = SERVER_SIDE_CALL.read_text(encoding="utf-8")
     tree = ast.parse(text)
     assert not any(
@@ -37,6 +39,7 @@ def test_server_side_call_preserves_secret_object() -> None:
 
 
 def test_ca_bundle_flows_from_ruleset_to_agent() -> None:
+    """Verify that ca bundle flows from ruleset to agent."""
     server_source = SERVER_SIDE_CALL.read_text(encoding="utf-8")
     ruleset_source = RULESET.read_text(encoding="utf-8")
     agent_source = AGENT.read_text(encoding="utf-8")
@@ -52,6 +55,7 @@ def test_ca_bundle_flows_from_ruleset_to_agent() -> None:
 def test_requests_ca_bundle_is_preserved_without_proxy_inheritance(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """Verify that requests ca bundle is preserved without proxy inheritance."""
     module = _load_agent()
     bundle = tmp_path / "site-ca.pem"
     bundle.write_text("test CA bundle\n", encoding="utf-8")
@@ -67,6 +71,7 @@ def test_requests_ca_bundle_is_preserved_without_proxy_inheritance(
 def test_curl_ca_bundle_is_the_compatible_fallback(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """Verify that curl ca bundle is the compatible fallback."""
     module = _load_agent()
     bundle = tmp_path / "curl-ca.pem"
     bundle.write_text("test CA bundle\n", encoding="utf-8")
@@ -81,6 +86,7 @@ def test_curl_ca_bundle_is_the_compatible_fallback(
 def test_explicit_ca_bundle_overrides_environment(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """Verify that explicit ca bundle overrides environment."""
     module = _load_agent()
     environment_bundle = tmp_path / "environment-ca.pem"
     explicit_bundle = tmp_path / "explicit-ca.pem"
@@ -100,6 +106,7 @@ def test_explicit_ca_bundle_overrides_environment(
 
 
 def test_missing_ca_bundle_is_rejected(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Verify that missing ca bundle is rejected."""
     module = _load_agent()
     monkeypatch.delenv("REQUESTS_CA_BUNDLE", raising=False)
     monkeypatch.delenv("CURL_CA_BUNDLE", raising=False)

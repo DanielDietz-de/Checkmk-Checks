@@ -26,16 +26,12 @@ def parse_quobyte_health(string_table):
 
 
 def discover_quobyte_healthmanager(section):
-    """
-    Discover one Service
-    """
+    """Discover quobyte healthmanager from the available input data."""
     yield Service()
 
 
 def check_quobyte_healthmanager(params, section):
-    """
-    Check single Device
-    """
+    """Evaluate quobyte healthmanager and return its resulting state."""
     state = State.OK
     if section.get('system_health'):
         if section['system_health'] != 'HEALTHY':

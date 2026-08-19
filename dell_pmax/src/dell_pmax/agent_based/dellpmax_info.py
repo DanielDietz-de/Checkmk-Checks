@@ -21,10 +21,12 @@ sersion|V9.2.2.2
 
 
 def discover_dellpmax_info(section):
+    """Discover dellpmax info from the available input data."""
     yield Service()
 
 
 def check_dellpmax_info(section):
+    """Evaluate dellpmax info and return its resulting state."""
     yield Result(state=State.OK, summary="PowerMax Unisphere version: {}".format(section[0][1]))
 
 

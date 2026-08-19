@@ -27,6 +27,7 @@
 
 
 def bake_netbackup(opsys, conf, conf_dir, plugins_dir):
+    """Handle bake netbackup for this source file's runtime workflow."""
     shutil.copy2(cmk.paths.local_agents_dir + "/plugins/net_backup.sh", plugins_dir + "/net_backup.sh")
 
 bakery_info["net_backup"] = {

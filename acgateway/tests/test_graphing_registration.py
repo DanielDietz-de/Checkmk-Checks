@@ -11,6 +11,7 @@ GRAPHING_FILE = (
 
 
 def test_builtin_active_sessions_metric_is_not_redefined() -> None:
+    """Verify that builtin active sessions metric is not redefined."""
     source = GRAPHING_FILE.read_text(encoding="utf-8")
     assert 'name="active_sessions"' not in source
     assert '"active_sessions"' in source

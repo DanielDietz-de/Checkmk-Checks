@@ -3,7 +3,7 @@
 
 
 from cmk.agent_based.v2 import (
-    SNMPTree, 
+    SNMPTree,
     startswith,
     Service,
     Result,
@@ -13,6 +13,7 @@ from cmk.agent_based.v2 import (
 )
 
 def parse_alteon_vrrp_status(string_table):
+    """Parse alteon vrrp status into its normalized representation."""
     values = {}
     for state, router_ip in zip(string_table[0], string_table[1]):
         state = int(state[0])
@@ -50,6 +51,7 @@ snmp_section_alteon_vrrp_status = SNMPSection(
 
 # {'10.247.84.126': 2, '10.247.80.30': 2, '10.247.84.190': 2, '10.112.99.14': 2, '10.247.81.254': 2, '10.247.84.222': 2, '10.247.84.238': 2}
 def discover_alteon_vrrp_status(section):
+    """Discover alteon vrrp status from the available input data."""
     if len(section) > 0 and all(elem == list(section.values())[0] for elem in section.values()):
         yield Service(item="VRRP Status")
 
@@ -59,17 +61,18 @@ def discover_alteon_vrrp_status(section):
 # {'10.247.84.126': 2, '10.247.80.30': 2, '10.247.84.190': 2, '10.112.99.14': 2, '10.247.81.254': 2, '10.247.84.222': 2, '10.247.84.238': 2}
 def check_alteon_vrrp_status(item, params, section):
     # Mapping von numerischen Werten zu String-Namen
+    """Evaluate alteon vrrp status and return its resulting state."""
     states = ["nd", "init", "master", "backup", "holdoff"]
     state_to_name = {0: "nd", 1: "init", 2: "master", 3: "backup", 4: "holdoff"}
     name_to_state = {"nd": 0, "init": 1, "master": 2, "backup": 3, "holdoff": 4}
-    
+
     # Parameter aus Ruleset holen (String-Name)
     expected_state_name = params["inventory_alteon_vrrp_state"]
     expected_state_num = name_to_state.get(expected_state_name, 2)  # Default: master
-    
+
     current_state_num = list(section.values())[0]
     current_state_name = state_to_name.get(current_state_num, "unknown")
-    
+
     infotext = "VRRP Status: {}".format(current_state_name)
     for router_ip, router_state in section.items():
         router_state_name = state_to_name.get(router_state, "unknown")
@@ -83,7 +86,7 @@ def check_alteon_vrrp_status(item, params, section):
         yield Result(state=State.OK, summary=infotext)
 
 
-check_plugin_alteon_vrrp_status = CheckPlugin(     
+check_plugin_alteon_vrrp_status = CheckPlugin(
     name='alteon_vrrp_status',
     service_name='%s',
     discovery_function=discover_alteon_vrrp_status,

@@ -29,6 +29,7 @@ def _migrate(value):
 
 
 def _agent_config_dir_size() -> Dictionary:
+    """Handle agent config dir size for this module's workflow."""
     return Dictionary(
         help_text=Help(
             "This will deploy the agent plug-in <tt>dir_size.sh</tt>. "

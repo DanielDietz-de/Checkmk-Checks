@@ -25,6 +25,7 @@ from cmk.agent_based.v2.render import timespan
 
 
 def parse_palo_alto_threadid(string_table):
+    """Parse palo alto threadid into its normalized representation."""
     if not string_table or not string_table[0]:
         return None
     return string_table[0][0]
@@ -45,10 +46,12 @@ snmp_section_palo_alto_threadid = SimpleSNMPSection(
 
 
 def discover_palo_alto_threadid(section):
+    """Discover palo alto threadid from the available input data."""
     yield Service()
 
 
 def check_palo_alto_threadid(params, section):
+    """Evaluate palo alto threadid and return its resulting state."""
     value_store = get_value_store()
     now = time()
 

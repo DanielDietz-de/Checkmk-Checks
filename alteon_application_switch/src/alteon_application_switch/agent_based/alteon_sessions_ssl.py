@@ -3,7 +3,7 @@
 
 
 from cmk.agent_based.v2 import (
-    SNMPTree, 
+    SNMPTree,
     startswith,
     Service,
     Result,
@@ -14,6 +14,7 @@ from cmk.agent_based.v2 import (
 )
 
 def parse_alteon_sessions_ssl(string_table): # [[[u'1000']], [[u'722 CPS', u'28 CPS']]]
+    """Parse alteon sessions ssl into its normalized representation."""
     print(string_table)
     values = {}
     values['max_ssl_sessions'] = int(string_table[0][0][0])
@@ -45,7 +46,8 @@ snmp_section_alteon_sessions_ssl = SNMPSection(
 )
 
 
-def discover_alteon_sessions_ssl(section): 
+def discover_alteon_sessions_ssl(section):
+    """Discover alteon sessions ssl from the available input data."""
     max_ssl_sessions = section['max_ssl_sessions']
     if max_ssl_sessions > 0: # do not inventory if max_ssl_sessions is 0
         tresholds = {}
@@ -54,6 +56,7 @@ def discover_alteon_sessions_ssl(section):
 
 
 def check_alteon_sessions_ssl(item, params, section):
+    """Evaluate alteon sessions ssl and return its resulting state."""
     max_ssl_sessions = section['max_ssl_sessions']
     peak_ssl_sessions = section['peak_ssl_sessions']
     current_ssl_sessions = section['current_ssl_sessions']
@@ -78,7 +81,7 @@ def check_alteon_sessions_ssl(item, params, section):
         yield Result(state=State.OK, summary=infotext)
 
 
-check_plugin_alteon_sessions_ssl = CheckPlugin(     
+check_plugin_alteon_sessions_ssl = CheckPlugin(
     name='alteon_sessions_ssl',
     service_name='%s',
     discovery_function=discover_alteon_sessions_ssl,

@@ -39,12 +39,14 @@ _KNOWN_CHECKMK_RULESET_WARNING = " ".join(
 
 @dataclass(frozen=True)
 class CommandResult:
+    """Represent commandresult behavior and associated state."""
     returncode: int
     output: str
 
 
 @dataclass(frozen=True)
 class CommandFailure:
+    """Represent commandfailure behavior and associated state."""
     package_dir: str
     package_name: str
     package_version: str
@@ -54,6 +56,7 @@ class CommandFailure:
 
 
 def _parse_args() -> argparse.Namespace:
+    """Handle parse args for this module's workflow."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--dist", type=Path, required=True)
     parser.add_argument("--checkmk-version", required=True)
@@ -61,6 +64,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _version_key(value: str) -> tuple[int, int, int, int, int]:
+    """Handle version key for this module's workflow."""
     match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:(b|rc|p)(\d+))?", value)
     if not match:
         raise ValueError(f"Unsupported Checkmk version: {value!r}")
@@ -72,6 +76,7 @@ def _version_key(value: str) -> tuple[int, int, int, int, int]:
 
 
 def _supports_target(min_required: str, usable_until: str | None, target: str) -> bool:
+    """Handle supports target for this module's workflow."""
     target_key = _version_key(target)
     if target_key < _version_key(min_required):
         return False
@@ -79,6 +84,7 @@ def _supports_target(min_required: str, usable_until: str | None, target: str) -
 
 
 def _timeout_output(exc: subprocess.TimeoutExpired) -> str:
+    """Handle timeout output for this module's workflow."""
     chunks: list[str] = []
     for value in (exc.stdout, exc.stderr):
         if value is None:
@@ -92,6 +98,7 @@ def _timeout_output(exc: subprocess.TimeoutExpired) -> str:
 
 
 def _run(command: list[str], *, timeout: int) -> CommandResult:
+    """Handle run for this module's workflow."""
     print(f"+ {' '.join(command)} [timeout={timeout}s]", flush=True)
     try:
         completed = subprocess.run(
@@ -135,6 +142,7 @@ def _is_known_checkmk_builtin_ruleset_warning(
 
 
 def _manifest(package_path: Path) -> dict[str, Any]:
+    """Handle manifest for this module's workflow."""
     with tarfile.open(package_path, mode="r:gz") as archive:
         member = next(
             (item for item in archive.getmembers() if PurePosixPath(item.name).name == "info"),
@@ -152,6 +160,7 @@ def _manifest(package_path: Path) -> dict[str, Any]:
 
 
 def _manual_names(manifest: dict[str, Any]) -> set[str]:
+    """Handle manual names for this module's workflow."""
     names: set[str] = set()
     files = manifest.get("files", {})
     for path in files.get("checkman", []):
@@ -169,6 +178,7 @@ def _record_failure(
     command: list[str],
     result: CommandResult,
 ) -> None:
+    """Handle record failure for this module's workflow."""
     failures.append(
         CommandFailure(
             package_dir=package["package_dir"],
@@ -182,6 +192,7 @@ def _record_failure(
 
 
 def _print_failures(failures: list[CommandFailure], target: str) -> None:
+    """Handle print failures for this module's workflow."""
     print("\n=== REPOSITORY MKP VALIDATION FAILURES ===", file=sys.stderr)
     print(f"Checkmk target: {target}", file=sys.stderr)
     print(f"Failure count: {len(failures)}", file=sys.stderr)
@@ -200,6 +211,7 @@ def _print_failures(failures: list[CommandFailure], target: str) -> None:
 
 
 def main() -> None:
+    """Run the command-line entry point and return its result."""
     args = _parse_args()
     dist = args.dist.resolve()
     metadata = json.loads((dist / "packages.json").read_text(encoding="utf-8"))

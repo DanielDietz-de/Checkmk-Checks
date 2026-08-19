@@ -41,6 +41,7 @@ def _migrate(value):
 
 
 def _parameter_dir_size() -> Dictionary:
+    """Handle parameter dir size for this module's workflow."""
     return Dictionary(
             migrate=_migrate,
             elements={

@@ -60,9 +60,7 @@ def parse_metrics(string_table):
 
 
 def discover_service(section_azure_extra_connections, section_azure_extra_connections_metrics):
-    """
-    Discover Azure Connections
-    """
+    """Discover service from the available input data."""
     for connection_name in section_azure_extra_connections:
         yield Service(item=connection_name)
 
@@ -101,6 +99,7 @@ def check_service(item, section_azure_extra_connections, section_azure_extra_con
             tunnel_state = State.OK if conn_status == 'Connected' else State.CRIT
 
             def fmt_bytes(b):
+                """Handle fmt bytes for this module's workflow."""
                 if b >= 1024**3:
                     return f"{b/(1024**3):.2f} GB"
                 if b >= 1024**2:

@@ -9,6 +9,7 @@ PACKAGE = Path(__file__).resolve().parents[1]
 
 
 def test_manifest_declares_existing_unique_files():
+    """Verify that manifest declares existing unique files."""
     manifest = ast.literal_eval((PACKAGE / "src/info").read_text(encoding="utf-8"))
     assert manifest["name"] == "aruba_central_monitoring"
     assert manifest["version.min_required"] == "2.5.0"
@@ -23,6 +24,7 @@ def test_manifest_declares_existing_unique_files():
 
 
 def test_readme_contains_generated_reference_markers():
+    """Verify that readme contains generated reference markers."""
     readme = (PACKAGE / "README.md").read_text(encoding="utf-8")
     assert readme.count("<!-- code-derived-reference:start -->") == 1
     assert readme.count("<!-- code-derived-reference:end -->") == 1
@@ -30,6 +32,7 @@ def test_readme_contains_generated_reference_markers():
 
 
 def test_radio_checkman_documents_indexed_service_item():
+    """Verify that radio checkman documents indexed service item."""
     checkman = (
         PACKAGE / "src/aruba_central/checkman/aruba_central_radio"
     ).read_text(encoding="utf-8")

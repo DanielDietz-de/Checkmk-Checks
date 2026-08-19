@@ -18,19 +18,23 @@ BAKERY_PATH = (
 
 
 class OS(Enum):
+    """Represent os behavior and associated state."""
     LINUX = "linux"
 
 
 class DebStep(Enum):
+    """Represent debstep behavior and associated state."""
     POSTINST = "postinst"
 
 
 class RpmStep(Enum):
+    """Represent rpmstep behavior and associated state."""
     POST = "post"
 
 
 @dataclass
 class Plugin:
+    """Represent plugin behavior and associated state."""
     base_os: OS
     source: Path
     target: Path | None = None
@@ -39,6 +43,7 @@ class Plugin:
 
 @dataclass
 class SystemBinary:
+    """Represent systembinary behavior and associated state."""
     base_os: OS
     source: Path
     target: Path | None = None
@@ -46,6 +51,7 @@ class SystemBinary:
 
 @dataclass
 class PluginConfig:
+    """Represent pluginconfig behavior and associated state."""
     base_os: OS
     lines: list[str]
     target: Path
@@ -54,6 +60,7 @@ class PluginConfig:
 
 @dataclass
 class SystemConfig:
+    """Represent systemconfig behavior and associated state."""
     base_os: OS
     lines: list[str]
     target: Path
@@ -62,19 +69,24 @@ class SystemConfig:
 
 @dataclass
 class Scriptlet:
+    """Represent scriptlet behavior and associated state."""
     step: DebStep | RpmStep
     lines: list[str]
 
 
 class Register:
+    """Represent register behavior and associated state."""
     def __init__(self) -> None:
+        """Initialize the instance and its required state."""
         self.calls: list[dict[str, Any]] = []
 
     def bakery_plugin(self, **kwargs: Any) -> None:
+        """Handle bakery plugin for this module's workflow."""
         self.calls.append(kwargs)
 
 
 def _module(name: str) -> types.ModuleType:
+    """Handle module for this module's workflow."""
     module = types.ModuleType(name)
     module.__path__ = []  # type: ignore[attr-defined]
     sys.modules[name] = module
@@ -82,6 +94,7 @@ def _module(name: str) -> types.ModuleType:
 
 
 def _load_module(name: str, path: Path) -> types.ModuleType:
+    """Handle load module for this module's workflow."""
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -91,6 +104,7 @@ def _load_module(name: str, path: Path) -> types.ModuleType:
 
 
 def _configuration() -> dict[str, Any]:
+    """Handle configuration for this module's workflow."""
     return {
         "deployment": ("cached", 300.0),
         "inventory": {
@@ -139,6 +153,7 @@ def _configuration() -> dict[str, Any]:
 
 
 def test_bakery_v1_contract_and_generated_artifacts() -> None:
+    """Verify that bakery v1 contract and generated artifacts."""
     for name in (
         "cmk",
         "cmk.base",
@@ -221,6 +236,7 @@ def test_bakery_v1_contract_and_generated_artifacts() -> None:
 
 
 def test_scriptlets_use_the_configured_service_account() -> None:
+    """Verify that scriptlets use the configured service account."""
     bakery = sys.modules.get("cmk.base.cee.plugins.bakery.oxidized_backup")
     if bakery is None:
         test_bakery_v1_contract_and_generated_artifacts()
@@ -240,6 +256,7 @@ def test_scriptlets_use_the_configured_service_account() -> None:
 def test_do_not_deploy_yields_no_artifacts() -> None:
     # Reuse the module loaded by the previous test when tests run in normal order;
     # load it with the same stubs when this test is selected on its own.
+    """Verify that do not deploy yields no artifacts."""
     bakery = sys.modules.get("cmk.base.cee.plugins.bakery.oxidized_backup")
     if bakery is None:
         test_bakery_v1_contract_and_generated_artifacts()

@@ -45,6 +45,7 @@ _JOB_STATES = [
 
 
 def _parameter_form_bacula_jobs() -> Dictionary:
+    """Handle parameter form bacula jobs for this module's workflow."""
     return Dictionary(
         elements={
             "max_age": DictElement(

@@ -6,7 +6,7 @@ Consulting and Development
 https://kuhn-ruess.de
 """
 
-# 
+#
 # MSSQL_SQL2012T:Latches latch_waits/sec None 52531
 # MSSQL_SQL2012T:Latches average_latch_wait_time_(ms) None 39066
 # MSSQL_SQL2012T:Latches average_latch_wait_time_base None 52531
@@ -33,6 +33,7 @@ from cmk.agent_based.v2 import (
 
 def discover_mssql_latches(section):
     # instance is always "None" here
+    """Discover mssql latches from the available input data."""
     for (obj_id, instance), counters in iter(section.items()):
         if obj_id.endswith(":Latches") and "latch_waits/sec" in counters and \
                 "average_latch_wait_time_(ms)" in counters and \
@@ -41,6 +42,7 @@ def discover_mssql_latches(section):
 
 
 def check_mssql_latches(item, params, section):
+    """Evaluate mssql latches and return its resulting state."""
     if not section:
         return
 

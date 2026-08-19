@@ -24,6 +24,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _valuespec_exasol_database():
+    """Handle valuespec exasol database for this module's workflow."""
     return Dictionary(
         title = Title("Set levels for Exasol database size"),
         help_text = Help("Set levels for Exasol database size"),

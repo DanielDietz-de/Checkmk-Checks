@@ -25,9 +25,11 @@ agent_section_storcli2_version = AgentSection(
 
 
 def discover_storcli2_version(section):
+    """Discover storcli2 version from the available input data."""
     yield Service()
 
 def check_storcli2_version(section):
+    """Evaluate storcli2 version and return its resulting state."""
     if "Firmware Version" in section.keys():
         yield Result(state=State.OK, summary=f"Firmware Version: {section['Firmware Version']}")
     else:

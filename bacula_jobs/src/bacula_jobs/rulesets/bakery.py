@@ -47,6 +47,7 @@ def _migrate_deployment(value: Any) -> tuple[str, Any]:
 
 
 def _migrate(value: Any) -> dict[str, Any] | Any:
+    """Handle migrate for this module's workflow."""
     if isinstance(value, Mapping) and "settings" in value:
         migrated = dict(value)
         migrated["deployment"] = _migrate_deployment(
@@ -73,6 +74,7 @@ def _migrate(value: Any) -> dict[str, Any] | Any:
 
 
 def _settings_form() -> Dictionary:
+    """Handle settings form for this module's workflow."""
     return Dictionary(
         title=Title("Database connection"),
         help_text=Help(
@@ -166,6 +168,7 @@ def _settings_form() -> Dictionary:
 
 
 def _agent_config_bacula_jobs() -> Dictionary:
+    """Handle agent config bacula jobs for this module's workflow."""
     return Dictionary(
         title=Title("Bacula/Bareos jobs collector"),
         migrate=_migrate,

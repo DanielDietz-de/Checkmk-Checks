@@ -36,11 +36,13 @@ class BaculaConfigError(RuntimeError):
 
 
 def config_path() -> Path:
+    """Handle config path for this source file's runtime workflow."""
     config_dir = Path(os.environ.get("MK_CONFDIR", "/etc/check_mk"))
     return config_dir / "bacula_jobs.json"
 
 
 def validate_private_file(value: str, label: str) -> str:
+    """Validate private file and reject invalid input."""
     path = Path(value)
     if not path.is_absolute() or not path.is_file() or path.is_symlink():
         raise BaculaConfigError(f"{label} must be an absolute regular file")
@@ -51,6 +53,7 @@ def validate_private_file(value: str, label: str) -> str:
 
 
 def validate_config(raw: Any) -> dict[str, Any]:
+    """Validate config and reject invalid input."""
     if not isinstance(raw, dict):
         raise BaculaConfigError("configuration root must be an object")
     backend = raw.get("backend", "mysql")
@@ -113,6 +116,7 @@ def validate_config(raw: Any) -> dict[str, Any]:
 
 
 def load_config(path: Path) -> dict[str, Any]:
+    """Load config from its configured source."""
     if not path.exists():
         return validate_config({})
     if path.is_symlink() or not path.is_file():
@@ -127,6 +131,7 @@ def load_config(path: Path) -> dict[str, Any]:
 
 
 def executable(name: str) -> str:
+    """Handle executable for this source file's runtime workflow."""
     path = shutil.which(name)
     if path is None:
         raise BaculaConfigError(f"required executable {name!r} was not found")
@@ -134,6 +139,7 @@ def executable(name: str) -> str:
 
 
 def mysql_command(config: dict[str, Any]) -> tuple[list[str], dict[str, str]]:
+    """Handle mysql command for this source file's runtime workflow."""
     command = [executable("mysql")]
     defaults_file = config.get("mysql_defaults_file")
     if defaults_file:
@@ -156,6 +162,7 @@ def mysql_command(config: dict[str, Any]) -> tuple[list[str], dict[str, str]]:
 
 
 def postgresql_command(config: dict[str, Any]) -> tuple[list[str], dict[str, str]]:
+    """Handle postgresql command for this source file's runtime workflow."""
     command = [
         executable("psql"),
         "--no-psqlrc",
@@ -187,11 +194,13 @@ def postgresql_command(config: dict[str, Any]) -> tuple[list[str], dict[str, str
 
 
 def clean_environment() -> dict[str, str]:
+    """Handle clean environment for this source file's runtime workflow."""
     allowed = {"PATH", "LANG", "LC_ALL", "TZ"}
     return {key: value for key, value in os.environ.items() if key in allowed}
 
 
 def _stop_process(process: subprocess.Popen[bytes]) -> None:
+    """Handle stop process for this source file's runtime workflow."""
     if process.poll() is not None:
         return
     process.kill()
@@ -267,6 +276,7 @@ def _run_bounded(
 
 
 def collect(config: dict[str, Any]) -> str:
+    """Handle collect for this source file's runtime workflow."""
     command, environment = (
         mysql_command(config)
         if config["backend"] == "mysql"
@@ -286,6 +296,7 @@ def collect(config: dict[str, Any]) -> str:
 
 
 def main() -> int:
+    """Run the command-line entry point and return its result."""
     print("<<<bacula_jobs:sep(9)>>>")
     try:
         config = load_config(config_path())

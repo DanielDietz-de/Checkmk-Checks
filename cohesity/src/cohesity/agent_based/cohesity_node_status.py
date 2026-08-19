@@ -12,6 +12,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_cohesity_node_status(string_table):
+    """Parse cohesity node status into its normalized representation."""
     section = {}
     for row in string_table:
         item = row[0]
@@ -32,10 +33,12 @@ agent_section_cohesity_node_status = AgentSection(
 
 
 def discovery_cohesity_node_status(section):
+    """Handle discovery cohesity node status for this module's workflow."""
     for node in section.keys():
         yield Service(item=node)
 
 def check_cohesity_node_status(item, params, section):
+    """Evaluate cohesity node status and return its resulting state."""
     services = params.get('services', [])
 
     if item in section.keys():
@@ -69,4 +72,3 @@ check_plugin_cohesity_node_status = CheckPlugin(
     check_default_parameters={},
     check_ruleset_name="cohesity_node_status",
 )
-

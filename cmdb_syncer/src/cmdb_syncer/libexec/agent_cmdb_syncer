@@ -26,16 +26,12 @@ def _resolve_secret_reference(reference: str) -> str:
 
 
 class CMDBSYncer():
-    """
-    CMDB Syncer
-    """
+    """Represent cmdbsyncer behavior and its associated runtime state."""
 
     volume_names_map = {}
 
     def __init__(self, api_host, username, password, timeout):
-        """
-        Init
-        """
+        """Initialize the instance and its required runtime state."""
         self.api_host = api_host
         self.username = username
         self.password = password

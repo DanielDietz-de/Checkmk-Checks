@@ -14,6 +14,7 @@ from cmk.server_side_calls.v1 import (
 
 
 class CMDBSyncerParams(BaseModel):
+    """Represent cmdbsyncerparams behavior and associated state."""
     api_url: str
     username: str
     password: Secret
@@ -23,6 +24,7 @@ class CMDBSyncerParams(BaseModel):
 
 
 def generate_cmdbsyncer_command(params: CMDBSyncerParams, host_config: HostConfig):
+    """Generate cmdbsyncer command from the current source data."""
     args: list[str | Secret] = [
         "--api_url",
         params.api_url,

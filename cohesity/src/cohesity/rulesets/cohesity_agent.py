@@ -8,6 +8,7 @@ from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic, Help
 
 
 def _formspec():
+    """Handle formspec for this module's workflow."""
     return Dictionary(
         title=Title("Cohesity via WebAPI"),
         help_text=Help("This rule set selects the special agent for Cohesity"),
@@ -53,4 +54,3 @@ rule_spec_cohesity = SpecialAgent(
     ),
     parameter_form=_formspec
 )
-

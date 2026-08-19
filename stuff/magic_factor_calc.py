@@ -9,14 +9,12 @@ level = int(input("Input basic level default 90: ") or 90)
 
 
 def adjust_level(level, factor):
-    """
-    """
+    """Handle adjust level for this module's workflow."""
     return 100 - ((100  - level) * factor)
 
 
 def adjust_levels(level, factor, filesystem_size, referenze_size):
-    """
-    """
+    """Handle adjust levels for this module's workflow."""
 
     relative_size = filesystem_size / referenze_size
     true_factor = (relative_size**factor) / relative_size

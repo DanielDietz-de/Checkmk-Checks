@@ -41,9 +41,7 @@ def discover_quobyte_quotas(section):
 
 
 def check_quobyte_quotas(item, params, section):
-    """
-    Check single Service
-    """
+    """Evaluate quobyte quotas and return its resulting state."""
     state = State.OK
     quota = section[item]
     limit = int(quota['limit'])

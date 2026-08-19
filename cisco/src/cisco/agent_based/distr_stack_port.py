@@ -25,6 +25,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_cisco_distr_stack_port(string_table):
+    """Parse cisco distr stack port into its normalized representation."""
     return string_table or None
 
 
@@ -43,6 +44,7 @@ snmp_section_cisco_distr_stack_port = SimpleSNMPSection(
 
 
 def discover_cisco_distr_stack_port(section):
+    """Discover cisco distr stack port from the available input data."""
     seen = set()
     for port, _status, _nbr in section:
         if port and port not in seen:
@@ -51,6 +53,7 @@ def discover_cisco_distr_stack_port(section):
 
 
 def check_cisco_distr_stack_port(item, section):
+    """Evaluate cisco distr stack port and return its resulting state."""
     for port, status, nbr in section:
         if port == item:
             if status == "1":

@@ -15,10 +15,12 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, Ho
 
 
 def _state_help() -> Help:
+    """Handle state help for this module's workflow."""
     return Help("State mapping: 0=OK, 1=WARN, 2=CRIT, 3=UNKNOWN.")
 
 
 def _summary_form() -> Dictionary:
+    """Handle summary form for this module's workflow."""
     return Dictionary(
         elements={
             "api_rate_remaining_lower": DictElement(
@@ -54,6 +56,7 @@ def _summary_form() -> Dictionary:
 
 
 def _ap_form() -> Dictionary:
+    """Handle ap form for this module's workflow."""
     return Dictionary(
         elements={
             "status_down_state": DictElement(
@@ -104,6 +107,7 @@ def _ap_form() -> Dictionary:
 
 
 def _radio_form() -> Dictionary:
+    """Handle radio form for this module's workflow."""
     return Dictionary(
         elements={
             "status_down_state": DictElement(

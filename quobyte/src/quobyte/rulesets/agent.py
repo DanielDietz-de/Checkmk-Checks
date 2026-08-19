@@ -21,6 +21,7 @@ from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
 
 def _parameter_form_special_agents_quobyte():
+    """Handle parameter form special agents quobyte for this module's workflow."""
     return Dictionary(
         title = Title("Quobyte via WebAPI"),
         help_text = Help("This rule set selects the special agent for Quobyte"),

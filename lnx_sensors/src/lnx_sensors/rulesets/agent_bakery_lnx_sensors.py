@@ -19,6 +19,7 @@ from cmk.rulesets.v1.rule_specs import AgentConfig, Topic
 
 
 def _valuespec_agent_lnx_sensors():
+    """Handle valuespec agent lnx sensors for this module's workflow."""
     return Dictionary(
         title = Title("Sensors"),
         help_text = Help("This will deploy the agent plugin <tt>lnx_sensors</tt> for monitoring the status of sensors."),

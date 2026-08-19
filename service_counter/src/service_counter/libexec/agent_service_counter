@@ -12,9 +12,7 @@ from sys import argv
 
 
 class AgentServicecounter():
-    """
-    Agent Json
-    """
+    """Represent agentservicecounter behavior and its associated runtime state."""
 
     def get_user(self):
         """
@@ -29,9 +27,7 @@ class AgentServicecounter():
 
 
     def __init__(self):
-        """
-        Init
-        """
+        """Initialize the instance and its required runtime state."""
         self.timeout = float(argv[1])
         self.config = []
         for arg_set in argv[2:]:
@@ -51,9 +47,7 @@ class AgentServicecounter():
 
 
     def get(self, url, params):
-        """
-        Simple Get
-        """
+        """Handle get for this source file's runtime workflow."""
         content = self._session.get(
             f"{self._site_url}{url}",
             params=params,

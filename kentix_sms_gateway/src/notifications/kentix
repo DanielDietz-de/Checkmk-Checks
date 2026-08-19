@@ -24,10 +24,12 @@ class KentixError(RuntimeError):
 
 
 def get_hosts_from_bulk_contexts(contexts: Iterable[dict[str, str]]) -> set[str]:
+    """Return hosts from bulk contexts for the supplied inputs."""
     return {context["HOSTNAME"] for context in contexts}
 
 
 def normalize_pager_number(value: str) -> str:
+    """Normalize pager number into the canonical form."""
     number = re.sub(r"[\s()./-]", "", value)
     if not PHONE_RE.fullmatch(number):
         raise KentixError("pager number must contain 6-20 digits and optional leading +")
@@ -35,6 +37,7 @@ def normalize_pager_number(value: str) -> str:
 
 
 def validate_gateway(value: str) -> str:
+    """Validate gateway and reject invalid input."""
     raw = value.strip()
     parsed = urlsplit(raw if "://" in raw else f"https://{raw}")
     if parsed.scheme != "https" or not parsed.hostname:
@@ -52,6 +55,7 @@ def validate_gateway(value: str) -> str:
 
 
 def validate_ca_bundle(value: str | None) -> bool | str:
+    """Validate ca bundle and reject invalid input."""
     if not value:
         return True
     path = Path(value)
@@ -61,6 +65,7 @@ def validate_ca_bundle(value: str | None) -> bool | str:
 
 
 def normalize_message(value: str) -> str:
+    """Normalize message into the canonical form."""
     text = " ".join(value.replace("\x00", " ").split())
     if not text:
         raise KentixError("SMS message is empty")
@@ -77,6 +82,7 @@ def send_sms(
     verify: bool | str,
     session: requests.Session | None = None,
 ) -> int:
+    """Handle send sms for this source file's runtime workflow."""
     client = requests.Session() if session is None else session
     client.trust_env = False
     try:
@@ -112,6 +118,7 @@ def send_sms(
 
 
 def main() -> int:
+    """Run the command-line entry point and return its result."""
     bulk_mode = "--bulk" in sys.argv
     if bulk_mode:
         parameters, contexts = utils.read_bulk_contexts()

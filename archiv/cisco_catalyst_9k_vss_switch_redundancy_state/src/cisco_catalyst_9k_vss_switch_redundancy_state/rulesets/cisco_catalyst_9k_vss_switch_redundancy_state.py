@@ -13,6 +13,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_form_cisco_catalyst_9k_vss_switch_redundancy_state() -> Dictionary:
+    """Handle parameter form cisco catalyst 9k vss switch redundancy state for this module's workflow."""
     return Dictionary(
         elements={
             "switch_role": DictElement(

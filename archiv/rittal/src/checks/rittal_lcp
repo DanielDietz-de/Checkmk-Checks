@@ -89,6 +89,7 @@ check_rittal_lcp_template = {
      }
 
 def inventory_rittal_lcp(checkname, info):
+    """Handle inventory rittal lcp for this source file's runtime workflow."""
     inventory = []
     for line in info:
         sensor_type = saveint(line[1])
@@ -107,6 +108,7 @@ def inventory_rittal_lcp(checkname, info):
 
 def check_rittal_lcp(item, no_params, info):
   
+   """Evaluate rittal lcp and return its resulting state."""
    item = item.split(" - ")
    item = item[1]
    perf = []

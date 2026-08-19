@@ -29,6 +29,7 @@ _TIME_MAGNITUDES = (
 
 
 def _parameter_valuespec_hitachi_hnas_rest_snapshots():
+    """Handle parameter valuespec hitachi hnas rest snapshots for this module's workflow."""
     return Dictionary(
         elements={
             "levels_count": DictElement(

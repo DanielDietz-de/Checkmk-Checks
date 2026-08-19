@@ -19,6 +19,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, Topic
 
 
 def _parameter_form_vertiv_acs8000_cpu_temperature():
+    """Handle parameter form vertiv acs8000 cpu temperature for this module's workflow."""
     return Dictionary(
         title=Title("Vertiv ACS CPU temperature"),
         help_text=Help("Upper temperature levels for the internal CPU of a Vertiv Avocent ACS 8000 console server."),

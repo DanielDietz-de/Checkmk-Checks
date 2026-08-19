@@ -33,6 +33,7 @@ class GuardError(RuntimeError):
 
 
 def git_output(root: Path, *args: str) -> str:
+    """Handle git output for this module's workflow."""
     result = subprocess.run(
         ["git", *args],
         cwd=root,
@@ -48,6 +49,7 @@ def git_output(root: Path, *args: str) -> str:
 
 
 def changed_files(root: Path, base: str | None, head: str | None) -> list[Path]:
+    """Handle changed files for this module's workflow."""
     if base and head and set(base) != {"0"}:
         # Compare the pull request from the merge base. A two-endpoint diff can
         # report base-only changes as reverse modifications when the branch is
@@ -65,6 +67,7 @@ def changed_files(root: Path, base: str | None, head: str | None) -> list[Path]:
 
 
 def package_for(root: Path, path: Path) -> Path | None:
+    """Handle package for for this module's workflow."""
     try:
         relative = path.relative_to(root)
     except ValueError:
@@ -78,10 +81,12 @@ def package_for(root: Path, path: Path) -> Path | None:
 
 
 def changed_packages(root: Path, paths: list[Path]) -> set[Path]:
+    """Handle changed packages for this module's workflow."""
     return {package for path in paths if (package := package_for(root, path)) is not None}
 
 
 def load_metadata(path: Path) -> dict[str, Any]:
+    """Load metadata from its configured source."""
     try:
         if path.name == "info.json":
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -135,6 +140,7 @@ def validate_metadata(root: Path, touched_packages: set[Path]) -> list[str]:
 
 
 def is_comment_only_match(line: str, token: str) -> bool:
+    """Return whether comment only match is true for the supplied input."""
     if token not in line:
         return True
     stripped = line.lstrip()
@@ -179,6 +185,7 @@ def _source_language(path: Path) -> str | None:
 
 
 def _reviewed_lines(text: str) -> set[int]:
+    """Handle reviewed lines for this module's workflow."""
     return {
         number
         for number, line in enumerate(text.splitlines(), start=1)
@@ -187,6 +194,7 @@ def _reviewed_lines(text: str) -> set[int]:
 
 
 def validate_changed_source(root: Path, paths: list[Path]) -> list[str]:
+    """Validate changed source and reject invalid input."""
     errors: list[str] = []
     for path in paths:
         if not path.is_file():
@@ -261,6 +269,7 @@ def validate_changed_source(root: Path, paths: list[Path]) -> list[str]:
 
 
 def validate_changed_packages_have_tests(root: Path, paths: list[Path]) -> list[str]:
+    """Validate changed packages have tests and reject invalid input."""
     source_packages: set[Path] = set()
     for path in paths:
         package = package_for(root, path)
@@ -280,6 +289,7 @@ def validate_changed_packages_have_tests(root: Path, paths: list[Path]) -> list[
 
 
 def package_inventory(root: Path) -> dict[str, int]:
+    """Handle package inventory for this module's workflow."""
     total = tested = workflows = legacy = 0
     workflow_dir = root / ".github" / "workflows"
     workflow_paths = [*workflow_dir.glob("*.yml"), *workflow_dir.glob("*.yaml")]
@@ -309,6 +319,7 @@ def package_inventory(root: Path) -> dict[str, int]:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse args into its normalized representation."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--base")
@@ -317,6 +328,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the command-line entry point and return its result."""
     args = parse_args(argv)
     root = args.root.resolve()
     try:

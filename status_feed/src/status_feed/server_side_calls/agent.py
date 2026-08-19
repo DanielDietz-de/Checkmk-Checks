@@ -6,17 +6,20 @@ from cmk.server_side_calls.v1 import HostConfig, SpecialAgentCommand, SpecialAge
 
 
 class FeedEntry(BaseModel):
+    """Represent feedentry behavior and associated state."""
     name: str
     url: str
 
 
 class ConfigParser(BaseModel):
+    """Represent configparser behavior and associated state."""
     feeds: list[FeedEntry] = Field(min_length=1, max_length=100)
     timeout: float | None = Field(default=None, ge=0.5, le=60)
     user_agent: str | None = None
 
 
 def agent_arguments(params: ConfigParser, host_config: HostConfig):
+    """Handle agent arguments for this module's workflow."""
     args: list[str] = []
     if params.timeout is not None:
         args.extend(("--timeout", str(params.timeout)))

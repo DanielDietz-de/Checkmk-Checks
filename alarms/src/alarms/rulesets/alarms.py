@@ -19,6 +19,7 @@ from cmk.rulesets.v1.rule_specs import NotificationParameters, Topic
 
 
 def _form_spec_alarms() -> Dictionary:
+    """Handle form spec alarms for this module's workflow."""
     return Dictionary(
         help_text = Help("Parameters are used to connect to API to play alarms."),
         elements = {

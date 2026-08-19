@@ -13,6 +13,7 @@ from .bakery_api.v1 import (
 
 
 def get_qemu_files(conf: Any) -> FileGenerator:
+    """Return qemu files for the supplied inputs."""
     mode = conf.get("deployment", ("do_not_deploy", None))
     if mode[0] == "do_not_deploy":
         return

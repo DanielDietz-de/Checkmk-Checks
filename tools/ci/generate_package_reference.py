@@ -50,6 +50,7 @@ NETWORK_CLIENT_RES = (
 
 
 def manifest(path: Path) -> dict[str, Any]:
+    """Handle manifest for this module's workflow."""
     value = ast.literal_eval(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise ValueError(f"{path}: expected dictionary")
@@ -57,6 +58,7 @@ def manifest(path: Path) -> dict[str, Any]:
 
 
 def source_texts(package: Path) -> list[tuple[Path, str]]:
+    """Handle source texts for this module's workflow."""
     result: list[tuple[Path, str]] = []
     for path in sorted((package / "src").rglob("*")):
         if not path.is_file() or path.name in {"info", "info.json"} or "__pycache__" in path.parts:
@@ -74,6 +76,7 @@ def detects_network_access(files: list[tuple[Path, str]]) -> bool:
 
 
 def component_lines(package: Path, files: list[tuple[Path, str]]) -> list[str]:
+    """Handle component lines for this module's workflow."""
     buckets: dict[str, list[str]] = {
         "Agent-based checks": [],
         "Server-side calls": [],
@@ -109,6 +112,7 @@ def component_lines(package: Path, files: list[tuple[Path, str]]) -> list[str]:
 
 
 def derive_reference(root: Path, package: Path, data: dict[str, Any]) -> str:
+    """Handle derive reference for this module's workflow."""
     files = source_texts(package)
     joined = "\n".join(text for _, text in files)
     sections = sorted(set(SECTION_RE.findall(joined)))
@@ -213,6 +217,7 @@ def derive_reference(root: Path, package: Path, data: dict[str, Any]) -> str:
 
 
 def update_readme(readme: Path, block: str) -> str:
+    """Update readme using the supplied changes."""
     original = readme.read_text(encoding="utf-8").rstrip() + "\n"
     if START in original:
         prefix, rest = original.split(START, 1)
@@ -224,6 +229,7 @@ def update_readme(readme: Path, block: str) -> str:
 
 
 def run(root: Path, *, write: bool) -> list[str]:
+    """Handle run for this module's workflow."""
     stale: list[str] = []
     for info in sorted(root.glob("*/src/info")):
         package = info.parent.parent
@@ -243,6 +249,7 @@ def run(root: Path, *, write: bool) -> list[str]:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse args into its normalized representation."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--write", action="store_true")
@@ -250,6 +257,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the command-line entry point and return its result."""
     args = parse_args(argv)
     try:
         stale = run(args.root.resolve(), write=args.write)

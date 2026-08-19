@@ -15,9 +15,7 @@ long_options = [
 ]
 
 def usage():
-    """
-    Print Usage
-    """
+    """Handle usage for this source file's runtime workflow."""
     sys.stdout.write("""Usage: rrd_renamer -H HOSTNAME -c config.py / -s source -t target
 
 This program renames RRD files.
@@ -42,16 +40,12 @@ Options:
 
 # Helpers
 def verbose(msg):
-    """
-    Print Verbose
-    """
+    """Handle verbose for this source file's runtime workflow."""
     if opt_verbose:
         sys.stdout.write(msg + "\n")
 
 def copy(hostname, old_sn, new_sn, path):
-    """
-    Copy Files
-    """
+    """Handle copy for this source file's runtime workflow."""
     old_path = "{}/{}/{}".format(path, hostname, old_sn)
     new_path = "{}/{}/{}".format(path, hostname, new_sn)
     verbose("Move {} to {}".format(old_path, new_path))

@@ -29,10 +29,12 @@ snmp_section_sonicwall_mem = SimpleSNMPSection(
 )
 
 def discover_sonicwall_mem(section):
+    """Discover sonicwall mem from the available input data."""
     if section is not None:
         yield Service()
 
 def check_sonicwall_mem(params, section):
+    """Evaluate sonicwall mem and return its resulting state."""
     value = section
     if value is None:
         yield Result(state=State.UNKNOWN, summary="No memory data")

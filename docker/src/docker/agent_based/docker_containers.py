@@ -41,9 +41,7 @@ from .docker_utils import get_docker_container_cpu, SectionCpuUtilizationOs
 
 
 def parse_docker_containers(string_table):
-    """
-    Parser
-    """
+    """Parse docker containers into its normalized representation."""
     parsed = {}
     for line in string_table:
         item = line[0][1:]
@@ -72,17 +70,13 @@ agent_section_docker = AgentSection(
 
 
 def discover_docker_containers(section):
-    """
-    Docker Containers Discovery
-    """
+    """Discover docker containers from the available input data."""
     for item in section:
         yield Service(item=item, labels=section[item]["Labels"])
 
 
 def check_docker_containers(item, section):
-    """
-    Docker Containers Check
-    """
+    """Evaluate docker containers and return its resulting state."""
     container = section[item]
 
     if 'State' in container.keys():

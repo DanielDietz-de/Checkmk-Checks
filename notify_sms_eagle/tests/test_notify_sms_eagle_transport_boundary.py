@@ -14,6 +14,7 @@ RULESET = (
 
 
 def test_notification_transport_is_bounded() -> None:
+    """Verify that notification transport is bounded."""
     text = SOURCE.read_text(encoding="utf-8")
     assert "disable_warnings" not in text
     assert "allow_redirects=False" in text
@@ -24,6 +25,7 @@ def test_notification_transport_is_bounded() -> None:
 
 
 def test_remote_cleartext_requires_explicit_rule_opt_in() -> None:
+    """Verify that remote cleartext requires explicit rule opt in."""
     source = SOURCE.read_text(encoding="utf-8")
     ruleset = RULESET.read_text(encoding="utf-8")
     assert "allow_insecure_http" in source

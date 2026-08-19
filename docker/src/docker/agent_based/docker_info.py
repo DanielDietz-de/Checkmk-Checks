@@ -26,23 +26,17 @@ from cmk.agent_based.v2 import (
 
 
 def parse_docker_info(string_table):
-    """
-    Parser
-    """
+    """Parse docker info into its normalized representation."""
     if string_table[0][0] == 'service':
         return dict(string_table)
 
 def discover_docker_info(section):
-    """
-    Discover Docker Info
-    """
+    """Discover docker info from the available input data."""
     yield Service()
 
 
 def check_docker_info(section):
-    """
-    Check Docker Info
-    """
+    """Evaluate docker info and return its resulting state."""
 
     if section['service'] == "up":
         yield Result(state=State.OK, summary="service = up")

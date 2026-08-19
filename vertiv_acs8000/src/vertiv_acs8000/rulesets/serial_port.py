@@ -21,6 +21,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostAndItemCondition, To
 
 
 def _parameter_form_vertiv_acs8000_serial_port():
+    """Handle parameter form vertiv acs8000 serial port for this module's workflow."""
     rate_levels = SimpleLevels(
         title=Title("Upper levels for byte rate"),
         level_direction=LevelDirection.UPPER,

@@ -19,6 +19,7 @@ import requests
 
 @dataclass(frozen=True)
 class EventCandidate:
+    """Represent eventcandidate behavior and associated state."""
     event_id: int
     site_id: str
     host_name: str
@@ -30,6 +31,7 @@ class CheckmkApiError(RuntimeError):
 
 
 def _is_loopback_host(hostname: str | None) -> bool:
+    """Handle is loopback host for this module's workflow."""
     if hostname is None:
         return False
     if hostname.lower() == "localhost":
@@ -41,6 +43,7 @@ def _is_loopback_host(hostname: str | None) -> bool:
 
 
 def validate_local_site_url(address: str, site: str) -> None:
+    """Validate local site url and reject invalid input."""
     parsed = urlsplit(address)
     if parsed.scheme not in {"http", "https"}:
         raise RuntimeError("local site URL must use http or https")
@@ -55,7 +58,9 @@ def validate_local_site_url(address: str, site: str) -> None:
 
 
 class Checkmk:
+    """Represent checkmk behavior and associated state."""
     def __init__(self, config: dict[str, Any]):
+        """Initialize the instance and its required state."""
         self.address = str(config["address"]).rstrip("/")
         self.username = str(config["username"])
         self.password = str(config["password"])
@@ -74,6 +79,7 @@ class Checkmk:
         )
 
     def _url(self, endpoint: str) -> str:
+        """Handle url for this module's workflow."""
         return f"{self.address}/check_mk/api/1.0/{endpoint.lstrip('/')}"
 
     def request_json(
@@ -85,6 +91,7 @@ class Checkmk:
         payload: dict[str, Any] | None = None,
         expected_statuses: Iterable[int] = (200,),
     ) -> dict[str, Any]:
+        """Handle request json for this module's workflow."""
         try:
             response = self.session.request(
                 method,
@@ -119,6 +126,7 @@ class Checkmk:
         return data
 
     def get_events(self) -> list[EventCandidate]:
+        """Return events for the supplied inputs."""
         query = {"op": "=", "left": "event_rule_id", "right": self.rule_filter}
         data = self.request_json(
             "domain-types/event_console/collections/all",
@@ -149,6 +157,7 @@ class Checkmk:
         return events
 
     def get_service_state(self, host_name: str, service_description: str) -> int | None:
+        """Return service state for the supplied inputs."""
         cache_id = (host_name, service_description)
         if cache_id in self.status_cache:
             return self.status_cache[cache_id]
@@ -172,6 +181,7 @@ class Checkmk:
         return parsed
 
     def get_host_state(self, host_name: str) -> int | None:
+        """Return host state for the supplied inputs."""
         cache_id = (host_name, "HOST")
         if cache_id in self.status_cache:
             return self.status_cache[cache_id]
@@ -192,6 +202,7 @@ class Checkmk:
         return parsed
 
     def close_event(self, event_id: int, site_id: str) -> None:
+        """Handle close event for this module's workflow."""
         self.request_json(
             "domain-types/event_console/actions/delete/invoke",
             method="POST",
@@ -204,6 +215,7 @@ class Checkmk:
         )
 
     def find_candidates(self) -> list[EventCandidate]:
+        """Handle find candidates for this module's workflow."""
         candidates: list[EventCandidate] = []
         for event in self.get_events():
             if event.service_description == "HOST":
@@ -228,6 +240,7 @@ class Checkmk:
         assume_yes: bool = False,
         input_fn: Callable[[str], str] = input,
     ) -> int:
+        """Synchronize ec data with the canonical state."""
         candidates = self.find_candidates()
         if not candidates:
             print("No Event Console events are eligible for cleanup.")
@@ -258,6 +271,7 @@ class Checkmk:
 
 
 def get_automation_password() -> str:
+    """Return automation password for the supplied inputs."""
     omd_root = environ.get("OMD_ROOT")
     if not omd_root:
         raise RuntimeError("OMD_ROOT is not set; provide --user and --password explicitly")
@@ -266,6 +280,7 @@ def get_automation_password() -> str:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse args into its normalized representation."""
     parser = argparse.ArgumentParser(
         description="Archive open Event Console events whose Checkmk host or service is already OK"
     )
@@ -296,6 +311,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the command-line entry point and return its result."""
     args = parse_args(argv)
     site = environ.get("OMD_SITE")
 

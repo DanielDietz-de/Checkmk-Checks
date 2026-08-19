@@ -36,21 +36,26 @@ loader.exec_module(module)
 
 
 class Response:
+    """Represent response behavior and associated state."""
     status_code = 204
     is_redirect = False
     headers = {}
 
     def iter_content(self, chunk_size=65536):
+        """Handle iter content for this module's workflow."""
         yield b""
 
 
 class Session:
+    """Represent session behavior and associated state."""
     def __init__(self, error=None):
+        """Initialize the instance and its required state."""
         self.error = error
         self.calls = []
         self.trust_env = True
 
     def post(self, url, **kwargs):
+        """Handle post for this module's workflow."""
         self.calls.append((url, kwargs))
         if self.error:
             raise self.error
@@ -58,12 +63,14 @@ class Session:
 
 
 def test_base_url_requires_https_and_normalizes_slash():
+    """Verify that base url requires https and normalizes slash."""
     assert module.validate_base_url("https://snow.example/api") == "https://snow.example/api/"
     with pytest.raises(module.ServiceNowError, match="HTTPS"):
         module.validate_base_url("http://snow.example/api")
 
 
 def test_problem_and_recovery_use_safe_url_joining():
+    """Verify that problem and recovery use safe url joining."""
     session = Session()
     assert module.deliver(
         base_url="https://snow.example/api/",
@@ -84,6 +91,7 @@ def test_problem_and_recovery_use_safe_url_joining():
 
 
 def test_non_idempotent_request_is_not_retried():
+    """Verify that non idempotent request is not retried."""
     session = Session(error=module.requests.Timeout("timeout"))
     with pytest.raises(module.ServiceNowError, match="request failed"):
         module.deliver(
@@ -101,11 +109,13 @@ def test_non_idempotent_request_is_not_retried():
 
 
 def test_assignment_groups_ignore_malformed_values():
+    """Verify that assignment groups ignore malformed values."""
     groups = "SNOW_bad,SNOW_010_OS,other,SNOW_200_APP"
     assert module.choose_assignment_group(groups) == "SNOW_200_APP"
 
 
 def test_correct_service_override_key_has_precedence():
+    """Verify that correct service override key has precedence."""
     assert module.service_assignment_override(
         {
             "SERVICE_SNOW_RESP_GRP_2": "new",
@@ -115,6 +125,7 @@ def test_correct_service_override_key_has_precedence():
 
 
 def test_recovery_payload_uses_same_source_identifier_logic():
+    """Verify that recovery payload uses same source identifier logic."""
     context = {
         "WHAT": "SERVICE",
         "OMD_SITE": "cmk",
@@ -125,6 +136,7 @@ def test_recovery_payload_uses_same_source_identifier_logic():
 
 
 def test_package_metadata_representations_match():
+    """Verify that package metadata representations match."""
     python_info = ast.literal_eval(
         (PACKAGE_ROOT / "src" / "info").read_text(encoding="utf-8")
     )
@@ -135,6 +147,7 @@ def test_package_metadata_representations_match():
 
 
 def test_timeout_form_is_optional_and_matches_runtime_bounds():
+    """Verify that timeout form is optional and matches runtime bounds."""
     source = RULESET_PATH.read_text(encoding="utf-8")
     timeout_block = source.split('"timeout": DictElement(', 1)[1].split(
         '"ca_bundle": DictElement(', 1

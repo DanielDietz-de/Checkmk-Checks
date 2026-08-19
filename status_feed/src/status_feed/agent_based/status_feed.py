@@ -34,6 +34,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_status_feed(string_table):
+    """Parse status feed into its normalized representation."""
     section = {}
     for row in string_table:
         if not row:
@@ -50,11 +51,13 @@ def parse_status_feed(string_table):
 
 
 def discover_status_feed(section):
+    """Discover status feed from the available input data."""
     for name in section:
         yield Service(item=name)
 
 
 def _age_state(params, age_seconds):
+    """Handle age state for this module's workflow."""
     crit = params.get("event_age_crit")
     warn = params.get("event_age_warn")
     if crit is not None and age_seconds <= crit:
@@ -65,6 +68,7 @@ def _age_state(params, age_seconds):
 
 
 def check_status_feed(item, params, section):
+    """Evaluate status feed and return its resulting state."""
     entry = section.get(item)
     if entry is None:
         return

@@ -22,6 +22,7 @@
 ##### 
 ###+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+# Limit a command runtime and return whether it finished before the timeout.
 function waitmax
 {
 #                # DEBUG=""

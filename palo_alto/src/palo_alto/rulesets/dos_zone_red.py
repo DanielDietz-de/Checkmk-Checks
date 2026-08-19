@@ -20,6 +20,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, Topic
 
 
 def _formspec_palo_alto_dos_zone_red():
+    """Handle formspec palo alto dos zone red for this module's workflow."""
     return Dictionary(
         title=Title("Palo Alto DoS Zone RED Drops"),
         help_text=Help(

@@ -20,18 +20,21 @@ _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
 
 
 def _mapping(value: object, label: str) -> Mapping[str, Any]:
+    """Handle mapping for this module's workflow."""
     if not isinstance(value, Mapping):
         raise ValueError(f"{label} must be a mapping")
     return value
 
 
 def _sequence(value: object, label: str) -> Sequence[Any]:
+    """Handle sequence for this module's workflow."""
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return value
     raise ValueError(f"{label} must be a sequence")
 
 
 def _required_string(value: object, label: str) -> str:
+    """Handle required string for this module's workflow."""
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{label} must be a non-empty string")
     text = value.strip()
@@ -41,6 +44,7 @@ def _required_string(value: object, label: str) -> str:
 
 
 def _absolute_path(value: object, label: str) -> str:
+    """Handle absolute path for this module's workflow."""
     text = _required_string(value, label)
     if not Path(text).is_absolute():
         raise ValueError(f"{label} must be an absolute path")
@@ -48,6 +52,7 @@ def _absolute_path(value: object, label: str) -> str:
 
 
 def _positive_int(value: object, label: str, *, minimum: int = 1) -> int:
+    """Handle positive int for this module's workflow."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{label} must be numeric")
     number = int(value)
@@ -57,6 +62,7 @@ def _positive_int(value: object, label: str, *, minimum: int = 1) -> int:
 
 
 def _deployment(value: object) -> tuple[str, int | None]:
+    """Handle deployment for this module's workflow."""
     if isinstance(value, (tuple, list)) and value:
         mode = str(value[0])
         raw_interval = value[1] if len(value) > 1 else None
@@ -71,6 +77,7 @@ def _deployment(value: object) -> tuple[str, int | None]:
 
 
 def _auth(value: object) -> dict[str, Any] | None:
+    """Handle auth for this module's workflow."""
     if value in (None, "", "none"):
         return None
     if isinstance(value, (tuple, list)) and value:
@@ -98,6 +105,7 @@ def _auth(value: object) -> dict[str, Any] | None:
 
 
 def _endpoint(value: object, label: str, *, allow_file: bool) -> dict[str, Any]:
+    """Handle endpoint for this module's workflow."""
     source = _mapping(value, label)
     url = _required_string(source.get("url"), f"{label}.url")
     allowed_prefixes = (
@@ -130,6 +138,7 @@ def _endpoint(value: object, label: str, *, allow_file: bool) -> dict[str, Any]:
 
 
 def _group_mapping(value: object) -> str | None:
+    """Handle group mapping for this module's workflow."""
     if value is None:
         return None
     if isinstance(value, str):
@@ -149,6 +158,7 @@ def _group_mapping(value: object) -> str | None:
 
 
 def _repository(value: object, index: int) -> dict[str, Any]:
+    """Handle repository for this module's workflow."""
     source = _mapping(value, f"repository {index}")
     repository_id = _required_string(source.get("id"), f"repository {index}.id")
     if not _IDENTIFIER_RE.fullmatch(repository_id):
@@ -272,11 +282,13 @@ def normalize_rule(conf: object) -> tuple[str, int | None, dict[str, Any]]:
 
 
 def config_lines(conf: object) -> list[str]:
+    """Handle config lines for this module's workflow."""
     _mode, _interval, normalized = normalize_rule(conf)
     return json.dumps(normalized, indent=2, sort_keys=True).splitlines()
 
 
 def hook_lines() -> list[str]:
+    """Handle hook lines for this module's workflow."""
     return [
         "hooks:",
         "  checkmk_oxidized_backup_state:",
@@ -295,6 +307,7 @@ def hook_lines() -> list[str]:
 
 
 def state_directories(conf: object) -> tuple[str, str, str]:
+    """Handle state directories for this module's workflow."""
     _mode, _interval, normalized = normalize_rule(conf)
     hook_state = Path(normalized["state"]["hook_state_file"])
     monitor_state = Path(normalized["state"]["monitor_state_file"])

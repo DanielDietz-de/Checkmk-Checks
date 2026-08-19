@@ -162,9 +162,7 @@ def unpack(mkp_path):
     print(f"Unpacked {mkp_filename} to {package_name}")
 
 def main(argv=None):
-    """
-    CLI entrypoint
-    """
+    """Run the command-line entry point and return its result."""
     if argv is None:
         argv = sys.argv[1:]
 

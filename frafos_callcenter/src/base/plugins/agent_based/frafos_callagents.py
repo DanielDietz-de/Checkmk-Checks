@@ -5,10 +5,12 @@ import time
 from .agent_based_api.v1 import *
 
 def discover_frafos_callagents(section):
+    """Discover frafos callagents from the available input data."""
     for line in section:
         yield Service(item=line[0])
 
 def check_frafos_callagents(item, params, section):
+    """Evaluate frafos callagents and return its resulting state."""
     for line in section:
         if line[0] == item:
             realm = line[1]

@@ -12,11 +12,11 @@ from cmk.agent_based.v2 import (
 )
 
 def discovery(section):
-    """ Discovery """
+    """Handle discovery for this module's workflow."""
     yield Service()
 
 def check(section, metrics):
-    """ Check """
+    """Handle check for this module's workflow."""
 
     for line in section:
         metric = line['MetricId'].split('=')[0].split(',')[0].split('.',1)[1:][0]
@@ -39,9 +39,7 @@ def check(section, metrics):
 
 
 def check_normal(section):
-    """
-    Not Cluster Mode
-    """
+    """Evaluate normal and return its resulting state."""
 
     metrics = {
         'IOPS.Read' : {'render': render.timespan },
@@ -59,9 +57,7 @@ def check_normal(section):
     yield from check(section, metrics)
 
 def check_cluster(section):
-    """
-    Cluster Mode
-    """
+    """Evaluate cluster and return its resulting state."""
 
     metrics = {
         'IOPS.Read' : {'render': render.timespan },

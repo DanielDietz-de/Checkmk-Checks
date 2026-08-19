@@ -15,6 +15,7 @@ from cmk.rulesets.v1.rule_specs import NotificationParameters, Topic
 
 
 def _parameters_service_now_notify() -> Dictionary:
+    """Handle parameters service now notify for this module's workflow."""
     return Dictionary(
         title=Title("ServiceNow notification"),
         help_text=Help(

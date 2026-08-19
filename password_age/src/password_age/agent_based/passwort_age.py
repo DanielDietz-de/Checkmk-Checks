@@ -12,6 +12,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_password_age(string_table):
+    """Parse password age into its normalized representation."""
     parsed = {}
     username = False
     for line in string_table:
@@ -28,10 +29,12 @@ def parse_password_age(string_table):
     return parsed
 
 def discover_password_age(section):
+    """Discover password age from the available input data."""
     for user, _ in section.items():
         yield Service(item=user)
 
 def check_password_age(item, section):
+    """Evaluate password age and return its resulting state."""
     date = section[item]
     #BK: ugly, date can be a string or a datetime
     state = State.OK

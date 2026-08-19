@@ -33,17 +33,13 @@ def parse_quobyte_volumes(string_table):
 
 
 def discover_quobyte_volumes(section):
-    """
-    Discover one Service
-    """
+    """Discover quobyte volumes from the available input data."""
     for volume in section:
         yield Service(item=volume)
 
 
 def check_levels(current, levels):
-    """
-    Helper
-    """
+    """Evaluate levels and return its resulting state."""
     warn, crit = levels
     if current >= crit:
         return State.CRIT
@@ -53,9 +49,7 @@ def check_levels(current, levels):
 
 
 def check_quobyte_volumes(item, params, section):
-    """
-    Check single Volume
-    """
+    """Evaluate quobyte volumes and return its resulting state."""
     data = section[item]
     state = State.OK
 

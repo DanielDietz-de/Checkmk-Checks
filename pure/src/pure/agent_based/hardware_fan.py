@@ -26,11 +26,13 @@ agent_section_pure_hardware_fan = AgentSection(
 
 
 def discover_pure_hardware_fan(section):
+    """Discover pure hardware fan from the available input data."""
     for item, data in section.items():
         if "FAN" in data:
             yield Service(item=item)
 
 def check_pure_hardware_fan(item, section):
+    """Evaluate pure hardware fan and return its resulting state."""
     data = section[item]
 
     if data["status"].lower() == "ok":

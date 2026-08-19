@@ -24,6 +24,7 @@ from cmk.rulesets.v1.rule_specs import (
 
 
 def _form_tridium():
+    """Handle form tridium for this module's workflow."""
     return Dictionary(
         elements={
             "levels": DictElement(
@@ -72,6 +73,7 @@ rule_spec_tridium = CheckParameters(
 
 
 def _form_tridium_special():
+    """Handle form tridium special for this module's workflow."""
     return Dictionary(
         elements={
             "rule": DictElement(
@@ -119,6 +121,7 @@ rule_spec_tridium_special = CheckParameters(
 
 
 def _form_tridium_fuel():
+    """Handle form tridium fuel for this module's workflow."""
     return Dictionary(
         elements={
             "levels": DictElement(

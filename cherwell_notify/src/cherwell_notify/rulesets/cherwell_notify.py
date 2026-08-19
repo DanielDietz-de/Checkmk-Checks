@@ -18,6 +18,7 @@ from cmk.rulesets.v1.rule_specs import NotificationParameters, Topic
 
 
 def _required_string(title: str, help_text: str) -> String:
+    """Handle required string for this module's workflow."""
     return String(
         title=Title(title),
         help_text=Help(help_text),
@@ -26,6 +27,7 @@ def _required_string(title: str, help_text: str) -> String:
 
 
 def _parameters_cherwell_notify() -> Dictionary:
+    """Handle parameters cherwell notify for this module's workflow."""
     return Dictionary(
         title=Title("Create Ivanti/Cherwell notification"),
         help_text=Help(

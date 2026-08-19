@@ -25,6 +25,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, SpecialAg
 
 
 def _valuespec_special_agent_service_metric_counter():
+    """Handle valuespec special agent service metric counter for this module's workflow."""
     return Dictionary(
         title=Title("Service counter"),
         help_text=Help(
@@ -112,6 +113,7 @@ rule_spec_service_counter = SpecialAgent(
 
 
 def _parameter_metric_counter() -> Dictionary:
+    """Handle parameter metric counter for this module's workflow."""
     return Dictionary(
         elements={
             "levels": DictElement(

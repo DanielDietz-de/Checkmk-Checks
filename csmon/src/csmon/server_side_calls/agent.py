@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from cmk.server_side_calls.v1 import SpecialAgentCommand, SpecialAgentConfig, Secret
 
 class ConfigParser(BaseModel):
-    """Config parser."""
+    """Represent configparser behavior and associated state."""
     username: str
     password: Secret
 

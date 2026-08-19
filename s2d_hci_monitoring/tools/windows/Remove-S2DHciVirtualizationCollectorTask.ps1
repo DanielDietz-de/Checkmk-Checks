@@ -22,6 +22,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Handle test-s2dhcipathunderroot for this module's workflow.
 function Test-S2DHciPathUnderRoot {
     <#
     .SYNOPSIS
@@ -40,6 +41,7 @@ function Test-S2DHciPathUnderRoot {
     return $fullPath.StartsWith($fullRoot, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
+# Handle get-s2dhciregisteredconfigpath for this module's workflow.
 function Get-S2DHciRegisteredConfigPath {
     <#
     .SYNOPSIS
@@ -86,6 +88,7 @@ function Get-S2DHciRegisteredConfigPath {
     return $registered
 }
 
+# Handle stop-s2dhcischeduledtaskpublisher for this module's workflow.
 function Stop-S2DHciScheduledTaskPublisher {
     <#
     .SYNOPSIS
@@ -123,6 +126,7 @@ function Stop-S2DHciScheduledTaskPublisher {
     throw "Scheduled task '$TaskName' did not stop within $TimeoutSeconds seconds; task and generated state were not removed."
 }
 
+# Handle read-s2dhciconfiguredspoolfile for this module's workflow.
 function Read-S2DHciConfiguredSpoolFile {
     <#
     .SYNOPSIS
@@ -151,6 +155,7 @@ function Read-S2DHciConfiguredSpoolFile {
     return $spoolFile
 }
 
+# Handle remove-s2dhcifileifpresent for this module's workflow.
 function Remove-S2DHciFileIfPresent {
     <#
     .SYNOPSIS

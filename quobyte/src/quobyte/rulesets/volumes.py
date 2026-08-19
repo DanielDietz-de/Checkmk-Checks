@@ -23,6 +23,7 @@ MAGNITUDES = [SIMagnitude.GIGA, SIMagnitude.TERA, SIMagnitude.PETA]
 
 
 def _parameter_form_quobyte_volumes():
+    """Handle parameter form quobyte volumes for this module's workflow."""
     return Dictionary(
         title = Title("Quobyte volume levels"),
         elements = {

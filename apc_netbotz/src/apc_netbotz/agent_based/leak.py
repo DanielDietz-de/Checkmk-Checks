@@ -19,6 +19,7 @@ from cmk.agent_based.v2 import (
 
 
 def parse_netbotz_leak(string_table):
+    """Parse netbotz leak into its normalized representation."""
     map_state = {
         "-1": (State.UNKNOWN, "undefined"),
         "0": (State.OK, "noLeak"),
@@ -52,11 +53,13 @@ snmp_section_netbotz_leak = SimpleSNMPSection(
 
 
 def discover_netbotz_leak(section):
+    """Discover netbotz leak from the available input data."""
     for item in section.keys():
         yield Service(item=item)
 
 
 def check_netbotz_leak(item, section):
+    """Evaluate netbotz leak and return its resulting state."""
     if item not in section.keys():
         yield Result(state=State.UNKNOWN, summary="Item not found")
 

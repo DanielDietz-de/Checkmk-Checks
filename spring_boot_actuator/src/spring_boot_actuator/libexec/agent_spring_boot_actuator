@@ -95,6 +95,7 @@ def fetch_health(url, user, password, verify):
 
 
 def parse_arguments():
+    """Parse arguments into its normalized representation."""
     parser = argparse.ArgumentParser(description="Spring Boot Actuator special agent")
     parser.add_argument("--url", required=True)
     parser.add_argument("--username", default="")

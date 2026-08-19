@@ -32,6 +32,7 @@ from .bakery_api.v1 import (
 
 
 def get_files(conf: Any) -> FileGenerator:
+    """Return files for the supplied inputs."""
     mode, interval, _normalized = normalize_rule(conf)
     if mode == "do_not_deploy":
         return
@@ -62,6 +63,7 @@ def get_files(conf: Any) -> FileGenerator:
 
 
 def get_scriptlets(conf: Any, aghash: str) -> ScriptletGenerator:
+    """Return scriptlets for the supplied inputs."""
     del aghash
     mode, _interval, _normalized = normalize_rule(conf)
     if mode == "do_not_deploy":
