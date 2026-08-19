@@ -311,13 +311,20 @@ def _scan_shell(
     heredocs: list[tuple[str, bool]] = []
     quote: str | None = None
     arithmetic_depth = 0
+    legacy_arithmetic_depth = 0
     continued_word = False
     continued_heredoc_command_until = -1
+    logical_declaration_text = ""
+    logical_declaration_start: int | None = None
+    logical_declaration_started_inside_word = False
     lines = text.splitlines()
     for line_index, line in enumerate(lines):
         if line_index <= continued_heredoc_command_until:
             continue
         if heredocs:
+            logical_declaration_text = ""
+            logical_declaration_start = None
+            logical_declaration_started_inside_word = False
             delimiter, strip_tabs = heredocs[0]
             candidate = line.lstrip("\t") if strip_tabs else line
             if candidate == delimiter:
@@ -329,6 +336,7 @@ def _scan_shell(
         word_started = continued_word
         line_started_inside_word = continued_word
         continued_word = False
+        line_continues = False
         cursor = 0
         while cursor < len(line):
             char = line[cursor]
@@ -355,6 +363,7 @@ def _scan_shell(
                     cursor += 2
                     continue
                 continued_word = word_started
+                line_continues = True
                 cursor += 1
                 continue
             if char in {"'", '"', "`"}:
@@ -378,20 +387,38 @@ def _scan_shell(
                 word_started = True
                 cursor += 2
                 continue
-            if arithmetic_depth == 0 and char == "#" and not word_started:
+            if (
+                arithmetic_depth == 0
+                and legacy_arithmetic_depth == 0
+                and line.startswith("$[", cursor)
+            ):
+                legacy_arithmetic_depth = 1
+                word_started = True
+                cursor += 2
+                continue
+            if legacy_arithmetic_depth > 0:
+                if char == "[":
+                    legacy_arithmetic_depth += 1
+                elif char == "]":
+                    legacy_arithmetic_depth -= 1
+                word_started = True
+                cursor += 1
+                continue
+            outside_arithmetic = arithmetic_depth == 0 and legacy_arithmetic_depth == 0
+            if outside_arithmetic and char == "#" and not word_started:
                 if cursor == first_nonspace:
                     comments[line_index] = line[cursor + 1 :].strip().rstrip("#").strip()
                 for index in range(cursor, len(chars)):
                     chars[index] = " "
                 break
-            if arithmetic_depth == 0 and line.startswith("<<<", cursor):
+            if outside_arithmetic and line.startswith("<<<", cursor):
                 # Here-strings are a distinct three-character redirection operator.
                 # Consume the whole operator so its final two characters cannot be
                 # reconsidered as a heredoc introducer on the next scan iteration.
                 word_started = False
                 cursor += 3
                 continue
-            if arithmetic_depth == 0 and line.startswith("<<", cursor):
+            if outside_arithmetic and line.startswith("<<", cursor):
                 parsed = _parse_shell_heredoc_operator(lines, line_index, cursor)
                 if parsed is not None:
                     delimiter, strip_tabs, end_line, end_cursor = parsed
@@ -405,20 +432,34 @@ def _scan_shell(
                     else:
                         cursor = end_cursor
                     continue
-            if arithmetic_depth == 0 and (char.isspace() or char in ";&|()<> "):
+            if outside_arithmetic and (char.isspace() or char in ";&|()<> "):
                 word_started = False
             else:
                 word_started = True
             cursor += 1
         sanitized = "".join(chars)
-        if not line_started_inside_word:
-            match = SHELL_FUNCTION_PATTERN.search(sanitized)
+        logical_piece = sanitized[:-1] if line_continues else sanitized
+        if logical_declaration_start is None:
+            logical_declaration_start = line_index
+            logical_declaration_started_inside_word = line_started_inside_word
+            logical_declaration_text = logical_piece
+        else:
+            logical_declaration_text += logical_piece
+        if line_continues:
+            continue
+        if not logical_declaration_started_inside_word:
+            match = SHELL_FUNCTION_PATTERN.search(logical_declaration_text)
             if match:
                 declarations.append(
                     LineFunctionDeclaration(
-                        match.group("name"), line_index, match.group("indent") or ""
+                        match.group("name"),
+                        logical_declaration_start,
+                        match.group("indent") or "",
                     )
                 )
+        logical_declaration_text = ""
+        logical_declaration_start = None
+        logical_declaration_started_inside_word = False
     return declarations, comments
 
 def shell_function_declarations(text: str) -> list[LineFunctionDeclaration]:
