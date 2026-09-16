@@ -10,7 +10,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Mapping
 
-from cmk.password_store.v1_unstable import parser_add_secret_option, resolve_secret_option
+from cmk.password_store.v1_unstable import parser_add_secret_option, resolve_secret_option as resolve_secret
 
 SECTION = "synology_active_backup_m365"
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
@@ -122,7 +122,7 @@ def main() -> int:
 
     try:
         _validate_arguments(args)
-        token = resolve_secret_option(args, "token").reveal()
+        token = resolve_secret(args, "token").reveal()
         if not token:
             raise ValueError("API token must not be empty")
         payload = _fetch(args.host, args.port, token, args.timeout)
