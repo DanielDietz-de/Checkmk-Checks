@@ -1,0 +1,30 @@
+title: Synology Active Backup for Microsoft 365
+agents: special
+catalog: applications
+license: MIT
+distribution: DanielDietz-de
+description:
+ Monitors Synology Active Backup for Microsoft 365 through the authenticated JSON
+ API provided by the separately installed synology-activebackup-zabbixmonitor DSM
+ package. The Checkmk integration does not read or modify Synology backup databases
+ directly.
+
+ The special agent retrieves one complete /api/v1/status snapshot per execution.
+ A permanent Health service monitors collector/source availability. One additional
+ itemized service is discovered for each Microsoft 365 task_id. The technical
+ task_id is used as persistent service identity; the human-readable backup job name
+ is display information only.
+
+ The initial framework maps normalized upstream states conservatively: successful
+ and running jobs are OK, warnings/partial/skipped jobs are WARN, failed jobs and
+ missing databases are CRIT, no-data jobs are WARN, and unmapped states are UNKNOWN.
+ Final age/runtime thresholds and expected-job policy are added after live NAS
+ acceptance testing.
+
+ The collector API uses HTTP by default. Production use requires a protected
+ management path and strict source filtering until a verified TLS deployment path
+ is enabled and tested.
+
+inventory:
+ One health service is always discovered. One additional service is discovered for
+ every valid Microsoft 365 task_id returned by the collector.

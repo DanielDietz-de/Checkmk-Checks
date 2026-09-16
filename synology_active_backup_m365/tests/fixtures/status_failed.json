@@ -1,0 +1,31 @@
+{
+  "collected_at": "2026-09-17T00:00:00+02:00",
+  "health": {
+    "ok": true,
+    "job_count": 1,
+    "collected_unix": 1789596000
+  },
+  "jobs": [
+    {
+      "product": "m365",
+      "task_id": "23",
+      "job_name": "redacted-job-23",
+      "status": 6,
+      "raw_status": "failed",
+      "error_code": "SANITIZED_ERROR",
+      "age_seconds": 900,
+      "last_success_age_seconds": 97200,
+      "runtime_seconds": 120,
+      "transferred_size": 0,
+      "has_data": true
+    }
+  ],
+  "sources": [
+    {
+      "product": "m365",
+      "path": "/volumeX/@ActiveBackup-Office365/db/log.sqlite",
+      "kind": "sqlite",
+      "found": true
+    }
+  ]
+}

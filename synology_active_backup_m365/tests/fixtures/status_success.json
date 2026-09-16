@@ -1,0 +1,36 @@
+{
+  "collected_at": "2026-09-17T00:00:00+02:00",
+  "health": {
+    "ok": true,
+    "job_count": 1,
+    "collected_unix": 1789596000
+  },
+  "jobs": [
+    {
+      "product": "m365",
+      "task_id": "17",
+      "job_name": "redacted-job-17",
+      "service_type": "microsoft365",
+      "status": 1,
+      "raw_status": "successful",
+      "start_time": "2026-09-16T23:45:00+02:00",
+      "end_time": "2026-09-16T23:55:00+02:00",
+      "last_success_time": "2026-09-16T23:55:00+02:00",
+      "last_end_unix": 1789595700,
+      "age_seconds": 300,
+      "last_success_age_seconds": 300,
+      "runtime_seconds": 600,
+      "transferred_size": 123456789,
+      "has_data": true,
+      "source_db": "/volumeX/@ActiveBackup-Office365/db/log.sqlite"
+    }
+  ],
+  "sources": [
+    {
+      "product": "m365",
+      "path": "/volumeX/@ActiveBackup-Office365/db/log.sqlite",
+      "kind": "sqlite",
+      "found": true
+    }
+  ]
+}

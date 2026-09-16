@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+"""Checkmk special agent for Synology Active Backup for Microsoft 365."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import urllib.error
+import urllib.request
+from collections.abc import Mapping
+
+from cmk.password_store.v1_unstable import parser_add_secret_option, resolve_secret_option
+
+SECTION = "synology_active_backup_m365"
+MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+
+
+class _RejectRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        raise urllib.error.HTTPError(req.full_url, code, "Redirects are disabled", headers, fp)
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Retrieve one Synology Active Backup for Microsoft 365 status snapshot."
+    )
+    parser.add_argument("--host", required=True, help="Synology NAS host name or IP address")
+    parser.add_argument("--port", type=int, default=9876, help="Collector API TCP port")
+    parser.add_argument("--timeout", type=float, default=10.0, help="HTTP timeout in seconds")
+    parser_add_secret_option(
+        parser,
+        long="--token",
+        help="Synology collector API token",
+        required=True,
+    )
+    return parser
+
+
+def _normalized_host(host: str) -> str:
+    value = host.strip()
+    if not value:
+        raise ValueError("API host must not be empty")
+    if "://" in value or "/" in value:
+        raise ValueError("API host must be a host name or IP address, not a URL")
+    if ":" in value and not (value.startswith("[") and value.endswith("]")):
+        return f"[{value}]"
+    return value
+
+
+def _validate_arguments(args: argparse.Namespace) -> None:
+    if not 1 <= args.port <= 65535:
+        raise ValueError("API port must be between 1 and 65535")
+    if not 0.1 <= args.timeout <= 120:
+        raise ValueError("Timeout must be between 0.1 and 120 seconds")
+
+
+def _validate_payload(payload: object) -> Mapping[str, object]:
+    if not isinstance(payload, dict):
+        raise ValueError("Collector response is not a JSON object")
+
+    missing = [key for key in ("health", "jobs", "sources") if key not in payload]
+    if missing:
+        raise ValueError("Collector response is missing required keys: " + ", ".join(missing))
+
+    if not isinstance(payload.get("health"), dict):
+        raise ValueError("Collector field 'health' is not an object")
+    if not isinstance(payload.get("jobs"), list):
+        raise ValueError("Collector field 'jobs' is not a list")
+    if not isinstance(payload.get("sources"), list):
+        raise ValueError("Collector field 'sources' is not a list")
+
+    return payload
+
+
+def _fetch(host: str, port: int, token: str, timeout: float) -> Mapping[str, object]:
+    url = f"http://{_normalized_host(host)}:{port}/api/v1/status"
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
+            "User-Agent": "checkmk-synology-active-backup-m365/0.1",
+        },
+        method="GET",
+    )
+
+    # Do not inherit HTTP(S)_PROXY for an authenticated management request and
+    # do not follow redirects carrying the Bearer token to a different origin.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _RejectRedirects())
+
+    try:
+        with opener.open(request, timeout=timeout) as response:
+            if response.status != 200:
+                raise RuntimeError(f"Collector returned HTTP {response.status}")
+            raw = response.read(MAX_RESPONSE_BYTES + 1)
+    except urllib.error.HTTPError as exc:
+        if exc.code in {401, 403}:
+            raise RuntimeError(f"Collector authentication failed (HTTP {exc.code})") from exc
+        if 300 <= exc.code < 400:
+            raise RuntimeError(f"Collector redirect rejected (HTTP {exc.code})") from exc
+        raise RuntimeError(f"Collector request failed (HTTP {exc.code})") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Collector connection failed: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise RuntimeError("Collector request timed out") from exc
+
+    if len(raw) > MAX_RESPONSE_BYTES:
+        raise RuntimeError("Collector response exceeds 8 MiB safety limit")
+
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Collector returned invalid UTF-8 JSON: {exc}") from exc
+
+    return _validate_payload(payload)
+
+
+def main() -> int:
+    parser = _parser()
+    args = parser.parse_args()
+
+    try:
+        _validate_arguments(args)
+        token = resolve_secret_option(args, "token").reveal()
+        if not token:
+            raise ValueError("API token must not be empty")
+        payload = _fetch(args.host, args.port, token, args.timeout)
+    except (RuntimeError, ValueError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+    print(f"<<<{SECTION}:sep(0)>>>")
+    print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
