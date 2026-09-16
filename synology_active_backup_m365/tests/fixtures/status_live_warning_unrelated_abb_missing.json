@@ -1,0 +1,56 @@
+{
+  "collected_at": "2026-09-17T00:43:06.398021679+02:00",
+  "health": {
+    "ok": false,
+    "db_missing": [
+      "abb"
+    ],
+    "job_count": 1,
+    "collected_unix": 1789598586
+  },
+  "jobs": [
+    {
+      "product": "m365",
+      "task_id": "1",
+      "job_name": "Example M365 Backup",
+      "service_type": "-1",
+      "backup_type": "0",
+      "status": 2,
+      "raw_status": "6",
+      "error_code": "-170",
+      "start_time": "2026-09-17T00:21:48+02:00",
+      "end_time": "2026-09-17T00:37:33+02:00",
+      "last_success_time": "2026-03-24T17:23:37+01:00",
+      "last_end_unix": 1789598253,
+      "age_seconds": 333,
+      "last_success_age_seconds": 15229169,
+      "runtime_seconds": 945,
+      "transferred_size": 18762908,
+      "has_data": true,
+      "source_db": "/volume1/@ActiveBackup-Office365/db/log.sqlite",
+      "info": {
+        "job_type": "0",
+        "service_type": "-1",
+        "status": "Warning",
+        "task_execution_id": "73468",
+        "task_name": "Example M365 Backup",
+        "transferred_size_source": "job_log_table.transfered_size"
+      }
+    }
+  ],
+  "sources": [
+    {
+      "product": "abb",
+      "path": "/volume*/@ActiveBackup,/volume*/ActiveBackupforBusiness",
+      "kind": "sqlite",
+      "found": false,
+      "error": "database not found"
+    },
+    {
+      "product": "m365",
+      "path": "/volume1/@ActiveBackup-Office365/db/log.sqlite",
+      "kind": "log.sqlite",
+      "found": true
+    }
+  ]
+}

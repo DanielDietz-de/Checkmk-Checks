@@ -1,0 +1,17 @@
+{
+  "collected_at": "2026-09-17T00:00:00+02:00",
+  "health": {
+    "ok": true,
+    "job_count": 0,
+    "collected_unix": 1789596000
+  },
+  "jobs": [],
+  "sources": [
+    {
+      "product": "m365",
+      "path": "/volumeX/@ActiveBackup-Office365/db/log.sqlite",
+      "kind": "sqlite",
+      "found": true
+    }
+  ]
+}

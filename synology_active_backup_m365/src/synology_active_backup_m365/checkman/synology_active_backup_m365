@@ -1,0 +1,39 @@
+title: Synology Active Backup for Microsoft 365
+agents: special
+catalog: applications
+license: MIT
+distribution: DanielDietz-de
+description:
+ Monitors Synology Active Backup for Microsoft 365 through the authenticated JSON
+ API provided by the separately installed synology-activebackup-zabbixmonitor DSM
+ package. The Checkmk integration does not read or modify Synology backup databases
+ directly.
+
+ The special agent retrieves one complete /api/v1/status snapshot per execution.
+ A permanent Health service monitors the Microsoft 365 source, product-scoped
+ collection errors, and collector freshness. The upstream collector health object
+ is global across all enabled products; this check therefore does not make an M365
+ service CRIT solely because an unrelated ABB or Hyper Backup database is missing.
+
+ One additional itemized service is discovered for each Microsoft 365 task_id. The
+ technical task_id is used as persistent service identity; the human-readable backup
+ job name is display information only.
+
+ Normalized upstream states are mapped as follows: successful and running jobs are
+ OK, warnings/partial/skipped jobs are WARN, failed jobs and missing M365 databases
+ are CRIT, no-data jobs are WARN, and unmapped states are UNKNOWN. Independently of
+ the current run state, the service checks the age of the last fully successful run.
+ The default levels assume daily backups: WARN after 30 hours and CRIT after 48
+ hours. Warning or partially completed runs do not reset the last-success timer.
+ These levels are configurable through the service parameter rule.
+
+ Metrics cover collector age, latest-run age, last-success age, runtime, and
+ transferred bytes.
+
+ The collector API uses HTTP by default. Production use requires a protected
+ management path and strict source filtering until a verified TLS deployment path
+ is enabled and tested.
+
+inventory:
+ One health service is always discovered. One additional service is discovered for
+ every valid Microsoft 365 task_id returned by the collector.
