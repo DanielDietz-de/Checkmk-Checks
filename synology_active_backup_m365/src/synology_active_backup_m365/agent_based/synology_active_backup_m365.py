@@ -136,8 +136,6 @@ def _m365_collection_errors(section: Section, health: Mapping[str, Any]) -> list
 def discover_synology_active_backup_m365(section: Section) -> DiscoveryResult:
     """Always discover health plus one stable service per M365 task ID."""
 
-    # Always keep a collector-health service so a disappearing source cannot
-    # silently remove all monitoring.
     yield Service(item="Health")
 
     seen: set[str] = set()
@@ -221,16 +219,16 @@ def _health_check(section: Section) -> CheckResult:
             f"Ignored {len(unrelated_errors)} collector error(s) not scoped to Microsoft 365"
         )
 
-    # Global health.ok belongs to the whole multi-product collector. If it is
-    # false but the payload does not identify the problem as another product,
-    # keep the M365 service visible as WARN rather than silently declaring OK.
     state = State.OK
     summary = f"Microsoft 365 source healthy, {len(jobs)} job(s), {len(sources)} source(s)"
     if health.get("ok") is False and not (unrelated_missing or unrelated_errors):
         state = State.WARN
         summary = "Microsoft 365 source healthy, but global collector health is false for an unclassified reason"
 
-    yield Result(state=state, summary=summary, details="\n".join(details) or None)
+    if details:
+        yield Result(state=state, summary=summary, details="\n".join(details))
+    else:
+        yield Result(state=state, summary=summary)
 
 
 def _find_job(item: str, section: Section) -> Job | None:
