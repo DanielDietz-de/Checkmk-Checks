@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Agent-based parsing and initial checks for Synology Active Backup for Microsoft 365."""
+"""Agent-based checks for Synology Active Backup for Microsoft 365.
+
+The upstream collector exposes one global health object for every enabled
+product. This plug-in intentionally derives Microsoft 365 health from the M365
+source and product-scoped errors rather than blindly mirroring global
+``health.ok``. Otherwise an unused/missing ABB database would make a healthy
+M365 source CRIT.
+"""
 
 from __future__ import annotations
 
@@ -19,6 +26,7 @@ from cmk.agent_based.v2 import (
     Service,
     State,
     StringTable,
+    check_levels,
 )
 
 Section = Mapping[str, Any]
@@ -42,12 +50,20 @@ _STATUS_NAME = {
     9: "Database missing",
     10: "Unknown",
 }
+_DEFAULT_LAST_SUCCESS_LEVELS = ("fixed", (30.0 * 3600.0, 48.0 * 3600.0))
 
 
 def parse_synology_active_backup_m365(string_table: StringTable) -> Section:
+    """Parse and minimally validate the full collector status snapshot."""
+
     text = "".join(itertools.chain.from_iterable(string_table))
     if not text:
-        return {"error": "Special agent returned an empty section", "health": {}, "jobs": [], "sources": []}
+        return {
+            "error": "Special agent returned an empty section",
+            "health": {},
+            "jobs": [],
+            "sources": [],
+        }
 
     try:
         payload = json.loads(text)
@@ -60,7 +76,12 @@ def parse_synology_active_backup_m365(string_table: StringTable) -> Section:
         }
 
     if not isinstance(payload, dict):
-        return {"error": "Special agent payload is not a JSON object", "health": {}, "jobs": [], "sources": []}
+        return {
+            "error": "Special agent payload is not a JSON object",
+            "health": {},
+            "jobs": [],
+            "sources": [],
+        }
 
     health = payload.get("health")
     jobs = payload.get("jobs")
@@ -98,7 +119,23 @@ def _m365_sources(section: Section) -> Sequence[Mapping[str, Any]]:
     ]
 
 
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _m365_collection_errors(section: Section, health: Mapping[str, Any]) -> list[str]:
+    """Return only errors explicitly scoped to the upstream M365 collector."""
+
+    errors = _string_list(health.get("collector_errors"))
+    errors.extend(_string_list(section.get("errors")))
+    return [error for error in errors if error.lower().startswith("m365 ")]
+
+
 def discover_synology_active_backup_m365(section: Section) -> DiscoveryResult:
+    """Always discover health plus one stable service per M365 task ID."""
+
     # Always keep a collector-health service so a disappearing source cannot
     # silently remove all monitoring.
     yield Service(item="Health")
@@ -138,13 +175,17 @@ def _health_check(section: Section) -> CheckResult:
         )
         return
 
-    collector_errors = health.get("collector_errors", [])
-    if health.get("ok") is not True:
-        details = "\n".join(str(value) for value in collector_errors) if isinstance(collector_errors, list) else str(collector_errors)
+    db_missing = _string_list(health.get("db_missing"))
+    if any(product.lower() == "m365" for product in db_missing):
+        yield Result(state=State.CRIT, summary="Microsoft 365 database is reported missing")
+        return
+
+    m365_errors = _m365_collection_errors(section, health)
+    if m365_errors:
         yield Result(
             state=State.CRIT,
-            summary="Collector reports unhealthy status",
-            details=details or "health.ok is not true",
+            summary=f"Microsoft 365 collector reports {len(m365_errors)} error(s)",
+            details="\n".join(m365_errors),
         )
         return
 
@@ -161,13 +202,35 @@ def _health_check(section: Section) -> CheckResult:
 
     jobs = _m365_jobs(section)
     if not jobs:
-        yield Result(state=State.WARN, summary="Collector healthy, but no Microsoft 365 jobs found")
+        yield Result(state=State.WARN, summary="Microsoft 365 source available, but no jobs found")
         return
 
-    yield Result(
-        state=State.OK,
-        summary=f"Collector healthy, {len(jobs)} Microsoft 365 job(s), {len(sources)} source(s)",
-    )
+    unrelated_missing = [product for product in db_missing if product.lower() != "m365"]
+    all_errors = _string_list(health.get("collector_errors")) + _string_list(section.get("errors"))
+    unrelated_errors = [
+        error for error in all_errors if not error.lower().startswith("m365 ")
+    ]
+    details: list[str] = []
+    if unrelated_missing:
+        details.append(
+            "Ignored missing databases for unrelated collector products: "
+            + ", ".join(sorted(unrelated_missing))
+        )
+    if unrelated_errors:
+        details.append(
+            f"Ignored {len(unrelated_errors)} collector error(s) not scoped to Microsoft 365"
+        )
+
+    # Global health.ok belongs to the whole multi-product collector. If it is
+    # false but the payload does not identify the problem as another product,
+    # keep the M365 service visible as WARN rather than silently declaring OK.
+    state = State.OK
+    summary = f"Microsoft 365 source healthy, {len(jobs)} job(s), {len(sources)} source(s)"
+    if health.get("ok") is False and not (unrelated_missing or unrelated_errors):
+        state = State.WARN
+        summary = "Microsoft 365 source healthy, but global collector health is false for an unclassified reason"
+
+    yield Result(state=state, summary=summary, details="\n".join(details) or None)
 
 
 def _find_job(item: str, section: Section) -> Job | None:
@@ -186,7 +249,7 @@ def _number(job: Job, key: str) -> float | None:
     return None
 
 
-def _job_check(item: str, section: Section) -> CheckResult:
+def _job_check(item: str, params: Mapping[str, object], section: Section) -> CheckResult:
     job = _find_job(item, section)
     if job is None:
         yield Result(state=State.UNKNOWN, summary="Microsoft 365 backup task data is missing")
@@ -205,8 +268,8 @@ def _job_check(item: str, section: Section) -> CheckResult:
 
     summary = f"{job_name}: {status_name}"
     if raw_status:
-        summary += f" ({raw_status})"
-    if error_code:
+        summary += f" (raw {raw_status})"
+    if error_code not in {"", "0"}:
         summary += f", error {error_code}"
 
     details = [f"Task ID: {item}", f"Job name: {job_name}"]
@@ -219,10 +282,19 @@ def _job_check(item: str, section: Section) -> CheckResult:
         if value:
             details.append(f"{label}: {value}")
 
+    yield Result(state=state, summary=summary, details="\n".join(details))
+
     last_success_age = _number(job, "last_success_age_seconds")
-    if last_success_age is not None:
-        yield Metric("synology_m365_last_success_age", last_success_age)
-        details.append(f"Last success age: {last_success_age / 3600:.2f} h")
+    if last_success_age is None:
+        yield Result(state=State.CRIT, summary="No fully successful backup run is recorded")
+    else:
+        yield from check_levels(
+            last_success_age,
+            levels_upper=params.get("last_success_age_upper", _DEFAULT_LAST_SUCCESS_LEVELS),
+            metric_name="synology_m365_last_success_age",
+            label="Last successful backup age",
+            boundaries=(0.0, None),
+        )
 
     backup_age = _number(job, "age_seconds")
     if backup_age is not None:
@@ -231,21 +303,22 @@ def _job_check(item: str, section: Section) -> CheckResult:
     runtime = _number(job, "runtime_seconds")
     if runtime is not None:
         yield Metric("synology_m365_runtime", runtime)
-        details.append(f"Runtime: {runtime:.0f} s")
 
     transferred = _number(job, "transferred_size")
     if transferred is not None:
         yield Metric("synology_m365_transferred_size", transferred)
-        details.append(f"Transferred: {transferred:.0f} bytes")
 
-    if job.get("has_data") is False and state == State.OK:
-        state = State.WARN
-        summary += ", collector marks job as having no data"
-
-    yield Result(state=state, summary=summary, details="\n".join(details))
+    if job.get("has_data") is False:
+        yield Result(state=State.WARN, summary="Collector marks this backup task as having no data")
 
 
-def check_synology_active_backup_m365(item: str, section: Section) -> CheckResult:
+def check_synology_active_backup_m365(
+    item: str,
+    params: Mapping[str, object],
+    section: Section,
+) -> CheckResult:
+    """Evaluate collector health or one Microsoft 365 backup task."""
+
     if item == "Health":
         yield from _health_check(section)
         return
@@ -255,7 +328,7 @@ def check_synology_active_backup_m365(item: str, section: Section) -> CheckResul
         yield Result(state=State.UNKNOWN, summary=str(error))
         return
 
-    yield from _job_check(item, section)
+    yield from _job_check(item, params, section)
 
 
 agent_section_synology_active_backup_m365 = AgentSection(
@@ -268,4 +341,8 @@ check_plugin_synology_active_backup_m365 = CheckPlugin(
     service_name="Synology M365 Backup %s",
     discovery_function=discover_synology_active_backup_m365,
     check_function=check_synology_active_backup_m365,
+    check_default_parameters={
+        "last_success_age_upper": _DEFAULT_LAST_SUCCESS_LEVELS,
+    },
+    check_ruleset_name="synology_active_backup_m365",
 )
