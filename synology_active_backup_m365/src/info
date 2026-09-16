@@ -1,5 +1,6 @@
 {'author': 'Daniel Dietz',
- 'description': 'Monitors Synology Active Backup for Microsoft 365 through an authenticated DSM collector API, with collector health and per-task services.',
+ 'description': 'Monitors Synology Active Backup for Microsoft 365 through an authenticated DSM collector API, with '
+                'collector health and per-task services.',
  'download_url': 'https://github.com/DanielDietz-de/Checkmk-Checks/tree/master/synology_active_backup_m365',
  'files': {'cmk_addons_plugins': ['synology_active_backup_m365/agent_based/synology_active_backup_m365.py',
                                   'synology_active_backup_m365/checkman/synology_active_backup_m365',
