@@ -1,28 +1,28 @@
 # Synology Active Backup for Microsoft 365
 
-Native Checkmk integration for monitoring **Synology Active Backup for Microsoft 365**. The integration uses the existing `pthoelken/synology-activebackup-zabbixmonitor` DSM collector as a read-only data source and adds a Checkmk 2.5 special agent, service discovery, health monitoring, and per-backup-job services.
+Native Checkmk integration for monitoring **Synology Active Backup for Microsoft 365**. The integration uses the independently maintained `pthoelken/synology-activebackup-zabbixmonitor` DSM package as a read-only Synology-side collector and adds a Checkmk 2.5 special agent, M365-specific health monitoring, stable per-task discovery, configurable last-success thresholds, and graphing.
 
-> **Current status:** initial framework / acceptance stage. The first acceptance target is the Synology collector installation and API output. The Checkmk package skeleton is already present so the API contract can be implemented and tested without redesigning the repository layout later.
+> **Current status:** live collector/API acceptance completed; Checkmk integration is under clean-site validation and production hardening. The remaining production boundary is primarily protected transport/TLS and the final expected-job disappearance policy.
 
 ## 1. Synology NAS: Collector installieren und testen
 
-This is intentionally the first operational step. **Do this before installing anything in Checkmk.**
+This is intentionally the first operational step. **Install and validate the Synology collector before configuring the Checkmk special agent.**
 
 ### 1.1 Prerequisites
 
 - Synology DSM **7.4 or newer** for the currently referenced upstream package.
 - Active Backup for Microsoft 365 installed and configured.
-- At least one Microsoft 365 backup task should already have run so that real job data is available for validation.
+- At least one Microsoft 365 backup task should already have run.
 - Administrative access to DSM Package Center.
-- Network access from the future Checkmk server (or a temporary test workstation) to TCP port `9876` on the NAS.
+- Network access from the Checkmk server or a temporary administrative test host to TCP port `9876` on the NAS.
 
-The collector is a third-party DSM package. This repository does **not** vendor or modify the collector. The upstream project reads the Active Backup databases read-only and exposes normalized status data through an authenticated JSON API.
+The collector is a third-party DSM package. This repository does **not** vendor or modify it. The upstream collector opens the Active Backup SQLite databases read-only and exposes normalized state through an authenticated JSON API.
 
 Upstream project:
 
 - https://github.com/pthoelken/synology-activebackup-zabbixmonitor
 
-Baseline release used for this initial integration:
+Baseline used for this integration:
 
 - `v0.2.6-58b6a82-7.1` — published 2026-09-15
 - https://github.com/pthoelken/synology-activebackup-zabbixmonitor/releases/tag/v0.2.6-58b6a82-7.1
@@ -49,31 +49,28 @@ aarch64  eb1be8934198ed929c1003dc58ceef59bfbdcbf2c8554f8a2ff347e2ed876c27
 x86_64   6451bd811415404ae2b52799f8be3b92754e976931539d5c653eb8679169b053
 ```
 
-After downloading the package, verify it on a Linux system if possible:
+Verify the downloaded package before installation:
 
 ```bash
 sha256sum synology-activebackup-zabbixmonitor-0.2.6-*.spk
 ```
-
-Do not install a package whose digest does not match the release asset you intended to download.
 
 ### 1.3 Install the SPK manually
 
 1. Open **DSM → Package Center**.
 2. Choose **Manual Install**.
 3. Select the SPK matching the NAS architecture.
-4. Review the DSM warning for a manually installed third-party package and continue only if the package/release is the one referenced above.
-5. Complete the installation.
-6. Start the package if DSM does not start it automatically.
-7. Open the DSM desktop application **Active Backup Zabbix** installed by the package.
+4. Review the DSM warning for a manually installed third-party package.
+5. Complete the installation and start the package.
+6. Open the DSM desktop application **Active Backup Zabbix**.
 
-Despite the upstream application name, we are **not** deploying Zabbix. We use only its generic collector and authenticated HTTP JSON API.
+Despite the upstream application name, Checkmk does not use Zabbix. We use only the collector and its authenticated JSON API.
 
-### 1.4 Configure the collector for the first Checkmk test
+### 1.4 Configure M365 collection
 
-Open **Active Backup Zabbix → Config** and use API/pull operation.
+Open **Active Backup Zabbix → Config** and use API/pull mode.
 
-For the first test, verify these effective settings:
+For a NAS used only for Microsoft 365 backup monitoring, use the effective configuration below:
 
 ```yaml
 collector:
@@ -86,6 +83,9 @@ api:
   port: 9876
 
 products:
+  active_backup_business:
+    enabled: false
+
   active_backup_m365:
     enabled: true
     scan_paths:
@@ -95,50 +95,61 @@ privacy:
   redact_names: true
 ```
 
-The package requires an API token for `/api/v1/*`. The token is configured during package installation or generated by the installer and can be viewed from the DSM application configuration.
+The upstream collector enables Active Backup for Business by default. If ABB is enabled but no ABB database exists, the collector's **global** `health.ok` becomes `false` even when the M365 database and jobs are healthy. Disabling unused products removes that source-side noise.
 
-Keep `privacy.redact_names: true` for the initial tests. We do not need Microsoft 365 usernames or email addresses in Checkmk to validate backup health.
+The Checkmk integration does not blindly trust global `health.ok`: it evaluates the M365 source, M365-scoped collection errors, database presence, and freshness independently. This allows one collector to monitor several products later without an unrelated ABB or Hyper Backup failure turning the M365 service CRIT.
 
-If the DSM application requests a package restart after saving configuration, restart the package from Package Center before testing.
+The API token is configured during package installation or generated by the installer. Keep `privacy.redact_names: true` unless operationally required otherwise.
 
-### 1.5 Restrict network access before opening port 9876
+Restart the DSM package after configuration changes when requested by the DSM application.
 
-The upstream API is HTTP by default. A Bearer token sent over plain HTTP is not protected against interception.
+### 1.5 Restrict network access to port 9876
 
-For the acceptance test:
+The upstream API is HTTP by default. A Bearer token over plain HTTP has no transport confidentiality.
+
+For acceptance/testing:
 
 - **never expose TCP/9876 to the Internet**;
-- use the management network only;
-- restrict the DSM firewall rule to the Checkmk server IP, or to the temporary administrative test host if Checkmk is not connected yet;
+- keep access on a trusted management network;
+- restrict the DSM firewall to the Checkmk server or temporary test host;
 - remove temporary broad firewall rules after testing.
 
-A TLS-protected production path is tracked as part of the production-hardening stage. See [`docs/SECURITY.md`](docs/SECURITY.md).
+Production transport hardening is documented in [`docs/SECURITY.md`](docs/SECURITY.md).
 
-### 1.6 Test authentication
+### 1.6 Verify authentication
 
-From the Checkmk server or another explicitly allowed test machine, first confirm that anonymous access is rejected:
+Anonymous access must fail:
 
 ```bash
 curl -i http://NAS_IP:9876/api/v1/status
 ```
 
-Expected result:
+Expected:
 
 ```text
 HTTP/1.1 401 Unauthorized
 ```
 
-Then test authenticated reachability:
+Read the token without placing it directly into shell history:
 
 ```bash
-export SYNOLOGY_M365_TOKEN='PASTE_TOKEN_HERE'
+read -rsp 'Synology API token: ' SYNOLOGY_M365_TOKEN
+echo
+```
 
+Verify authenticated reachability:
+
+```bash
 curl -fsS \
   -H "Authorization: Bearer ${SYNOLOGY_M365_TOKEN}" \
   http://NAS_IP:9876/api/v1/ping
 ```
 
-Do not paste the token into tickets, commit it to Git, or include it in screenshots.
+Expected:
+
+```json
+{"ok":true}
+```
 
 ### 1.7 Retrieve the full status payload
 
@@ -149,7 +160,7 @@ curl -fsS \
   | jq .
 ```
 
-A successful response must be a JSON object containing at least these top-level keys:
+The Checkmk special agent consumes exactly **one `/api/v1/status` request per polling cycle**. A valid snapshot contains at least:
 
 ```text
 health
@@ -157,9 +168,31 @@ jobs
 sources
 ```
 
-The future Checkmk special agent deliberately consumes **one `/api/v1/status` request per polling cycle** instead of querying every job separately.
+Useful M365 fields observed during live acceptance include:
 
-### 1.8 Show only the Microsoft 365 data we need
+```text
+product
+task_id
+job_name
+service_type
+backup_type
+status
+raw_status
+error_code
+start_time
+end_time
+last_success_time
+last_end_unix
+age_seconds
+last_success_age_seconds
+runtime_seconds
+transferred_size
+has_data
+source_db
+info
+```
+
+### 1.8 Inspect only M365 data
 
 ```bash
 curl -fsS \
@@ -167,23 +200,12 @@ curl -fsS \
   http://NAS_IP:9876/api/v1/status \
   | jq '{
       health,
-      m365_jobs: [.jobs[] | select(.product == "m365")],
-      m365_sources: [.sources[] | select(.product == "m365")]
+      m365_sources: [.sources[] | select(.product == "m365")],
+      m365_jobs: [.jobs[] | select(.product == "m365")]
     }'
 ```
 
-For the first acceptance test, verify:
-
-- `health` exists and contains a current collection timestamp;
-- at least one source with `product: "m365"` exists;
-- the M365 source reports `found: true`;
-- one or more `jobs` entries have `product: "m365"` if backup runs already exist;
-- each real job has a stable `task_id`;
-- status, timestamps and age values plausibly match the Active Backup for Microsoft 365 UI.
-
-The collector currently exposes useful job fields including `task_id`, `job_name`, `service_type`, `status`, `raw_status`, `error_code`, `start_time`, `end_time`, `last_success_time`, `age_seconds`, `last_success_age_seconds`, `runtime_seconds`, `transferred_size`, `has_data`, and `source_db`.
-
-### 1.9 Test M365 discovery directly
+Direct discovery is also useful for diagnosis:
 
 ```bash
 curl -fsS \
@@ -192,47 +214,59 @@ curl -fsS \
   | jq .
 ```
 
-This endpoint is useful for diagnosis. The Checkmk implementation itself will still use the single full-status snapshot so health, sources, and jobs are evaluated from the same collection cycle.
-
-### 1.10 What to send back after the first NAS test
-
-For the next implementation step, the most useful input is the sanitized output of:
+After testing:
 
 ```bash
-curl -fsS \
-  -H "Authorization: Bearer ${SYNOLOGY_M365_TOKEN}" \
-  http://NAS_IP:9876/api/v1/status \
-  | jq .
+unset SYNOLOGY_M365_TOKEN
 ```
 
-Before sharing it, remove or replace tenant names, job names, email addresses, user names, internal paths that you consider sensitive, public IPs, and any credentials. **Never include the Bearer token.**
+### 1.9 Live acceptance evidence
 
-### 1.11 Collector troubleshooting
+A representative Synology NAS was validated on 2026-09-17. The acceptance run established:
+
+- anonymous `/api/v1/status` access returns HTTP `401`;
+- authenticated `/api/v1/ping` returns `{"ok":true}`;
+- `/api/v1/status` returns `collected_at`, `health`, `jobs`, and `sources`;
+- the M365 database is reported as `kind: log.sqlite` and `found: true`;
+- M365 discovery exposes a stable `task_id` suitable for Checkmk service identity;
+- an M365 run with normalized `status: 2` and raw `execution_status: 6` is a **Warning**;
+- `last_success_age_seconds` remains independent of warning/partial runs and therefore correctly identifies prolonged absence of a fully successful backup;
+- `transferred_size`, `runtime_seconds`, and run-age fields contain usable metric values;
+- global collector health can be false solely because another enabled product such as ABB is missing.
+
+The captured regression fixture is sanitized and contains no production host name, tenant data, credential, or production job name.
+
+### 1.10 Collector troubleshooting
 
 **401 Unauthorized**
 
 - Re-copy the API token from the DSM application.
-- Ensure the `Authorization: Bearer ...` header is present.
+- Ensure `Authorization: Bearer ...` is present.
 
 **Connection refused / timeout**
 
-- Confirm the package is running.
-- Confirm API mode is enabled and port `9876` is configured.
-- Check the DSM firewall and routing from the test host.
+- Confirm the DSM package is running.
+- Confirm API mode and TCP/9876 are enabled.
+- Check routing and the DSM firewall.
+
+**Global `health.ok: false` but M365 source is healthy**
+
+- Inspect `health.db_missing` and `sources`.
+- Disable products that are not used on this NAS, especially `active_backup_business` when no ABB database exists.
+- The Checkmk M365 Health service independently filters unrelated product failures.
 
 **M365 database/source missing**
 
-- Confirm Active Backup for Microsoft 365 is installed and has created its database.
-- Confirm the configured scan path includes `/volume*/@ActiveBackup-Office365/db`.
+- Confirm Active Backup for Microsoft 365 has created its database.
+- Confirm `/volume*/@ActiveBackup-Office365/db` is configured.
 - Inspect the package log in the DSM application.
-- The upstream package runs as its own package account; DSM permissions can prevent that account from reading the Active Backup database.
 
 **No M365 jobs found**
 
-- Confirm a Microsoft 365 backup task exists and has produced data.
-- Query `/api/v1/discovery?product=m365` and compare it with the full status payload.
+- Confirm a task exists and has produced run data.
+- Compare `/api/v1/discovery?product=m365` with `/api/v1/status`.
 
-## 2. Architecture
+## 2. Checkmk architecture
 
 ```text
 Active Backup for Microsoft 365
@@ -256,11 +290,66 @@ Checkmk special agent
             +--> Synology M365 Backup <task_id>
 ```
 
-The stable Checkmk service identity is the Synology `task_id`; the human-readable job name is display data only. Renaming a backup job must not create a new monitoring identity.
+The Synology `task_id` is the stable Checkmk item. The job name is display data only, so renaming a backup task does not create a new service identity.
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the responsibility boundaries and planned state model.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-## 3. Repository layout
+## 3. Checkmk services and state model
+
+### `Synology M365 Backup Health`
+
+The permanent health service evaluates:
+
+- presence of an M365 source;
+- M365 database availability;
+- errors explicitly scoped to the M365 collector;
+- age of the collector snapshot;
+- presence of M365 jobs.
+
+It deliberately does **not** become CRIT solely because global `health.ok` is false due to an unrelated ABB/Hyper Backup problem.
+
+### `Synology M365 Backup <task_id>`
+
+One service is discovered for each stable task ID. Current normalized status is mapped as:
+
+| Collector status | Checkmk |
+| --- | --- |
+| `1` OK | OK |
+| `2` Warning / partial / skipped | WARN |
+| `3` Running | OK |
+| `6` Failed | CRIT |
+| `8` No data | WARN |
+| `9` Database missing | CRIT |
+| `10` Unknown | UNKNOWN |
+
+The current-run state and the **last fully successful run age** are evaluated independently. A warning run therefore remains WARN by status but does not hide the fact that the last complete success may be days or months old.
+
+Default last-success age levels assume daily backup execution:
+
+```text
+WARN  30 h
+CRIT  48 h
+```
+
+These values are configurable through the Checkmk service parameter rule **Synology Active Backup for Microsoft 365**.
+
+The upstream `error_code` is displayed as vendor diagnostic data. The Checkmk integration does not invent meanings for undocumented numeric codes.
+
+## 4. Metrics
+
+The current implementation emits:
+
+```text
+synology_m365_collector_age
+synology_m365_last_success_age
+synology_m365_backup_age
+synology_m365_runtime
+synology_m365_transferred_size
+```
+
+Graphing definitions are included for backup ages, runtime, transferred data, and collector freshness.
+
+## 5. Repository layout
 
 ```text
 synology_active_backup_m365/
@@ -284,53 +373,73 @@ synology_active_backup_m365/
     └── fixtures/
 ```
 
-## 4. Checkmk framework status
+## 6. Checkmk installation and configuration
 
-The initial source tree contains:
+The package targets Checkmk `2.5.x`. Source under `src/` is canonical; install only a deterministic MKP produced by the repository validation workflow or release process.
 
-- Checkmk 2.5 special-agent command registration;
-- secure Checkmk Password Store hand-off for the API token;
-- a server-side Python collector using a bounded timeout, disabled environment proxies, and no authenticated redirect following;
-- an agent-based parser and initial health/per-job discovery model;
-- package metadata and a check manual;
-- sanitized API fixtures for the next test stage.
+After installation, configure the special agent under **Setup → Agents → Other integrations → Synology Active Backup for Microsoft 365**. Store the API token in the Checkmk Password Store and reference it from the rule; do not place the token directly in source or scripts.
 
-The first framework deliberately does **not** yet claim production readiness. Threshold rules, final TLS handling, full graphing, disappearance policy, live acceptance results, and compatibility validation will be completed after the real NAS payload has been verified.
+Run service discovery on the NAS host and expect at minimum:
 
-## 5. Planned Checkmk services
+```text
+Synology M365 Backup Health
+Synology M365 Backup <task_id>
+```
 
-### `Synology M365 Backup Health`
+Validate from the site shell with the normal Checkmk discovery/debug commands and inspect the special-agent output without exposing the token.
 
-Will cover at minimum:
+## 7. Security and failure behavior
 
-- collector health;
-- stale collector data;
-- M365 database/source availability;
-- collector errors;
-- presence of M365 job data.
+- API credentials are handed to the executable as Checkmk Password Store references and resolved only at runtime.
+- The special agent performs one bounded HTTP request and limits the response to 8 MiB.
+- Environment HTTP proxy variables are not inherited for the authenticated management request.
+- Redirects are rejected so the Bearer token is not forwarded to another origin.
+- Invalid/missing JSON becomes UNKNOWN rather than an OK result.
+- Missing M365 database/source is CRIT.
+- Stale collector data is WARN after 15 minutes and CRIT after 30 minutes.
+- An absent fully successful backup is CRIT; otherwise the configurable 30 h / 48 h default age levels apply.
+- Unrelated product failures are not promoted into the M365 Health state.
 
-### `Synology M365 Backup <task_id>`
+The remaining production-hardening item is encrypted transport between Checkmk and the DSM collector. See [`docs/SECURITY.md`](docs/SECURITY.md).
 
-Will cover at minimum:
+## 8. Validation
 
-- normalized status;
-- raw status/error code;
-- last backup and last successful backup;
-- age since last success;
-- runtime;
-- transferred bytes;
-- current human-readable job name.
+From the package directory:
 
-## 6. Development stages
+```bash
+python3 -m compileall -q src tests
+pytest -q
+```
 
-1. **NAS acceptance** — install the SPK and validate the real `/api/v1/status` payload.
-2. **Functional Checkmk integration** — finalize parser, discovery, state mapping and parameter rules against the captured schema.
-3. **Production hardening** — TLS, missing-job policy, stale-data handling, metrics/graphing and failure tests.
-4. **Release** — complete CI, Checkmk validation, package build, operational documentation and tagged MKP.
+Repository CI additionally performs deterministic MKP construction, repository security auditing, Checkmk plug-in validation, manual validation, and clean-site reloads.
+
+The fixture `status_live_warning_unrelated_abb_missing.json` represents the first live M365 acceptance payload in sanitized form and protects the distinction between global collector health and M365-specific health.
+
+## 9. Upgrade, rollback, and removal
+
+Review [`CHANGELOG.md`](CHANGELOG.md) before upgrades because task identity, metric names, and rule identifiers are persistence boundaries.
+
+Rollback/removal consists of:
+
+1. disable/remove the Checkmk special-agent rule;
+2. remove or downgrade the MKP;
+3. rediscover affected services;
+4. if no other monitoring uses it, stop/remove the independent DSM collector package;
+5. remove the DSM firewall allowance for TCP/9876 and delete/rotate the collector API token.
+
+No existing Synology backup data is modified by this integration.
+
+## 10. Remaining limitations
+
+Before production release we still need to complete and validate:
+
+- TLS/protected transport for the collector API;
+- the policy for a previously known task that disappears from the collector entirely;
+- final live Checkmk acceptance against the production-like NAS host after the MKP is installed.
 
 ## License
 
-The Checkmk integration in this repository follows the repository license. The external Synology collector is an independent MIT-licensed project and is not redistributed here. See [`THIRD_PARTY.md`](THIRD_PARTY.md).
+The Checkmk integration follows the repository license. The external Synology collector is independently MIT-licensed and is not redistributed here. See [`THIRD_PARTY.md`](THIRD_PARTY.md).
 
 <!-- code-derived-reference:start -->
 ## Code-derived operational reference
