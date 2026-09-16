@@ -331,3 +331,43 @@ Will cover at minimum:
 ## License
 
 The Checkmk integration in this repository follows the repository license. The external Synology collector is an independent MIT-licensed project and is not redistributed here. See [`THIRD_PARTY.md`](THIRD_PARTY.md).
+
+<!-- code-derived-reference:start -->
+## Code-derived operational reference
+
+This section is generated from the canonical manifest and current source tree. Edit the code or manifest first, then run `python3 tools/ci/generate_package_reference.py --write` from the repository root.
+
+### Installation
+
+- Canonical package: `synology_active_backup_m365` version `0.1.0`; minimum Checkmk version `2.5.0`; maximum asserted version: 2.5.99.
+- Canonical manifest: `synology_active_backup_m365/src/info`; it declares 7 packaged files.
+- No committed MKP artifact is present; build and validate the package from `src/` before installation.
+- No committed checksum file is present; do not distribute an unverified locally built artifact.
+- Source under `src/` is authoritative; generated MKP files and this reference must match it.
+
+### Configuration and components
+
+- **Agent-based checks:** `src/synology_active_backup_m365/agent_based/synology_active_backup_m365.py`.
+- **Server-side calls:** `src/synology_active_backup_m365/server_side_calls/special_agent.py`.
+- **Rulesets:** `src/synology_active_backup_m365/rulesets/check_parameters.py`, `src/synology_active_backup_m365/rulesets/special_agent.py`.
+- **Executables:** `src/synology_active_backup_m365/libexec/agent_synology_active_backup_m365`.
+- **Graphing:** `src/synology_active_backup_m365/graphing/metrics.py`.
+- **Check manuals:** `src/synology_active_backup_m365/checkman/synology_active_backup_m365`.
+- Registered special-agent names: `synology_active_backup_m365`.
+- Registered check plug-in names: `synology_active_backup_m365`.
+
+### Validation
+
+- Package-specific tests: `tests/test_framework.py`.
+- Any behavior change must update or add focused tests before the generated documentation is refreshed.
+
+### Security
+
+- Server-side calls preserve Checkmk password-store references and the executable resolves them at runtime; direct plaintext options, where present, are limited to isolated command-line diagnostics.
+- The source performs network or remote-system access. Keep timeouts bounded, validate responses, and prevent authenticated redirects or unintended environment-proxy use.
+
+### Troubleshooting
+
+- No literal Checkmk section header was detected. Inspect the executable or notification exit status and the Checkmk log relevant to the component type.
+- For special agents, inspect the generated command without exposing secrets, run it as the site user, and verify that every emitted section has a matching parser/check registration.
+<!-- code-derived-reference:end -->
