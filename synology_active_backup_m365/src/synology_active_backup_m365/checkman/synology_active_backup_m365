@@ -10,16 +10,25 @@ description:
  directly.
 
  The special agent retrieves one complete /api/v1/status snapshot per execution.
- A permanent Health service monitors collector/source availability. One additional
- itemized service is discovered for each Microsoft 365 task_id. The technical
- task_id is used as persistent service identity; the human-readable backup job name
- is display information only.
+ A permanent Health service monitors the Microsoft 365 source, product-scoped
+ collection errors, and collector freshness. The upstream collector health object
+ is global across all enabled products; this check therefore does not make an M365
+ service CRIT solely because an unrelated ABB or Hyper Backup database is missing.
 
- The initial framework maps normalized upstream states conservatively: successful
- and running jobs are OK, warnings/partial/skipped jobs are WARN, failed jobs and
- missing databases are CRIT, no-data jobs are WARN, and unmapped states are UNKNOWN.
- Final age/runtime thresholds and expected-job policy are added after live NAS
- acceptance testing.
+ One additional itemized service is discovered for each Microsoft 365 task_id. The
+ technical task_id is used as persistent service identity; the human-readable backup
+ job name is display information only.
+
+ Normalized upstream states are mapped as follows: successful and running jobs are
+ OK, warnings/partial/skipped jobs are WARN, failed jobs and missing M365 databases
+ are CRIT, no-data jobs are WARN, and unmapped states are UNKNOWN. Independently of
+ the current run state, the service checks the age of the last fully successful run.
+ The default levels assume daily backups: WARN after 30 hours and CRIT after 48
+ hours. Warning or partially completed runs do not reset the last-success timer.
+ These levels are configurable through the service parameter rule.
+
+ Metrics cover collector age, latest-run age, last-success age, runtime, and
+ transferred bytes.
 
  The collector API uses HTTP by default. Production use requires a protected
  management path and strict source filtering until a verified TLS deployment path
